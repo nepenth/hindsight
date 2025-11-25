@@ -101,17 +101,7 @@ def print_response(result):
             if fact.get('event_date'):
                 print(f"   📅 {fact['event_date'][:10]}")
 
-    # Show new opinions formed
-    if result.get('new_opinions'):
-        print("\n" + "-" * 70)
-        print("✨ NEW INSIGHTS FORMED:")
-        print("-" * 70)
-        for opinion in result['new_opinions']:
-            confidence = opinion.get('confidence', 0)
-            print(f"\n💡 {opinion['text']}")
-            print(f"   Confidence: {confidence:.0%}")
-
-    print("\n" + "=" * 70 + "\n")
+    print("=" * 70 + "\n")
 
 def interactive_chat():
     """Interactive chat with the fitness coach."""

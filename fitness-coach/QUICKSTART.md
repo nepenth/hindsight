@@ -52,32 +52,56 @@ Run the complete demo to see all features:
 python demo.py
 ```
 
-This will:
-1. Log 4 sample workouts (cardio, strength, yoga)
-2. Log 4 sample meals with nutrition info
-3. Ask the coach 4 different questions
-4. Show how the coach forms opinions about your habits
+**Demo Options:**
+
+When you run the demo, you'll be asked to choose:
+- **`already`** - You've already imported Strava data, skip import
+- **`import`** - Import your real running data now (last 90 days)
+- **`no`** - Use sample workout and meal data
+
+The demo will:
+1. Set a fitness goal (running-specific if using Strava data)
+2. Optionally import your Strava running history (or skip if already done)
+3. Log sample nutrition data
+4. Ask the coach personalized questions including temporal comparisons
+5. Show how the coach analyzes your training and provides insights
+
+**Note:** If you choose `import`, you'll need credentials set:
+```bash
+export STRAVA_CLIENT_ID=your_id
+export STRAVA_CLIENT_SECRET=your_secret
+```
+
+**Tip:** If you've already imported Strava data, choose `already` to save time!
 
 ## 📂 Files Created
 
 All files are in `/fitness-coach/`:
 
 - `setup_coach.py` - Creates the fitness coach agent ✅ (already run)
+- `log_goal.py` - Set fitness goals
 - `log_workout.py` - Log workouts
 - `log_meal.py` - Log meals
 - `coach_chat.py` - Chat with your coach
 - `demo.py` - Complete demo with sample data
 - `README.md` - Full documentation
 
-## 🔥 Example Questions to Ask
+## 🔥 Example Commands
 
-Try asking your coach:
+**Set a goal:**
+```bash
+python log_goal.py "Run a 5K in under 25 minutes"
+python log_goal.py "Increase bench press to 225 lbs by June"
+python log_goal.py "Lose 15 pounds"
+```
 
+**Ask your coach:**
 ```bash
 python coach_chat.py "What workouts did I do this week?"
 python coach_chat.py "How is my nutrition?"
 python coach_chat.py "Should I take a rest day?"
-python coach_chat.py "What should I focus on next?"
+python coach_chat.py "What should I focus on to achieve my goal?"
+python coach_chat.py "How has my training changed over time?"
 python coach_chat.py "Am I getting enough protein?"
 ```
 
