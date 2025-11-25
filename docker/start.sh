@@ -3,7 +3,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-echo "🚀 Starting Memora Services"
+echo "🚀 Starting Hindsight Services"
 echo "============================"
 echo ""
 
@@ -15,7 +15,7 @@ if [ ! -f ../.env ]; then
     cp ../.env.example ../.env
     echo ""
     echo "⚠️  Please edit .env and set your API keys:"
-    echo "   - MEMORA_API_LLM_API_KEY"
+    echo "   - HINDSIGHT_API_LLM_API_KEY"
     echo ""
     echo "Then run this script again."
     exit 1
@@ -30,14 +30,14 @@ echo ""
 
 # Wait for PostgreSQL
 echo "  Waiting for PostgreSQL..."
-until docker exec memora-postgres pg_isready -U memora > /dev/null 2>&1; do
+until docker exec hindsight-postgres pg_isready -U hindsight > /dev/null 2>&1; do
   sleep 1
 done
 echo "  ✅ PostgreSQL is ready"
 
 # Wait for API
 echo "  Waiting for API..."
-until curl -f http://localhost:8080/api/v1/agents > /dev/null 2>&1; do
+until curl -f http://localhost:8888/api/v1/agents > /dev/null 2>&1; do
   sleep 2
 done
 echo "  ✅ API is ready"
@@ -54,7 +54,7 @@ echo "✅ All services are running!"
 echo ""
 echo "📊 Service URLs:"
 echo "   Control Plane: http://localhost:3000"
-echo "   API:           http://localhost:8080"
+echo "   API:           http://localhost:8888"
 echo "   PostgreSQL:    localhost:5432"
 echo ""
 echo "🔍 View logs:"

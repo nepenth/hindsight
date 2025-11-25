@@ -1,12 +1,12 @@
-# Memora Docker Setup
+# Hindsight Docker Setup
 
-Complete Docker Compose setup for running all Memora services locally.
+Complete Docker Compose setup for running all Hindsight services locally.
 
 ## Services
 
 This setup includes:
 - **PostgreSQL** with pgvector extension (port 5432)
-- **API Service** - FastAPI backend (port 8080)
+- **API Service** - FastAPI backend (port 8888)
 - **Control Plane** - Next.js web UI (port 3000)
 
 ## Quick Start
@@ -24,7 +24,7 @@ This setup includes:
 
 3. **Access the services:**
    - Control Plane: http://localhost:3000
-   - API: http://localhost:8080
+   - API: http://localhost:8888
    - PostgreSQL: localhost:5432
 
 ## Scripts
@@ -71,9 +71,9 @@ docker-compose down -v
 ### Connection Info
 - **Host:** localhost
 - **Port:** 5432
-- **Database:** memora
-- **User:** memora
-- **Password:** memora_dev
+- **Database:** hindsight
+- **User:** hindsight
+- **Password:** hindsight_dev
 
 ### Migrations
 
@@ -90,16 +90,16 @@ Required in `.env` file:
 
 ```bash
 # API Service Configuration
-MEMORA_API_DATABASE_URL=postgresql://memora:memora_dev@localhost:5432/memora
-MEMORA_API_LLM_PROVIDER=groq
-MEMORA_API_LLM_API_KEY=your-api-key-here
-MEMORA_API_LLM_MODEL=openai/gpt-oss-120b
+HINDSIGHT_API_DATABASE_URL=postgresql://hindsight:hindsight_dev@localhost:5432/hindsight
+HINDSIGHT_API_LLM_PROVIDER=groq
+HINDSIGHT_API_LLM_API_KEY=your-api-key-here
+HINDSIGHT_API_LLM_MODEL=openai/gpt-oss-120b
 
 # Optional: Custom LLM endpoint
-# MEMORA_API_LLM_BASE_URL=http://localhost:11434/v1
+# HINDSIGHT_API_LLM_BASE_URL=http://localhost:11434/v1
 
 # Control Plane Configuration
-MEMORA_CP_DATAPLANE_API_URL=http://localhost:8080
+HINDSIGHT_CP_DATAPLANE_API_URL=http://localhost:8888
 ```
 
 ## Troubleshooting
@@ -113,7 +113,7 @@ Check logs for errors:
 ### Database connection issues
 Ensure PostgreSQL is healthy:
 ```bash
-docker exec memora-postgres pg_isready -U memora
+docker exec hindsight-postgres pg_isready -U hindsight
 ```
 
 ### API won't connect to database
@@ -125,7 +125,7 @@ Check if migrations ran successfully:
 ### Control plane can't reach API
 Verify the API is running:
 ```bash
-curl http://localhost:8080/
+curl http://localhost:8888/
 ```
 
 ### Reset everything
@@ -150,7 +150,7 @@ docker-compose up --build -d control-plane
 
 ### Accessing the database
 ```bash
-docker exec -it memora-postgres psql -U memora -d memora
+docker exec -it hindsight-postgres psql -U hindsight -d hindsight
 ```
 
 ### Inspecting containers
@@ -166,10 +166,10 @@ PostgreSQL data is persisted in a Docker volume named `postgres_data`. This data
 
 To backup data:
 ```bash
-docker exec memora-postgres pg_dump -U memora memora > backup.sql
+docker exec hindsight-postgres pg_dump -U hindsight hindsight > backup.sql
 ```
 
 To restore data:
 ```bash
-docker exec -i memora-postgres psql -U memora memora < backup.sql
+docker exec -i hindsight-postgres psql -U hindsight hindsight < backup.sql
 ```
