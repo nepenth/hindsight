@@ -173,10 +173,6 @@ class EmbeddedPostgres:
         """Run an embedded-postgres command synchronously."""
         cmd = [str(self.binary_path), *args]
 
-        # Add data directory argument
-        if "--data-dir" not in args and "-d" not in args:
-            cmd.extend(["--data-dir", str(self.data_dir)])
-
         return subprocess.run(
             cmd,
             capture_output=capture_output,
@@ -268,8 +264,7 @@ class EmbeddedPostgres:
             raise RuntimeError("pg0 is not installed.")
 
         returncode, stdout, stderr = await self._run_command_async(
-            "info", "-o", "json", "--data-dir", self.data_dir.as_posix()
-        )
+            "info", "-o", "json")
 
         if returncode != 0:
             raise RuntimeError(f"Failed to get PostgreSQL info: {stderr}")
