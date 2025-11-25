@@ -87,6 +87,8 @@ from .http import (
     BatchPutRequest,
     ThinkRequest,
     ThinkResponse,
+    CreateAgentRequest,
+    PersonalityTraits,
 )
 
 __all__ = [
@@ -98,4 +100,6 @@ __all__ = [
     "BatchPutRequest",
     "ThinkRequest",
     "ThinkResponse",
+    "CreateAgentRequest",
+    "PersonalityTraits",
 ]

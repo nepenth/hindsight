@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.memory_item import MemoryItem
+from hindsight_client_api.models.memory_item import MemoryItem
 
 # TODO update the JSON string below
 json = "{}"

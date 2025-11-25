@@ -6,6 +6,10 @@ sidebar_position: 3
 
 Hindsight's retrieval architecture (TEMPR) runs four search strategies in parallel and fuses results for optimal recall and precision.
 
+:::tip Deep Dive on Temporal Reasoning
+For a comprehensive guide on how Hindsight handles temporal facts and time-aware retrieval, see [Temporal Reasoning](./temporal-reasoning.md).
+:::
+
 ## Pipeline Overview
 
 ```
@@ -89,6 +93,8 @@ Activated when temporal expressions are detected. Uses T5-small for parsing.
 **Strengths**: Historical queries, time-bounded search
 
 **Example**: "What did Alice do last spring?" → Events in March-May range
+
+**How it works**: Combines semantic entry points with time filtering, then traverses the entity graph while only following links to facts within the temporal range. See [Temporal Reasoning](./temporal-reasoning.md) for detailed explanation.
 
 ## Result Fusion (RRF)
 

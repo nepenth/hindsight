@@ -17,12 +17,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from typing_extensions import Annotated
 
 from pydantic import StrictStr
-from memora_client_api.models.think_request import ThinkRequest
-from memora_client_api.models.think_response import ThinkResponse
+from hindsight_client_api.models.think_request import ThinkRequest
+from hindsight_client_api.models.think_response import ThinkResponse
 
-from memora_client_api.api_client import ApiClient, RequestSerialized
-from memora_client_api.api_response import ApiResponse
-from memora_client_api.rest import RESTResponseType
+from hindsight_client_api.api_client import ApiClient, RequestSerialized
+from hindsight_client_api.api_response import ApiResponse
+from hindsight_client_api.rest import RESTResponseType
 
 
 class ReasoningApi:

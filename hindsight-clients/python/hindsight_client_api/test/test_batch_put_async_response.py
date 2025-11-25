@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.batch_put_async_response import BatchPutAsyncResponse
+from hindsight_client_api.models.batch_put_async_response import BatchPutAsyncResponse
 
 class TestBatchPutAsyncResponse(unittest.TestCase):
     """BatchPutAsyncResponse unit test stubs"""

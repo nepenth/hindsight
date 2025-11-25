@@ -27,11 +27,11 @@ from urllib.parse import quote
 from typing import Tuple, Optional, List, Dict, Union
 from pydantic import SecretStr
 
-from memora_client_api.configuration import Configuration
-from memora_client_api.api_response import ApiResponse, T as ApiResponseT
-import memora_client_api.models
-from memora_client_api import rest
-from memora_client_api.exceptions import (
+from hindsight_client_api.configuration import Configuration
+from hindsight_client_api.api_response import ApiResponse, T as ApiResponseT
+import hindsight_client_api.models
+from hindsight_client_api import rest
+from hindsight_client_api.exceptions import (
     ApiValueError,
     ApiException,
     BadRequestException,
@@ -459,7 +459,7 @@ class ApiClient:
             if klass in self.NATIVE_TYPES_MAPPING:
                 klass = self.NATIVE_TYPES_MAPPING[klass]
             else:
-                klass = getattr(memora_client_api.models, klass)
+                klass = getattr(hindsight_client_api.models, klass)
 
         if klass in self.PRIMITIVE_TYPES:
             return self.__deserialize_primitive(data, klass)

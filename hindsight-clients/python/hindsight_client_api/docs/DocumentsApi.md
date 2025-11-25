@@ -1,4 +1,4 @@
-# memora_client_api.DocumentsApi
+# hindsight_client_api.DocumentsApi
 
 All URIs are relative to *http://localhost*
 
@@ -27,21 +27,21 @@ This operation cannot be undone.
 
 
 ```python
-import memora_client_api
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.DocumentsApi(api_client)
+    api_instance = hindsight_client_api.DocumentsApi(api_client)
     agent_id = 'agent_id_example' # str | 
     document_id = 'document_id_example' # str | 
 
@@ -97,22 +97,22 @@ Get a specific document including its original text
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.document_response import DocumentResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.document_response import DocumentResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.DocumentsApi(api_client)
+    api_instance = hindsight_client_api.DocumentsApi(api_client)
     agent_id = 'agent_id_example' # str | 
     document_id = 'document_id_example' # str | 
 
@@ -168,22 +168,22 @@ List documents with pagination and optional search. Documents are the source con
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.list_documents_response import ListDocumentsResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.list_documents_response import ListDocumentsResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.DocumentsApi(api_client)
+    api_instance = hindsight_client_api.DocumentsApi(api_client)
     agent_id = 'agent_id_example' # str | 
     q = 'q_example' # str |  (optional)
     limit = 100 # int |  (optional) (default to 100)

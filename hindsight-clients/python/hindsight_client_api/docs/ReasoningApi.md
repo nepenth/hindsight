@@ -1,4 +1,4 @@
-# memora_client_api.ReasoningApi
+# hindsight_client_api.ReasoningApi
 
 All URIs are relative to *http://localhost*
 
@@ -26,25 +26,25 @@ Think and formulate an answer using agent identity, world facts, and opinions.
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.think_request import ThinkRequest
-from memora_client_api.models.think_response import ThinkResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.think_request import ThinkRequest
+from hindsight_client_api.models.think_response import ThinkResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.ReasoningApi(api_client)
+    api_instance = hindsight_client_api.ReasoningApi(api_client)
     agent_id = 'agent_id_example' # str | 
-    think_request = memora_client_api.ThinkRequest() # ThinkRequest | 
+    think_request = hindsight_client_api.ThinkRequest() # ThinkRequest | 
 
     try:
         # Think and generate answer

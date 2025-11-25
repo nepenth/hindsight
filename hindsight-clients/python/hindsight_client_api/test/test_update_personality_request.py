@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.update_personality_request import UpdatePersonalityRequest
+from hindsight_client_api.models.update_personality_request import UpdatePersonalityRequest
 
 class TestUpdatePersonalityRequest(unittest.TestCase):
     """UpdatePersonalityRequest unit test stubs"""

@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.create_agent_request import CreateAgentRequest
+from hindsight_client_api.models.create_agent_request import CreateAgentRequest
 
 class TestCreateAgentRequest(unittest.TestCase):
     """CreateAgentRequest unit test stubs"""

@@ -7,6 +7,7 @@ import logging
 import re
 from typing import Dict, Optional
 from pydantic import BaseModel, Field
+from .db_utils import acquire_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ async def get_agent_profile(pool, agent_id: str) -> Dict:
     Returns:
         Dict with 'name' (str), 'personality' (dict) and 'background' (str) keys
     """
-    async with pool.acquire() as conn:
+    async with acquire_with_retry(pool) as conn:
         # Try to get existing agent
         row = await conn.fetchrow(
             """
@@ -107,7 +108,7 @@ async def update_agent_personality(
     # Ensure agent exists first
     await get_agent_profile(pool, agent_id)
 
-    async with pool.acquire() as conn:
+    async with acquire_with_retry(pool) as conn:
         await conn.execute(
             """
             UPDATE agents
@@ -158,7 +159,7 @@ async def merge_agent_background(
     inferred_personality = result.get("personality")
 
     # Update in database
-    async with pool.acquire() as conn:
+    async with acquire_with_retry(pool) as conn:
         if inferred_personality:
             # Update both background and personality
             await conn.execute(
@@ -397,7 +398,7 @@ async def list_agents(pool) -> list:
     Returns:
         List of dicts with agent_id, name, personality, background, created_at, updated_at
     """
-    async with pool.acquire() as conn:
+    async with acquire_with_retry(pool) as conn:
         rows = await conn.fetch(
             """
             SELECT agent_id, name, personality, background, created_at, updated_at

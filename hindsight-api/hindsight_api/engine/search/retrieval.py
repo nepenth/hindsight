@@ -11,6 +11,7 @@ Implements:
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 import asyncio
+from ..db_utils import acquire_with_retry
 
 
 async def retrieve_semantic(
@@ -241,11 +242,6 @@ async def retrieve_temporal(
     if end_date.tzinfo is None:
         end_date = end_date.replace(tzinfo=timezone.utc)
 
-    # Find entry points: facts in date range with semantic relevance
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"Temporal retrieval: searching for facts between {start_date} and {end_date} (agent={agent_id}, fact_type={fact_type})")
-
     entry_points = await conn.fetch(
         """
         SELECT id, text, context, event_date, occurred_start, occurred_end, mentioned_at, access_count, embedding, fact_type, document_id,
@@ -274,8 +270,6 @@ async def retrieve_temporal(
         query_emb_str, agent_id, fact_type, start_date, end_date, semantic_threshold
     )
 
-    logger.info(f"Temporal retrieval: found {len(entry_points)} entry points")
-
     if not entry_points:
         # Check if there are ANY memories with temporal metadata for this agent
         total_with_dates = await conn.fetchval(
@@ -284,7 +278,6 @@ async def retrieve_temporal(
                AND (occurred_start IS NOT NULL OR occurred_end IS NOT NULL OR mentioned_at IS NOT NULL)""",
             agent_id, fact_type
         )
-        logger.info(f"Temporal retrieval: agent has {total_with_dates} total memories with temporal metadata (fact_type={fact_type})")
         return []
 
     # Calculate temporal scores for entry points
@@ -442,26 +435,20 @@ async def retrieve_parallel(
         query_text, reference_date=question_date, analyzer=query_analyzer
     )
 
-    if temporal_constraint:
-        logger.info(f"Temporal constraint detected in retrieve_parallel: {temporal_constraint[0]} to {temporal_constraint[1]}")
-    else:
-        logger.info("No temporal constraint in retrieve_parallel")
-
-    # Each retrieval needs its own connection
     async def run_semantic():
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             return await retrieve_semantic(conn, query_embedding_str, agent_id, fact_type, limit=thinking_budget)
 
     async def run_bm25():
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             return await retrieve_bm25(conn, query_text, agent_id, fact_type, limit=thinking_budget)
 
     async def run_graph():
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             return await retrieve_graph(conn, query_embedding_str, agent_id, fact_type, budget=thinking_budget)
 
     async def run_temporal(start_date, end_date):
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             return await retrieve_temporal(
                 conn, query_embedding_str, agent_id, fact_type,
                 start_date, end_date, budget=thinking_budget, semantic_threshold=0.4

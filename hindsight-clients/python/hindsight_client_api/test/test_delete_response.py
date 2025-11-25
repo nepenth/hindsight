@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.delete_response import DeleteResponse
+from hindsight_client_api.models.delete_response import DeleteResponse
 
 class TestDeleteResponse(unittest.TestCase):
     """DeleteResponse unit test stubs"""

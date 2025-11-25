@@ -18,11 +18,11 @@ from typing_extensions import Annotated
 
 from pydantic import StrictStr
 from typing import Optional
-from memora_client_api.models.graph_data_response import GraphDataResponse
+from hindsight_client_api.models.graph_data_response import GraphDataResponse
 
-from memora_client_api.api_client import ApiClient, RequestSerialized
-from memora_client_api.api_response import ApiResponse
-from memora_client_api.rest import RESTResponseType
+from hindsight_client_api.api_client import ApiClient, RequestSerialized
+from hindsight_client_api.api_response import ApiResponse
+from hindsight_client_api.rest import RESTResponseType
 
 
 class VisualizationApi:

@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.http_validation_error import HTTPValidationError
+from hindsight_client_api.models.http_validation_error import HTTPValidationError
 
 # TODO update the JSON string below
 json = "{}"

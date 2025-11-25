@@ -22,6 +22,7 @@ import uuid
 import logging
 from pydantic import BaseModel, Field
 
+from .query_analyzer import QueryAnalyzer
 from .utils import (
     extract_facts,
     calculate_recency_weight,
@@ -47,6 +48,8 @@ def utcnow():
 
 # Logger for memory system
 logger = logging.getLogger(__name__)
+
+from .db_utils import acquire_with_retry, retry_with_backoff
 
 # Tiktoken for token budget filtering
 import tiktoken
@@ -82,7 +85,7 @@ class MemoryEngine:
         memory_llm_base_url: Optional[str] = None,
         embeddings: Optional[Embeddings] = None,
         cross_encoder: Optional[CrossEncoderModel] = None,
-        query_analyzer: Optional["QueryAnalyzer"] = None,
+        query_analyzer: Optional[QueryAnalyzer] = None,
         pool_min_size: int = 5,
         pool_max_size: int = 100,
         task_backend: Optional[TaskBackend] = None,
@@ -190,7 +193,7 @@ class MemoryEngine:
         try:
             # Convert string UUIDs to UUID type for faster matching
             uuid_list = [uuid.UUID(nid) for nid in node_ids]
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 await conn.execute(
                     "UPDATE memory_units SET access_count = access_count + 1 WHERE id = ANY($1::uuid[])",
                     uuid_list
@@ -244,7 +247,7 @@ class MemoryEngine:
         if operation_id:
             try:
                 pool = await self._get_pool()
-                async with pool.acquire() as conn:
+                async with acquire_with_retry(pool) as conn:
                     result = await conn.fetchrow(
                         "SELECT id FROM async_operations WHERE id = $1",
                         uuid.UUID(operation_id)
@@ -299,7 +302,7 @@ class MemoryEngine:
         """Helper to delete an operation record from the database."""
         try:
             pool = await self._get_pool()
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 await conn.execute(
                     "DELETE FROM async_operations WHERE id = $1",
                     uuid.UUID(operation_id)
@@ -316,7 +319,7 @@ class MemoryEngine:
             full_error = f"{error_message}\n\nTraceback:\n{error_traceback}"
             truncated_error = full_error[:5000] if len(full_error) > 5000 else full_error
 
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 await conn.execute(
                     """
                     UPDATE async_operations
@@ -343,7 +346,8 @@ class MemoryEngine:
             min_size=self._pool_min_size,
             max_size=self._pool_max_size,
             command_timeout=60,
-            statement_cache_size=0  # Disable prepared statement cache
+            statement_cache_size=0,  # Disable prepared statement cache
+            timeout=30,  # Connection acquisition timeout (seconds)
         )
 
         # Initialize entity resolver with pool
@@ -361,6 +365,20 @@ class MemoryEngine:
         if not self._initialized:
             await self.initialize()
         return self._pool
+
+    async def _acquire_connection(self):
+        """
+        Acquire a connection from the pool with retry logic.
+
+        Returns an async context manager that yields a connection.
+        Retries on transient connection errors with exponential backoff.
+        """
+        pool = await self._get_pool()
+
+        async def acquire():
+            return await pool.acquire()
+
+        return await _retry_with_backoff(acquire)
 
     async def close(self):
         """Close the connection pool and shutdown background workers."""
@@ -865,7 +883,7 @@ class MemoryEngine:
             logger.debug("Getting connection pool")
             pool = await self._get_pool()
             logger.debug("Acquiring connection from pool")
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 logger.debug("Starting transaction")
                 async with conn.transaction():
                     logger.debug("Inside transaction")
@@ -1596,7 +1614,7 @@ class MemoryEngine:
             Dictionary with document info or None if not found
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             doc = await conn.fetchrow(
                 """
                 SELECT d.id, d.agent_id, d.original_text, d.content_hash,
@@ -1634,7 +1652,7 @@ class MemoryEngine:
             Dictionary with counts of deleted items
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             async with conn.transaction():
                 # Count units before deletion
                 units_count = await conn.fetchval(
@@ -1669,7 +1687,7 @@ class MemoryEngine:
             Dictionary with deletion result
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             async with conn.transaction():
                 # Delete the memory unit (cascades to links and associations)
                 deleted = await conn.fetchval(
@@ -1703,7 +1721,7 @@ class MemoryEngine:
             Dictionary with counts of deleted items
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             async with conn.transaction():
                 try:
                     if fact_type:
@@ -1754,7 +1772,7 @@ class MemoryEngine:
             Dict with nodes, edges, and table_rows
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             # Get memory units, optionally filtered by agent_id and fact_type
             query_conditions = []
             query_params = []
@@ -1925,7 +1943,7 @@ class MemoryEngine:
             Dict with items (list of memory units) and total count
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             # Build query conditions
             query_conditions = []
             query_params = []
@@ -2039,7 +2057,7 @@ class MemoryEngine:
             Dict with items (list of documents without original_text) and total count
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             # Build query conditions
             query_conditions = []
             query_params = []
@@ -2156,7 +2174,7 @@ class MemoryEngine:
             Dict with document details including original_text, or None if not found
         """
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_with_retry(pool) as conn:
             doc = await conn.fetchrow("""
                 SELECT
                     id,
@@ -2339,7 +2357,7 @@ Guidelines:
             logger.debug(f"[REINFORCE] Starting opinion reinforcement for {len(entity_names)} entities")
 
             pool = await self._get_pool()
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 # Find all opinions related to these entities
                 opinions = await conn.fetch(
                     """

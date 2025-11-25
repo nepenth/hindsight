@@ -1,24 +1,23 @@
 """
-Integration tests for main Memora operations.
 
-These tests require a running Memora API server.
+These tests require a running Hindsight API server.
 """
 
 import os
 import pytest
 from datetime import datetime
-from memora_client import Memora
+from hindsight_client import Hindsight
 
 
 # Test configuration
-MEMORA_API_URL = os.getenv("MEMORA_API_URL", "http://localhost:8888")
+HINDSIGHT_API_URL = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
 TEST_AGENT_ID = "test_agent_" + datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 @pytest.fixture
 def client():
-    """Create a Memora client for testing."""
-    with Memora(base_url=MEMORA_API_URL) as client:
+    """Create a Hindsight client for testing."""
+    with Hindsight(base_url=HINDSIGHT_API_URL) as client:
         yield client
 
 
@@ -218,7 +217,6 @@ class TestListMemories:
         assert len(response["items"]) <= 2
 
 
-@pytest.mark.integration
 class TestEndToEndWorkflow:
     """End-to-end workflow tests."""
 
@@ -258,8 +256,3 @@ class TestEndToEndWorkflow:
         )
         assert "text" in think_response
         assert len(think_response["text"]) > 0
-
-
-if __name__ == "__main__":
-    # Run tests with pytest
-    pytest.main([__file__, "-v", "-s"])

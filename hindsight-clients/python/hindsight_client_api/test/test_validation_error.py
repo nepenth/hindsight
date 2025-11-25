@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.validation_error import ValidationError
+from hindsight_client_api.models.validation_error import ValidationError
 
 class TestValidationError(unittest.TestCase):
     """ValidationError unit test stubs"""

@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.background_response import BackgroundResponse
+from hindsight_client_api.models.background_response import BackgroundResponse
 
 class TestBackgroundResponse(unittest.TestCase):
     """BackgroundResponse unit test stubs"""

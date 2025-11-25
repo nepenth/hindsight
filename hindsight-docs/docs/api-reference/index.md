@@ -31,7 +31,7 @@ The MCP (Model Context Protocol) API exposes Hindsight tools for AI assistants l
 | `hindsight_store` | Store new memory |
 | `hindsight_agents` | List available agents |
 
-[MCP Tools Reference →](./mcp)
+[MCP Tools Reference →](/api-reference/mcp)
 
 ## OpenAPI / Swagger
 

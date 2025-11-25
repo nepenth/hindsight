@@ -14,29 +14,41 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from hindsight_api import MemoryEngine
+from hindsight_api.engine.db_utils import acquire_with_retry
 
 
 class MetadataFilter(BaseModel):
     """Filter for metadata fields. Matches records where (key=value) OR (key not set) when match_unset=True."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "key": "source",
+            "value": "slack",
+            "match_unset": True
+        }
+    })
+
     key: str = Field(description="Metadata key to filter on")
     value: Optional[str] = Field(default=None, description="Value to match. If None with match_unset=True, matches any record where key is not set.")
     match_unset: bool = Field(default=True, description="If True, also match records where this metadata key is not set")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "key": "source",
-                "value": "slack",
-                "match_unset": True
-            }
-        }
-
 
 class SearchRequest(BaseModel):
     """Request model for search endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "query": "What did Alice say about machine learning?",
+            "fact_type": ["world", "agent"],
+            "thinking_budget": 100,
+            "max_tokens": 4096,
+            "trace": True,
+            "question_date": "2023-05-30T23:40:00",
+            "metadata_filter": [{"key": "source", "value": "slack", "match_unset": True}]
+        }
+    })
+
     query: str
     fact_type: Optional[List[str]] = None  # List of fact types to search (defaults to all if not specified)
     thinking_budget: int = 100
@@ -44,19 +56,6 @@ class SearchRequest(BaseModel):
     trace: bool = False
     question_date: Optional[str] = None  # ISO format date string (e.g., "2023-05-30T23:40:00")
     metadata_filter: Optional[List[MetadataFilter]] = Field(default=None, description="Filter by metadata. Multiple filters are ANDed together.")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "What did Alice say about machine learning?",
-                "fact_type": ["world", "agent"],
-                "thinking_budget": 100,
-                "max_tokens": 4096,
-                "trace": True,
-                "question_date": "2023-05-30T23:40:00",
-                "metadata_filter": [{"key": "source", "value": "slack", "match_unset": True}]
-            }
-        }
 
 
 class SearchResult(BaseModel):
@@ -87,93 +86,100 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     """Response model for search endpoints."""
-    results: List[SearchResult]
-    trace: Optional[Dict[str, Any]] = None
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "results": [
-                    {
-                        "id": "123e4567-e89b-12d3-a456-426614174000",
-                        "text": "Alice works at Google on the AI team",
-                        "type": "world",
-                        "context": "work info",
-                        "event_date": "2024-01-15T10:30:00Z"
-                    }
-                ],
-                "trace": {
-                    "query": "What did Alice say about machine learning?",
-                    "num_results": 1,
-                    "time_seconds": 0.123
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "results": [
+                {
+                    "id": "123e4567-e89b-12d3-a456-426614174000",
+                    "text": "Alice works at Google on the AI team",
+                    "type": "world",
+                    "context": "work info",
+                    "event_date": "2024-01-15T10:30:00Z"
                 }
+            ],
+            "trace": {
+                "query": "What did Alice say about machine learning?",
+                "num_results": 1,
+                "time_seconds": 0.123
             }
         }
+    })
+
+    results: List[SearchResult]
+    trace: Optional[Dict[str, Any]] = None
 
 
 class MemoryItem(BaseModel):
     """Single memory item for batch put."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "content": "Alice mentioned she's working on a new ML model",
+            "event_date": "2024-01-15T10:30:00Z",
+            "context": "team meeting",
+            "metadata": {"source": "slack", "channel": "engineering"}
+        }
+    })
+
     content: str
     event_date: Optional[datetime] = None
     context: Optional[str] = None
     metadata: Optional[Dict[str, str]] = None
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "content": "Alice mentioned she's working on a new ML model",
-                "event_date": "2024-01-15T10:30:00Z",
-                "context": "team meeting",
-                "metadata": {"source": "slack", "channel": "engineering"}
-            }
-        }
-
 
 class BatchPutRequest(BaseModel):
     """Request model for batch put endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "items": [
+                {
+                    "content": "Alice works at Google",
+                    "context": "work"
+                },
+                {
+                    "content": "Bob went hiking yesterday",
+                    "event_date": "2024-01-15T10:00:00Z"
+                }
+            ],
+            "document_id": "conversation_123"
+        }
+    })
+
     items: List[MemoryItem]
     document_id: Optional[str] = None
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "items": [
-                    {
-                        "content": "Alice works at Google",
-                        "context": "work"
-                    },
-                    {
-                        "content": "Bob went hiking yesterday",
-                        "event_date": "2024-01-15T10:00:00Z"
-                    }
-                ],
-                "document_id": "conversation_123"
-            }
-        }
 
 
 class BatchPutResponse(BaseModel):
     """Response model for batch put endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "success": True,
+            "message": "Successfully stored 2 memory items",
+            "agent_id": "user123",
+            "document_id": "conversation_123",
+            "items_count": 2
+        }
+    })
+
     success: bool
     message: str
     agent_id: str
     document_id: Optional[str] = None
     items_count: int
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Successfully stored 2 memory items",
-                "agent_id": "user123",
-                "document_id": "conversation_123",
-                "items_count": 2
-            }
-        }
-
 
 class BatchPutAsyncResponse(BaseModel):
     """Response model for async batch put endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "success": True,
+            "message": "Batch put task queued for background processing",
+            "agent_id": "user123",
+            "document_id": "conversation_123",
+            "items_count": 2,
+            "queued": True
+        }
+    })
+
     success: bool
     message: str
     agent_id: str
@@ -181,35 +187,22 @@ class BatchPutAsyncResponse(BaseModel):
     items_count: int
     queued: bool
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Batch put task queued for background processing",
-                "agent_id": "user123",
-                "document_id": "conversation_123",
-                "items_count": 2,
-                "queued": True
-            }
-        }
-
 
 class ThinkRequest(BaseModel):
     """Request model for think endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "query": "What do you think about artificial intelligence?",
+            "thinking_budget": 50,
+            "context": "This is for a research paper on AI ethics",
+            "metadata_filter": [{"key": "source", "value": "slack", "match_unset": True}]
+        }
+    })
+
     query: str
     thinking_budget: int = 50
     context: Optional[str] = None
     metadata_filter: Optional[List[MetadataFilter]] = Field(default=None, description="Filter by metadata. Multiple filters are ANDed together.")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "What do you think about artificial intelligence?",
-                "thinking_budget": 50,
-                "context": "This is for a research paper on AI ethics",
-                "metadata_filter": [{"key": "source", "value": "slack", "match_unset": True}]
-            }
-        }
 
 
 class OpinionItem(BaseModel):
@@ -220,67 +213,75 @@ class OpinionItem(BaseModel):
 
 class ThinkFact(BaseModel):
     """A fact used in think response."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "text": "AI is used in healthcare",
+            "type": "world",
+            "context": "healthcare discussion",
+            "event_date": "2024-01-15T10:30:00Z"
+        }
+    })
+
     id: Optional[str] = None
     text: str
     type: Optional[str] = None  # fact type: world, agent, opinion
     context: Optional[str] = None
     event_date: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "123e4567-e89b-12d3-a456-426614174000",
-                "text": "AI is used in healthcare",
-                "type": "world",
-                "context": "healthcare discussion",
-                "event_date": "2024-01-15T10:30:00Z"
-            }
-        }
-
 
 class ThinkResponse(BaseModel):
     """Response model for think endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "text": "Based on my understanding, AI is a transformative technology...",
+            "based_on": [
+                {
+                    "id": "123",
+                    "text": "AI is used in healthcare",
+                    "type": "world"
+                },
+                {
+                    "id": "456",
+                    "text": "I discussed AI applications last week",
+                    "type": "agent"
+                }
+            ],
+            "new_opinions": [
+                "AI has great potential when used responsibly"
+            ]
+        }
+    })
+
     text: str
     based_on: List[ThinkFact] = []  # Facts used to generate the response
     new_opinions: List[str] = []  # Simplified to list of opinion strings
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "text": "Based on my understanding, AI is a transformative technology...",
-                "based_on": [
-                    {
-                        "id": "123",
-                        "text": "AI is used in healthcare",
-                        "type": "world"
-                    },
-                    {
-                        "id": "456",
-                        "text": "I discussed AI applications last week",
-                        "type": "agent"
-                    }
-                ],
-                "new_opinions": [
-                    "AI has great potential when used responsibly"
-                ]
-            }
-        }
-
 
 class AgentsResponse(BaseModel):
     """Response model for agents list endpoint."""
-    agents: List[str]
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "agents": ["user123", "agent_alice", "agent_bob"]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "agents": ["user123", "agent_alice", "agent_bob"]
         }
+    })
+
+    agents: List[str]
 
 
 class PersonalityTraits(BaseModel):
     """Personality traits based on Big Five model."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "openness": 0.8,
+            "conscientiousness": 0.6,
+            "extraversion": 0.5,
+            "agreeableness": 0.7,
+            "neuroticism": 0.3,
+            "bias_strength": 0.7
+        }
+    })
+
     openness: float = Field(ge=0.0, le=1.0, description="Openness to experience (0-1)")
     conscientiousness: float = Field(ge=0.0, le=1.0, description="Conscientiousness (0-1)")
     extraversion: float = Field(ge=0.0, le=1.0, description="Extraversion (0-1)")
@@ -288,42 +289,29 @@ class PersonalityTraits(BaseModel):
     neuroticism: float = Field(ge=0.0, le=1.0, description="Neuroticism (0-1)")
     bias_strength: float = Field(ge=0.0, le=1.0, description="How strongly personality influences opinions (0-1)")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
+
+class AgentProfileResponse(BaseModel):
+    """Response model for agent profile."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "agent_id": "user123",
+            "name": "Alice",
+            "personality": {
                 "openness": 0.8,
                 "conscientiousness": 0.6,
                 "extraversion": 0.5,
                 "agreeableness": 0.7,
                 "neuroticism": 0.3,
                 "bias_strength": 0.7
-            }
+            },
+            "background": "I am a software engineer with 10 years of experience in startups"
         }
+    })
 
-
-class AgentProfileResponse(BaseModel):
-    """Response model for agent profile."""
     agent_id: str
     name: str
     personality: PersonalityTraits
     background: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "agent_id": "user123",
-                "name": "Alice",
-                "personality": {
-                    "openness": 0.8,
-                    "conscientiousness": 0.6,
-                    "extraversion": 0.5,
-                    "agreeableness": 0.7,
-                    "neuroticism": 0.3,
-                    "bias_strength": 0.7
-                },
-                "background": "I am a software engineer with 10 years of experience in startups"
-            }
-        }
 
 
 class UpdatePersonalityRequest(BaseModel):
@@ -333,40 +321,38 @@ class UpdatePersonalityRequest(BaseModel):
 
 class AddBackgroundRequest(BaseModel):
     """Request model for adding/merging background information."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "content": "I was born in Texas",
+            "update_personality": True
+        }
+    })
+
     content: str = Field(description="New background information to add or merge")
     update_personality: bool = Field(
         default=True,
         description="If true, infer Big Five personality traits from the merged background (default: true)"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "content": "I was born in Texas",
-                "update_personality": True
-            }
-        }
-
 
 class BackgroundResponse(BaseModel):
     """Response model for background update."""
-    background: str
-    personality: Optional[PersonalityTraits] = None
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "background": "I was born in Texas. I am a software engineer with 10 years of experience.",
-                "personality": {
-                    "openness": 0.7,
-                    "conscientiousness": 0.6,
-                    "extraversion": 0.5,
-                    "agreeableness": 0.8,
-                    "neuroticism": 0.4,
-                    "bias_strength": 0.6
-                }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "background": "I was born in Texas. I am a software engineer with 10 years of experience.",
+            "personality": {
+                "openness": 0.7,
+                "conscientiousness": 0.6,
+                "extraversion": 0.5,
+                "agreeableness": 0.8,
+                "neuroticism": 0.4,
+                "bias_strength": 0.6
             }
         }
+    })
+
+    background: str
+    personality: Optional[PersonalityTraits] = None
 
 
 class AgentListItem(BaseModel):
@@ -381,137 +367,144 @@ class AgentListItem(BaseModel):
 
 class AgentListResponse(BaseModel):
     """Response model for listing all agents."""
-    agents: List[AgentListItem]
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "agents": [
-                    {
-                        "agent_id": "user123",
-                        "name": "Alice",
-                        "personality": {
-                            "openness": 0.5,
-                            "conscientiousness": 0.5,
-                            "extraversion": 0.5,
-                            "agreeableness": 0.5,
-                            "neuroticism": 0.5,
-                            "bias_strength": 0.5
-                        },
-                        "background": "I am a software engineer",
-                        "created_at": "2024-01-15T10:30:00Z",
-                        "updated_at": "2024-01-16T14:20:00Z"
-                    }
-                ]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "agents": [
+                {
+                    "agent_id": "user123",
+                    "name": "Alice",
+                    "personality": {
+                        "openness": 0.5,
+                        "conscientiousness": 0.5,
+                        "extraversion": 0.5,
+                        "agreeableness": 0.5,
+                        "neuroticism": 0.5,
+                        "bias_strength": 0.5
+                    },
+                    "background": "I am a software engineer",
+                    "created_at": "2024-01-15T10:30:00Z",
+                    "updated_at": "2024-01-16T14:20:00Z"
+                }
+            ]
         }
+    })
+
+    agents: List[AgentListItem]
 
 
 class CreateAgentRequest(BaseModel):
     """Request model for creating/updating an agent."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "Alice",
+            "personality": {
+                "openness": 0.8,
+                "conscientiousness": 0.6,
+                "extraversion": 0.5,
+                "agreeableness": 0.7,
+                "neuroticism": 0.3,
+                "bias_strength": 0.7
+            },
+            "background": "I am a creative software engineer with 10 years of experience"
+        }
+    })
+
     name: Optional[str] = None
     personality: Optional[PersonalityTraits] = None
     background: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "name": "Alice",
-                "personality": {
-                    "openness": 0.8,
-                    "conscientiousness": 0.6,
-                    "extraversion": 0.5,
-                    "agreeableness": 0.7,
-                    "neuroticism": 0.3,
-                    "bias_strength": 0.7
-                },
-                "background": "I am a creative software engineer with 10 years of experience"
-            }
-        }
-
 
 class GraphDataResponse(BaseModel):
     """Response model for graph data endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "nodes": [
+                {"id": "1", "label": "Alice works at Google", "type": "world"},
+                {"id": "2", "label": "Bob went hiking", "type": "world"}
+            ],
+            "edges": [
+                {"from": "1", "to": "2", "type": "semantic", "weight": 0.8}
+            ],
+            "table_rows": [
+                {"id": "abc12345...", "text": "Alice works at Google", "context": "Work info", "date": "2024-01-15 10:30", "entities": "Alice (PERSON), Google (ORGANIZATION)"}
+            ],
+            "total_units": 2
+        }
+    })
+
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
     table_rows: List[Dict[str, Any]]
     total_units: int
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "nodes": [
-                    {"id": "1", "label": "Alice works at Google", "type": "world"},
-                    {"id": "2", "label": "Bob went hiking", "type": "world"}
-                ],
-                "edges": [
-                    {"from": "1", "to": "2", "type": "semantic", "weight": 0.8}
-                ],
-                "table_rows": [
-                    {"id": "abc12345...", "text": "Alice works at Google", "context": "Work info", "date": "2024-01-15 10:30", "entities": "Alice (PERSON), Google (ORGANIZATION)"}
-                ],
-                "total_units": 2
-            }
-        }
-
 
 class ListMemoryUnitsResponse(BaseModel):
     """Response model for list memory units endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "items": [
+                {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "text": "Alice works at Google on the AI team",
+                    "context": "Work conversation",
+                    "date": "2024-01-15T10:30:00Z",
+                    "fact_type": "world",
+                    "entities": "Alice (PERSON), Google (ORGANIZATION)"
+                }
+            ],
+            "total": 150,
+            "limit": 100,
+            "offset": 0
+        }
+    })
+
     items: List[Dict[str, Any]]
     total: int
     limit: int
     offset: int
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "items": [
-                    {
-                        "id": "550e8400-e29b-41d4-a716-446655440000",
-                        "text": "Alice works at Google on the AI team",
-                        "context": "Work conversation",
-                        "date": "2024-01-15T10:30:00Z",
-                        "fact_type": "world",
-                        "entities": "Alice (PERSON), Google (ORGANIZATION)"
-                    }
-                ],
-                "total": 150,
-                "limit": 100,
-                "offset": 0
-            }
-        }
 
 
 class ListDocumentsResponse(BaseModel):
     """Response model for list documents endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "items": [
+                {
+                    "id": "session_1",
+                    "agent_id": "user123",
+                    "content_hash": "abc123",
+                    "created_at": "2024-01-15T10:30:00Z",
+                    "updated_at": "2024-01-15T10:30:00Z",
+                    "text_length": 5420,
+                    "memory_unit_count": 15
+                }
+            ],
+            "total": 50,
+            "limit": 100,
+            "offset": 0
+        }
+    })
+
     items: List[Dict[str, Any]]
     total: int
     limit: int
     offset: int
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "items": [
-                    {
-                        "id": "session_1",
-                        "agent_id": "user123",
-                        "content_hash": "abc123",
-                        "created_at": "2024-01-15T10:30:00Z",
-                        "updated_at": "2024-01-15T10:30:00Z",
-                        "text_length": 5420,
-                        "memory_unit_count": 15
-                    }
-                ],
-                "total": 50,
-                "limit": 100,
-                "offset": 0
-            }
-        }
-
 
 class DocumentResponse(BaseModel):
     """Response model for get document endpoint."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "session_1",
+            "agent_id": "user123",
+            "original_text": "Full document text here...",
+            "content_hash": "abc123",
+            "created_at": "2024-01-15T10:30:00Z",
+            "updated_at": "2024-01-15T10:30:00Z",
+            "memory_unit_count": 15
+        }
+    })
+
     id: str
     agent_id: str
     original_text: str
@@ -520,32 +513,18 @@ class DocumentResponse(BaseModel):
     updated_at: str
     memory_unit_count: int
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "session_1",
-                "agent_id": "user123",
-                "original_text": "Full document text here...",
-                "content_hash": "abc123",
-                "created_at": "2024-01-15T10:30:00Z",
-                "updated_at": "2024-01-15T10:30:00Z",
-                "memory_unit_count": 15
-            }
-        }
-
 
 class DeleteResponse(BaseModel):
     """Response model for delete operations."""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "success": True,
+            "message": "Resource deleted successfully"
+        }
+    })
+
     success: bool
     message: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Resource deleted successfully"
-            }
-        }
 
 
 def create_app(memory: MemoryEngine, run_migrations: bool = True, initialize_memory: bool = True) -> FastAPI:
@@ -860,7 +839,7 @@ def _register_routes(app: FastAPI):
         """Get statistics about memory nodes and links for an agent."""
         try:
             pool = await app.state.memory._get_pool()
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 # Get node counts by fact_type
                 node_stats = await conn.fetch(
                     """
@@ -1195,7 +1174,7 @@ This operation cannot be undone.
 
             # Insert operation record into database BEFORE scheduling task
             pool = await app.state.memory._get_pool()
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 await conn.execute(
                     """
                     INSERT INTO async_operations (id, agent_id, task_type, items_count, document_id)
@@ -1245,7 +1224,7 @@ This operation cannot be undone.
         """List all async operations (pending and failed) for an agent."""
         try:
             pool = await app.state.memory._get_pool()
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 operations = await conn.fetch(
                     """
                     SELECT id, agent_id, task_type, items_count, document_id, created_at, status, error_message
@@ -1296,7 +1275,7 @@ This operation cannot be undone.
                 raise HTTPException(status_code=400, detail=f"Invalid operation_id format: {operation_id}")
 
             pool = await app.state.memory._get_pool()
-            async with pool.acquire() as conn:
+            async with acquire_with_retry(pool) as conn:
                 # Check if operation exists and belongs to this agent
                 result = await conn.fetchrow(
                     "SELECT agent_id FROM async_operations WHERE id = $1 AND agent_id = $2",
@@ -1468,7 +1447,7 @@ This operation cannot be undone.
             # Update name if provided
             if request.name is not None:
                 pool = await app.state.memory._get_pool()
-                async with pool.acquire() as conn:
+                async with acquire_with_retry(pool) as conn:
                     await conn.execute(
                         """
                         UPDATE agents
@@ -1492,7 +1471,7 @@ This operation cannot be undone.
             # Update background if provided (replace, not merge)
             if request.background is not None:
                 pool = await app.state.memory._get_pool()
-                async with pool.acquire() as conn:
+                async with acquire_with_retry(pool) as conn:
                     await conn.execute(
                         """
                         UPDATE agents

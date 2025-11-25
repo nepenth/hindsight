@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.batch_put_async_response import BatchPutAsyncResponse
+from hindsight_client_api.models.batch_put_async_response import BatchPutAsyncResponse
 
 # TODO update the JSON string below
 json = "{}"

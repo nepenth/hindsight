@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.think_fact import ThinkFact
+from hindsight_client_api.models.think_fact import ThinkFact
 
 class TestThinkFact(unittest.TestCase):
     """ThinkFact unit test stubs"""

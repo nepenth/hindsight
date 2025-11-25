@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.personality_traits import PersonalityTraits
+from hindsight_client_api.models.personality_traits import PersonalityTraits
 
 class TestPersonalityTraits(unittest.TestCase):
     """PersonalityTraits unit test stubs"""

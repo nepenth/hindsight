@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.memory_item import MemoryItem
+from hindsight_client_api.models.memory_item import MemoryItem
 
 class TestMemoryItem(unittest.TestCase):
     """MemoryItem unit test stubs"""

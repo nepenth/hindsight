@@ -8,6 +8,7 @@ import asyncpg
 from typing import List, Dict, Optional, Set
 from difflib import SequenceMatcher
 from datetime import datetime, timezone
+from .db_utils import acquire_with_retry
 
 
 # Load spaCy model (singleton)
@@ -56,7 +57,7 @@ class EntityResolver:
             return []
 
         if conn is None:
-            async with self.pool.acquire() as conn:
+            async with acquire_with_retry(self.pool) as conn:
                 return await self._resolve_entities_batch_impl(conn, agent_id, entities_data, context, unit_event_date)
         else:
             return await self._resolve_entities_batch_impl(conn, agent_id, entities_data, context, unit_event_date)
@@ -220,7 +221,7 @@ class EntityResolver:
         Returns:
             Entity ID (creates new entity if needed)
         """
-        async with self.pool.acquire() as conn:
+        async with acquire_with_retry(self.pool) as conn:
             # Find candidate entities with similar name
             candidates = await conn.fetch(
                 """
@@ -366,7 +367,7 @@ class EntityResolver:
             unit_id: Memory unit ID
             entity_id: Entity ID
         """
-        async with self.pool.acquire() as conn:
+        async with acquire_with_retry(self.pool) as conn:
             # Insert unit-entity link
             await conn.execute(
                 """
@@ -434,7 +435,7 @@ class EntityResolver:
             return
 
         if conn is None:
-            async with self.pool.acquire() as conn:
+            async with acquire_with_retry(self.pool) as conn:
                 return await self._link_units_to_entities_batch_impl(conn, unit_entity_pairs)
         else:
             return await self._link_units_to_entities_batch_impl(conn, unit_entity_pairs)
@@ -499,7 +500,7 @@ class EntityResolver:
         Returns:
             List of unit IDs
         """
-        async with self.pool.acquire() as conn:
+        async with acquire_with_retry(self.pool) as conn:
             rows = await conn.fetch(
                 """
                 SELECT unit_id
@@ -527,7 +528,7 @@ class EntityResolver:
         Returns:
             Entity ID if found, None otherwise
         """
-        async with self.pool.acquire() as conn:
+        async with acquire_with_retry(self.pool) as conn:
             row = await conn.fetchrow(
                 """
                 SELECT id FROM entities

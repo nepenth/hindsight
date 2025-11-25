@@ -1,4 +1,4 @@
-# memora_client_api.MemoryOperationsApi
+# hindsight_client_api.MemoryOperationsApi
 
 All URIs are relative to *http://localhost*
 
@@ -43,25 +43,25 @@ Store multiple memory items in batch asynchronously using the task backend.
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.batch_put_async_response import BatchPutAsyncResponse
-from memora_client_api.models.batch_put_request import BatchPutRequest
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.batch_put_async_response import BatchPutAsyncResponse
+from hindsight_client_api.models.batch_put_request import BatchPutRequest
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.MemoryOperationsApi(api_client)
+    api_instance = hindsight_client_api.MemoryOperationsApi(api_client)
     agent_id = 'agent_id_example' # str | 
-    batch_put_request = memora_client_api.BatchPutRequest() # BatchPutRequest | 
+    batch_put_request = hindsight_client_api.BatchPutRequest() # BatchPutRequest | 
 
     try:
         # Store multiple memories asynchronously
@@ -131,25 +131,25 @@ Store multiple memory items in batch with automatic fact extraction.
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.batch_put_request import BatchPutRequest
-from memora_client_api.models.batch_put_response import BatchPutResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.batch_put_request import BatchPutRequest
+from hindsight_client_api.models.batch_put_response import BatchPutResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.MemoryOperationsApi(api_client)
+    api_instance = hindsight_client_api.MemoryOperationsApi(api_client)
     agent_id = 'agent_id_example' # str | 
-    batch_put_request = memora_client_api.BatchPutRequest() # BatchPutRequest | 
+    batch_put_request = hindsight_client_api.BatchPutRequest() # BatchPutRequest | 
 
     try:
         # Store multiple memories
@@ -203,21 +203,21 @@ Cancel a pending async operation by removing it from the queue
 
 
 ```python
-import memora_client_api
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.MemoryOperationsApi(api_client)
+    api_instance = hindsight_client_api.MemoryOperationsApi(api_client)
     agent_id = 'agent_id_example' # str | 
     operation_id = 'operation_id_example' # str | 
 
@@ -273,21 +273,21 @@ Delete a single memory unit and all its associated links (temporal, semantic, an
 
 
 ```python
-import memora_client_api
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.MemoryOperationsApi(api_client)
+    api_instance = hindsight_client_api.MemoryOperationsApi(api_client)
     agent_id = 'agent_id_example' # str | 
     unit_id = 'unit_id_example' # str | 
 
@@ -343,22 +343,22 @@ List memory units with pagination and optional full-text search. Supports filter
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.MemoryOperationsApi(api_client)
+    api_instance = hindsight_client_api.MemoryOperationsApi(api_client)
     agent_id = 'agent_id_example' # str | 
     fact_type = 'fact_type_example' # str |  (optional)
     q = 'q_example' # str |  (optional)
@@ -420,21 +420,21 @@ Get a list of all async operations (pending and failed) for a specific agent, in
 
 
 ```python
-import memora_client_api
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.MemoryOperationsApi(api_client)
+    api_instance = hindsight_client_api.MemoryOperationsApi(api_client)
     agent_id = 'agent_id_example' # str | 
 
     try:
@@ -493,25 +493,25 @@ Search memory using semantic similarity and spreading activation.
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.search_request import SearchRequest
-from memora_client_api.models.search_response import SearchResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.search_request import SearchRequest
+from hindsight_client_api.models.search_response import SearchResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.MemoryOperationsApi(api_client)
+    api_instance = hindsight_client_api.MemoryOperationsApi(api_client)
     agent_id = 'agent_id_example' # str | 
-    search_request = memora_client_api.SearchRequest() # SearchRequest | 
+    search_request = hindsight_client_api.SearchRequest() # SearchRequest | 
 
     try:
         # Search memory

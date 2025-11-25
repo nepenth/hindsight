@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.think_request import ThinkRequest
+from hindsight_client_api.models.think_request import ThinkRequest
 
 class TestThinkRequest(unittest.TestCase):
     """ThinkRequest unit test stubs"""

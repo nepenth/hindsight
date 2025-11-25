@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.create_agent_request import CreateAgentRequest
+from hindsight_client_api.models.create_agent_request import CreateAgentRequest
 
 # TODO update the JSON string below
 json = "{}"

@@ -1,4 +1,4 @@
-# memora_client_api.VisualizationApi
+# hindsight_client_api.VisualizationApi
 
 All URIs are relative to *http://localhost*
 
@@ -18,22 +18,22 @@ Retrieve graph data for visualization, optionally filtered by fact_type (world/a
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.graph_data_response import GraphDataResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.graph_data_response import GraphDataResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.VisualizationApi(api_client)
+    api_instance = hindsight_client_api.VisualizationApi(api_client)
     agent_id = 'agent_id_example' # str | 
     fact_type = 'fact_type_example' # str |  (optional)
 

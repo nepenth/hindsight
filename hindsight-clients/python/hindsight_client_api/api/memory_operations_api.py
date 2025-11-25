@@ -18,16 +18,16 @@ from typing_extensions import Annotated
 
 from pydantic import StrictInt, StrictStr
 from typing import Any, Optional
-from memora_client_api.models.batch_put_async_response import BatchPutAsyncResponse
-from memora_client_api.models.batch_put_request import BatchPutRequest
-from memora_client_api.models.batch_put_response import BatchPutResponse
-from memora_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
-from memora_client_api.models.search_request import SearchRequest
-from memora_client_api.models.search_response import SearchResponse
+from hindsight_client_api.models.batch_put_async_response import BatchPutAsyncResponse
+from hindsight_client_api.models.batch_put_request import BatchPutRequest
+from hindsight_client_api.models.batch_put_response import BatchPutResponse
+from hindsight_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
+from hindsight_client_api.models.search_request import SearchRequest
+from hindsight_client_api.models.search_response import SearchResponse
 
-from memora_client_api.api_client import ApiClient, RequestSerialized
-from memora_client_api.api_response import ApiResponse
-from memora_client_api.rest import RESTResponseType
+from hindsight_client_api.api_client import ApiClient, RequestSerialized
+from hindsight_client_api.api_response import ApiResponse
+from hindsight_client_api.rest import RESTResponseType
 
 
 class MemoryOperationsApi:

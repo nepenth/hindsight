@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.http_validation_error import HTTPValidationError
+from hindsight_client_api.models.http_validation_error import HTTPValidationError
 
 class TestHTTPValidationError(unittest.TestCase):
     """HTTPValidationError unit test stubs"""
@@ -36,7 +36,7 @@ class TestHTTPValidationError(unittest.TestCase):
         if include_optional:
             return HTTPValidationError(
                 detail = [
-                    memora_client_api.models.validation_error.ValidationError(
+                    hindsight_client_api.models.validation_error.ValidationError(
                         loc = [
                             null
                             ], 

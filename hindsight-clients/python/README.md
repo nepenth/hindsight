@@ -95,7 +95,7 @@ memora-client/
 │   └── tests/
 │       └── test_main_operations.py
 │
-└── memora_client_api/          # Auto-generated from OpenAPI spec
+└── hindsight_client_api/          # Auto-generated from OpenAPI spec
     ├── api/                     # Full API operations
     ├── models/                  # Request/response models
     └── ...

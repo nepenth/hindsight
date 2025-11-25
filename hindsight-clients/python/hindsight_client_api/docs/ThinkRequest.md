@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.think_request import ThinkRequest
+from hindsight_client_api.models.think_request import ThinkRequest
 
 # TODO update the JSON string below
 json = "{}"

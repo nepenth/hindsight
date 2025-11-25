@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.search_request import SearchRequest
+from hindsight_client_api.models.search_request import SearchRequest
 
 class TestSearchRequest(unittest.TestCase):
     """SearchRequest unit test stubs"""

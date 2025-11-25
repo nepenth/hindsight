@@ -7,7 +7,7 @@ API stability even if internal models change.
 """
 
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class MemoryFact(BaseModel):
@@ -17,6 +17,19 @@ class MemoryFact(BaseModel):
     This represents a unit of information stored in the memory system,
     including both the content and metadata.
     """
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "text": "Alice works at Google on the AI team",
+            "fact_type": "world",
+            "context": "work info",
+            "event_date": "2024-01-15T10:30:00Z",
+            "document_id": "session_abc123",
+            "metadata": {"source": "slack"},
+            "activation": 0.95
+        }
+    })
+
     id: str = Field(description="Unique identifier for the memory fact")
     text: str = Field(description="The actual text content of the memory")
     fact_type: str = Field(description="Type of fact: 'world', 'agent', or 'opinion'")
@@ -31,20 +44,6 @@ class MemoryFact(BaseModel):
     # Internal metrics (used by system but may not be exposed in API)
     activation: Optional[float] = Field(None, description="Internal activation score")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "123e4567-e89b-12d3-a456-426614174000",
-                "text": "Alice works at Google on the AI team",
-                "fact_type": "world",
-                "context": "work info",
-                "event_date": "2024-01-15T10:30:00Z",
-                "document_id": "session_abc123",
-                "metadata": {"source": "slack"},
-                "activation": 0.95
-            }
-        }
-
 
 class SearchResult(BaseModel):
     """
@@ -53,28 +52,27 @@ class SearchResult(BaseModel):
     Contains a list of matching memory facts and optional trace information
     for debugging and transparency.
     """
-    results: List[MemoryFact] = Field(description="List of memory facts matching the query")
-    trace: Optional[Dict[str, Any]] = Field(None, description="Trace information for debugging")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "results": [
-                    {
-                        "id": "123e4567-e89b-12d3-a456-426614174000",
-                        "text": "Alice works at Google on the AI team",
-                        "fact_type": "world",
-                        "context": "work info",
-                        "event_date": "2024-01-15T10:30:00Z",
-                        "activation": 0.95
-                    }
-                ],
-                "trace": {
-                    "query": "What did Alice say about machine learning?",
-                    "num_results": 1
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "results": [
+                {
+                    "id": "123e4567-e89b-12d3-a456-426614174000",
+                    "text": "Alice works at Google on the AI team",
+                    "fact_type": "world",
+                    "context": "work info",
+                    "event_date": "2024-01-15T10:30:00Z",
+                    "activation": 0.95
                 }
+            ],
+            "trace": {
+                "query": "What did Alice say about machine learning?",
+                "num_results": 1
             }
         }
+    })
+
+    results: List[MemoryFact] = Field(description="List of memory facts matching the query")
+    trace: Optional[Dict[str, Any]] = Field(None, description="Trace information for debugging")
 
 
 class ThinkResult(BaseModel):
@@ -84,6 +82,28 @@ class ThinkResult(BaseModel):
     Contains the formulated answer, the facts it was based on (organized by type),
     and any new opinions that were formed during the thinking process.
     """
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "text": "Based on my knowledge, machine learning is being actively used in healthcare...",
+            "based_on": {
+                "world": [
+                    {
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "text": "Machine learning is used in medical diagnosis",
+                        "fact_type": "world",
+                        "context": "healthcare",
+                        "event_date": "2024-01-15T10:30:00Z"
+                    }
+                ],
+                "agent": [],
+                "opinion": []
+            },
+            "new_opinions": [
+                "Machine learning has great potential in healthcare"
+            ]
+        }
+    })
+
     text: str = Field(description="The formulated answer text")
     based_on: Dict[str, List[MemoryFact]] = Field(
         description="Facts used to formulate the answer, organized by type (world, agent, opinion)"
@@ -93,29 +113,6 @@ class ThinkResult(BaseModel):
         description="List of newly formed opinions during thinking"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "text": "Based on my knowledge, machine learning is being actively used in healthcare...",
-                "based_on": {
-                    "world": [
-                        {
-                            "id": "123e4567-e89b-12d3-a456-426614174000",
-                            "text": "Machine learning is used in medical diagnosis",
-                            "fact_type": "world",
-                            "context": "healthcare",
-                            "event_date": "2024-01-15T10:30:00Z"
-                        }
-                    ],
-                    "agent": [],
-                    "opinion": []
-                },
-                "new_opinions": [
-                    "Machine learning has great potential in healthcare"
-                ]
-            }
-        }
-
 
 class Opinion(BaseModel):
     """
@@ -124,13 +121,12 @@ class Opinion(BaseModel):
     Opinions represent the agent's formed perspectives on topics,
     with a confidence level indicating strength of belief.
     """
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "text": "Machine learning has great potential in healthcare",
+            "confidence": 0.85
+        }
+    })
+
     text: str = Field(description="The opinion text")
     confidence: float = Field(description="Confidence score between 0.0 and 1.0")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "text": "Machine learning has great potential in healthcare",
-                "confidence": 0.85
-            }
-        }

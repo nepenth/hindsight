@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.validation_error_loc_inner import ValidationErrorLocInner
+from hindsight_client_api.models.validation_error_loc_inner import ValidationErrorLocInner
 
 class TestValidationErrorLocInner(unittest.TestCase):
     """ValidationErrorLocInner unit test stubs"""

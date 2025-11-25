@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.delete_response import DeleteResponse
+from hindsight_client_api.models.delete_response import DeleteResponse
 
 # TODO update the JSON string below
 json = "{}"

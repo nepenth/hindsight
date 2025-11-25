@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.agent_list_response import AgentListResponse
+from hindsight_client_api.models.agent_list_response import AgentListResponse
 
 class TestAgentListResponse(unittest.TestCase):
     """AgentListResponse unit test stubs"""
@@ -36,7 +36,7 @@ class TestAgentListResponse(unittest.TestCase):
         if include_optional:
             return AgentListResponse(
                 agents = [
-                    memora_client_api.models.agent_list_item.AgentListItem(
+                    hindsight_client_api.models.agent_list_item.AgentListItem(
                         agent_id = '', 
                         name = '', 
                         personality = {agreeableness=0.7, bias_strength=0.7, conscientiousness=0.6, extraversion=0.5, neuroticism=0.3, openness=0.8}, 
@@ -48,7 +48,7 @@ class TestAgentListResponse(unittest.TestCase):
         else:
             return AgentListResponse(
                 agents = [
-                    memora_client_api.models.agent_list_item.AgentListItem(
+                    hindsight_client_api.models.agent_list_item.AgentListItem(
                         agent_id = '', 
                         name = '', 
                         personality = {agreeableness=0.7, bias_strength=0.7, conscientiousness=0.6, extraversion=0.5, neuroticism=0.3, openness=0.8}, 

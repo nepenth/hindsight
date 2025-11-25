@@ -59,8 +59,6 @@ def extract_temporal_constraint(
             analysis.temporal_constraint.start_date,
             analysis.temporal_constraint.end_date
         )
-        logger.info(f"Temporal constraint extracted: {result[0].strftime('%Y-%m-%d')} to {result[1].strftime('%Y-%m-%d')}")
         return result
 
-    logger.info("No temporal constraint found in query")
     return None

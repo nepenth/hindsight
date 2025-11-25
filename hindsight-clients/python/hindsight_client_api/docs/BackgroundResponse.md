@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.background_response import BackgroundResponse
+from hindsight_client_api.models.background_response import BackgroundResponse
 
 # TODO update the JSON string below
 json = "{}"

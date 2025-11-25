@@ -19,7 +19,7 @@ import json
 
 from pydantic import BaseModel, ConfigDict, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
-from memora_client_api.models.think_fact import ThinkFact
+from hindsight_client_api.models.think_fact import ThinkFact
 from typing import Optional, Set
 from typing_extensions import Self
 

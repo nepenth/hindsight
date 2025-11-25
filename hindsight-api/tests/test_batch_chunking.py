@@ -6,84 +6,53 @@ import os
 
 
 @pytest.mark.asyncio
-async def test_large_batch_auto_chunks():
-    """Test that large batches are automatically split into smaller chunks."""
-    memory = MemoryEngine(
-        db_url=os.getenv("HINDSIGHT_API_DATABASE_URL"),
-        memory_llm_provider=os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"),
-        memory_llm_api_key=os.getenv("HINDSIGHT_API_LLM_API_KEY"),
-        memory_llm_model=os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b"),
-        memory_llm_base_url=os.getenv("HINDSIGHT_API_LLM_BASE_URL") or None
+async def test_large_batch_auto_chunks(memory):
+    agent_id = "test_chunking_agent"
+    # Create a large batch that should trigger chunking
+    # Each item is ~2000 chars, so 30 items = 60k chars (exceeds 50k threshold)
+    large_content = "Alice met with Bob at the coffee shop. " * 50  # ~2000 chars
+    contents = [
+        {"content": large_content, "context": f"conversation_{i}"}
+        for i in range(30)
+    ]
+
+    # Calculate total chars
+    total_chars = sum(len(item["content"]) for item in contents)
+    print(f"\nTotal characters: {total_chars:,}")
+    print(f"Should trigger chunking: {total_chars > 50_000}")
+
+    # Ingest the large batch (should auto-chunk)
+    result = await memory.put_batch_async(
+        agent_id=agent_id,
+        contents=contents
     )
 
-    agent_id = "test_chunking_agent"
-
-    try:
-        # Create a large batch that should trigger chunking
-        # Each item is ~2000 chars, so 30 items = 60k chars (exceeds 50k threshold)
-        large_content = "Alice met with Bob at the coffee shop. " * 50  # ~2000 chars
-        contents = [
-            {"content": large_content, "context": f"conversation_{i}"}
-            for i in range(30)
-        ]
-
-        # Calculate total chars
-        total_chars = sum(len(item["content"]) for item in contents)
-        print(f"\nTotal characters: {total_chars:,}")
-        print(f"Should trigger chunking: {total_chars > 50_000}")
-
-        # Ingest the large batch (should auto-chunk)
-        result = await memory.put_batch_async(
-            agent_id=agent_id,
-            contents=contents
-        )
-
-        # Verify we got results back
-        assert len(result) == 30, f"Expected 30 results, got {len(result)}"
-        print(f"Successfully ingested {len(result)} items (auto-chunked)")
-
-    finally:
-        # Cleanup
-        await memory.delete_agent(agent_id)
-        await memory.close()
+    # Verify we got results back
+    assert len(result) == 30, f"Expected 30 results, got {len(result)}"
+    print(f"Successfully ingested {len(result)} items (auto-chunked)")
 
 
 @pytest.mark.asyncio
-async def test_small_batch_no_chunking():
-    """Test that small batches are not chunked."""
-    memory = MemoryEngine(
-        db_url=os.getenv("HINDSIGHT_API_DATABASE_URL"),
-        memory_llm_provider=os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"),
-        memory_llm_api_key=os.getenv("HINDSIGHT_API_LLM_API_KEY"),
-        memory_llm_model=os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b"),
-        memory_llm_base_url=os.getenv("HINDSIGHT_API_LLM_BASE_URL") or None
-    )
-
+async def test_small_batch_no_chunking(memory):
     agent_id = "test_no_chunking_agent"
 
-    try:
-        # Create a small batch that should NOT trigger chunking
-        contents = [
-            {"content": "Alice works at Google", "context": "conversation_1"},
-            {"content": "Bob loves Python", "context": "conversation_2"}
-        ]
+    # Create a small batch that should NOT trigger chunking
+    contents = [
+        {"content": "Alice works at Google", "context": "conversation_1"},
+        {"content": "Bob loves Python", "context": "conversation_2"}
+    ]
 
-        # Calculate total chars
-        total_chars = sum(len(item["content"]) for item in contents)
-        print(f"\nTotal characters: {total_chars:,}")
-        print(f"Should NOT trigger chunking: {total_chars <= 50_000}")
+    # Calculate total chars
+    total_chars = sum(len(item["content"]) for item in contents)
+    print(f"\nTotal characters: {total_chars:,}")
+    print(f"Should NOT trigger chunking: {total_chars <= 50_000}")
 
-        # Ingest the small batch (should NOT auto-chunk)
-        result = await memory.put_batch_async(
-            agent_id=agent_id,
-            contents=contents
-        )
+    # Ingest the small batch (should NOT auto-chunk)
+    result = await memory.put_batch_async(
+        agent_id=agent_id,
+        contents=contents
+    )
 
-        # Verify we got results back
-        assert len(result) == 2, f"Expected 2 results, got {len(result)}"
-        print(f"Successfully ingested {len(result)} items (no chunking)")
-
-    finally:
-        # Cleanup
-        await memory.delete_agent(agent_id)
-        await memory.close()
+    # Verify we got results back
+    assert len(result) == 2, f"Expected 2 results, got {len(result)}"
+    print(f"Successfully ingested {len(result)} items (no chunking)")

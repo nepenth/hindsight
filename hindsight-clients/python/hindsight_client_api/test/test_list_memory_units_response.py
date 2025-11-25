@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
+from hindsight_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
 
 class TestListMemoryUnitsResponse(unittest.TestCase):
     """ListMemoryUnitsResponse unit test stubs"""

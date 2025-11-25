@@ -18,12 +18,12 @@ from typing_extensions import Annotated
 
 from pydantic import StrictInt, StrictStr
 from typing import Any, Optional
-from memora_client_api.models.document_response import DocumentResponse
-from memora_client_api.models.list_documents_response import ListDocumentsResponse
+from hindsight_client_api.models.document_response import DocumentResponse
+from hindsight_client_api.models.list_documents_response import ListDocumentsResponse
 
-from memora_client_api.api_client import ApiClient, RequestSerialized
-from memora_client_api.api_response import ApiResponse
-from memora_client_api.rest import RESTResponseType
+from hindsight_client_api.api_client import ApiClient, RequestSerialized
+from hindsight_client_api.api_response import ApiResponse
+from hindsight_client_api.rest import RESTResponseType
 
 
 class DocumentsApi:

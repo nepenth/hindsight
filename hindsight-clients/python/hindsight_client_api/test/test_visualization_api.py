@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.api.visualization_api import VisualizationApi
+from hindsight_client_api.api.visualization_api import VisualizationApi
 
 
 class TestVisualizationApi(unittest.IsolatedAsyncioTestCase):

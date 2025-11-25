@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.add_background_request import AddBackgroundRequest
+from hindsight_client_api.models.add_background_request import AddBackgroundRequest
 
 class TestAddBackgroundRequest(unittest.TestCase):
     """AddBackgroundRequest unit test stubs"""

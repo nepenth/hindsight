@@ -36,6 +36,8 @@ test = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.0.0",
+    "filelock>=3.0.0",
     "testcontainers[postgres]>=4.0.0",
 ]
 
@@ -47,5 +49,11 @@ log_cli = true
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s %(levelname)s %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
-addopts = "--timeout 60 -p no:warnings"
+addopts = "--timeout 60 -n auto --durations=10 -v"
+asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+log_auto_indent = true
+filterwarnings = [
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
+    "ignore::RuntimeWarning:asyncio",
+]

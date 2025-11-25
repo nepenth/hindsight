@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.think_response import ThinkResponse
+from hindsight_client_api.models.think_response import ThinkResponse
 
 class TestThinkResponse(unittest.TestCase):
     """ThinkResponse unit test stubs"""

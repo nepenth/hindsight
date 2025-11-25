@@ -21,7 +21,7 @@ from typing import Optional, Union
 import aiohttp
 import aiohttp_retry
 
-from memora_client_api.exceptions import ApiException, ApiValueError
+from hindsight_client_api.exceptions import ApiException, ApiValueError
 
 RESTResponseType = aiohttp.ClientResponse
 

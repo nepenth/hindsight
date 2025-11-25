@@ -86,6 +86,9 @@ def run_migrations(database_url: str, script_location: Optional[str] = None) -> 
         # Uses Python's logging system instead of alembic.ini
         alembic_cfg.set_main_option("prepend_sys_path", ".")
 
+        # Set path_separator to avoid deprecation warning
+        alembic_cfg.set_main_option("path_separator", "os")
+
         # Run migrations to head (latest version)
         # Note: Alembic may call sys.exit() on errors instead of raising exceptions
         # We rely on the outer try/except and logging to catch issues
@@ -148,6 +151,7 @@ def check_migration_status(database_url: Optional[str] = None, script_location: 
         # Create config programmatically
         alembic_cfg = Config()
         alembic_cfg.set_main_option("script_location", script_location)
+        alembic_cfg.set_main_option("path_separator", "os")
 
         script = ScriptDirectory.from_config(alembic_cfg)
         head_rev = script.get_current_head()

@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.api.agent_management_api import AgentManagementApi
+from hindsight_client_api.api.agent_management_api import AgentManagementApi
 
 
 class TestAgentManagementApi(unittest.IsolatedAsyncioTestCase):

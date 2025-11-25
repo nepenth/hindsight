@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.batch_put_request import BatchPutRequest
+from hindsight_client_api.models.batch_put_request import BatchPutRequest
 
 class TestBatchPutRequest(unittest.TestCase):
     """BatchPutRequest unit test stubs"""

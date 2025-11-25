@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.api.documents_api import DocumentsApi
+from hindsight_client_api.api.documents_api import DocumentsApi
 
 
 class TestDocumentsApi(unittest.IsolatedAsyncioTestCase):

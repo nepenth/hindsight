@@ -19,7 +19,7 @@ import json
 
 from pydantic import BaseModel, ConfigDict
 from typing import Any, ClassVar, Dict, List, Optional
-from memora_client_api.models.search_result import SearchResult
+from hindsight_client_api.models.search_result import SearchResult
 from typing import Optional, Set
 from typing_extensions import Self
 

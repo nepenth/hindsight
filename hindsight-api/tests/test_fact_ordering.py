@@ -12,25 +12,8 @@ import os
 
 
 @pytest.mark.asyncio
-async def test_fact_ordering_within_conversation():
-    """
-    Test that facts extracted from one conversation get incremental time offsets
-    to preserve their ordering for retrieval.
-    """
-
-    # Create memory instance
-    memory = MemoryEngine(
-        db_url=os.getenv("HINDSIGHT_API_DATABASE_URL"),
-        memory_llm_provider=os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"),
-        memory_llm_api_key=os.getenv("HINDSIGHT_API_LLM_API_KEY"),
-        memory_llm_model=os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-20b"),
-    )
-    await memory.initialize()
-
+async def test_fact_ordering_within_conversation(memory):
     agent_id = "test_ordering_agent"
-
-    # Clear any existing data
-    await memory.delete_agent(agent_id)
 
     # Get/create agent (auto-creates with defaults)
     await memory.get_agent_profile(agent_id)
@@ -74,20 +57,20 @@ Marcus: Yeah, I realized I was being too optimistic about their defense.
         max_tokens=8192
     )
 
-    print(f"\n=== Retrieved {len(results['results'])} facts ===")
-    for i, result in enumerate(results['results']):
-        print(f"{i+1}. [{result['event_date']}] {result['text'][:100]}")
+    print(f"\n=== Retrieved {len(results.results)} facts ===")
+    for i, result in enumerate(results.results):
+        print(f"{i+1}. [{result.event_date}] {result.text[:100]}")
 
     # Get all agent facts (Marcus's statements)
-    agent_facts = [r for r in results['results'] if r.get('fact_type') == 'agent']
+    agent_facts = [r for r in results.results if r.fact_type == 'agent']
 
     print(f"\n=== Agent facts (Marcus's statements) ===")
     for i, fact in enumerate(agent_facts):
-        print(f"{i+1}. [{fact['event_date']}] {fact['text']}")
+        print(f"{i+1}. [{fact.event_date}] {fact.text}")
 
     # Check that agent facts have different timestamps
     if len(agent_facts) >= 2:
-        timestamps = [datetime.fromisoformat(f['event_date'].replace('Z', '+00:00')) for f in agent_facts]
+        timestamps = [datetime.fromisoformat(f.event_date.replace('Z', '+00:00')) for f in agent_facts]
 
         # Verify timestamps are different (have time offsets)
         unique_timestamps = set(timestamps)
@@ -111,7 +94,7 @@ Marcus: Yeah, I realized I was being too optimistic about their defense.
 
     # Verify that retrieval returns facts in chronological order
     # The first prediction should come before the changed prediction
-    agent_texts = [f['text'].lower() for f in agent_facts]
+    agent_texts = [f.text.lower() for f in agent_facts]
 
     # Look for evidence of the sequence
     has_first_prediction = any('27' in text and '24' in text for text in agent_texts)
@@ -122,8 +105,8 @@ Marcus: Yeah, I realized I was being too optimistic about their defense.
         first_idx = next(i for i, text in enumerate(agent_texts) if '27' in text and '24' in text)
         changed_idx = next(i for i, text in enumerate(agent_texts) if 'chang' in text or 'by 3' in text or 'realized' in text)
 
-        print(f"\nFirst prediction at index {first_idx}: {agent_facts[first_idx]['text'][:100]}")
-        print(f"Changed prediction at index {changed_idx}: {agent_facts[changed_idx]['text'][:100]}")
+        print(f"\nFirst prediction at index {first_idx}: {agent_facts[first_idx].text[:100]}")
+        print(f"Changed prediction at index {changed_idx}: {agent_facts[changed_idx].text[:100]}")
 
         # The original prediction should come before the changed one
         assert timestamps[first_idx] < timestamps[changed_idx], \
@@ -138,24 +121,10 @@ Marcus: Yeah, I realized I was being too optimistic about their defense.
 
 
 @pytest.mark.asyncio
-async def test_multiple_documents_ordering():
-    """
-    Test that facts from different documents get separate time offsets,
-    so facts within each document maintain their order.
-    """
-
-    memory = MemoryEngine(
-        db_url=os.getenv("HINDSIGHT_API_DATABASE_URL"),
-        memory_llm_provider=os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"),
-        memory_llm_api_key=os.getenv("HINDSIGHT_API_LLM_API_KEY"),
-        memory_llm_model=os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-20b"),
-    )
-    await memory.initialize()
+async def test_multiple_documents_ordering(memory):
 
     agent_id = "test_multi_doc_agent"
 
-    # Clear and create agent
-    await memory.delete_agent(agent_id)
     await memory.get_agent_profile(agent_id)  # Auto-creates with defaults
 
     # Two separate conversations with same base time
@@ -191,15 +160,15 @@ Alice: I reconsidered the team's experience level.
         max_tokens=8192
     )
 
-    print(f"\n=== Retrieved {len(results['results'])} agent facts ===")
-    agent_facts = [r for r in results['results'] if r.get('fact_type') == 'agent']
+    print(f"\n=== Retrieved {len(results.results)} agent facts ===")
+    agent_facts = [r for r in results.results if r.fact_type == 'agent']
 
     for i, fact in enumerate(agent_facts):
-        print(f"{i+1}. [{fact['event_date']}] {fact['text'][:80]}")
+        print(f"{i+1}. [{fact.event_date}] {fact.text[:80]}")
 
     # Each conversation's facts should have different timestamps
     if len(agent_facts) >= 2:
-        timestamps = [datetime.fromisoformat(f['event_date'].replace('Z', '+00:00')) for f in agent_facts]
+        timestamps = [datetime.fromisoformat(f.event_date.replace('Z', '+00:00')) for f in agent_facts]
         unique_timestamps = set(timestamps)
 
         assert len(unique_timestamps) >= 2, \

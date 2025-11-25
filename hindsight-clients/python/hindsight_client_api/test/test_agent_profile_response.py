@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.agent_profile_response import AgentProfileResponse
+from hindsight_client_api.models.agent_profile_response import AgentProfileResponse
 
 class TestAgentProfileResponse(unittest.TestCase):
     """AgentProfileResponse unit test stubs"""

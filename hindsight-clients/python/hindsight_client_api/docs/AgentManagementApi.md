@@ -1,4 +1,4 @@
-# memora_client_api.AgentManagementApi
+# hindsight_client_api.AgentManagementApi
 
 All URIs are relative to *http://localhost*
 
@@ -24,25 +24,25 @@ Add new background information or merge with existing. LLM intelligently resolve
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.add_background_request import AddBackgroundRequest
-from memora_client_api.models.background_response import BackgroundResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.add_background_request import AddBackgroundRequest
+from hindsight_client_api.models.background_response import BackgroundResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.AgentManagementApi(api_client)
+    api_instance = hindsight_client_api.AgentManagementApi(api_client)
     agent_id = 'agent_id_example' # str | 
-    add_background_request = memora_client_api.AddBackgroundRequest() # AddBackgroundRequest | 
+    add_background_request = hindsight_client_api.AddBackgroundRequest() # AddBackgroundRequest | 
 
     try:
         # Add/merge agent background
@@ -96,22 +96,22 @@ Delete memory units for an agent. Optionally filter by fact_type (world, agent, 
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.delete_response import DeleteResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.delete_response import DeleteResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.AgentManagementApi(api_client)
+    api_instance = hindsight_client_api.AgentManagementApi(api_client)
     agent_id = 'agent_id_example' # str | 
     fact_type = 'fact_type_example' # str | Optional fact type filter (world, agent, opinion) (optional)
 
@@ -167,25 +167,25 @@ Create a new agent or update existing agent with personality and background. Aut
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.agent_profile_response import AgentProfileResponse
-from memora_client_api.models.create_agent_request import CreateAgentRequest
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.agent_profile_response import AgentProfileResponse
+from hindsight_client_api.models.create_agent_request import CreateAgentRequest
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.AgentManagementApi(api_client)
+    api_instance = hindsight_client_api.AgentManagementApi(api_client)
     agent_id = 'agent_id_example' # str | 
-    create_agent_request = memora_client_api.CreateAgentRequest() # CreateAgentRequest | 
+    create_agent_request = hindsight_client_api.CreateAgentRequest() # CreateAgentRequest | 
 
     try:
         # Create or update agent
@@ -239,22 +239,22 @@ Get personality traits and background for an agent. Auto-creates agent with defa
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.agent_profile_response import AgentProfileResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.agent_profile_response import AgentProfileResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.AgentManagementApi(api_client)
+    api_instance = hindsight_client_api.AgentManagementApi(api_client)
     agent_id = 'agent_id_example' # str | 
 
     try:
@@ -308,21 +308,21 @@ Get statistics about nodes and links for a specific agent
 
 
 ```python
-import memora_client_api
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.AgentManagementApi(api_client)
+    api_instance = hindsight_client_api.AgentManagementApi(api_client)
     agent_id = 'agent_id_example' # str | 
 
     try:
@@ -376,22 +376,22 @@ Get a list of all agents with their profiles
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.agent_list_response import AgentListResponse
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.agent_list_response import AgentListResponse
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.AgentManagementApi(api_client)
+    api_instance = hindsight_client_api.AgentManagementApi(api_client)
 
     try:
         # List all agents
@@ -440,25 +440,25 @@ Update agent's Big Five personality traits and bias strength
 
 
 ```python
-import memora_client_api
-from memora_client_api.models.agent_profile_response import AgentProfileResponse
-from memora_client_api.models.update_personality_request import UpdatePersonalityRequest
-from memora_client_api.rest import ApiException
+import hindsight_client_api
+from hindsight_client_api.models.agent_profile_response import AgentProfileResponse
+from hindsight_client_api.models.update_personality_request import UpdatePersonalityRequest
+from hindsight_client_api.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = memora_client_api.Configuration(
+configuration = hindsight_client_api.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with memora_client_api.ApiClient(configuration) as api_client:
+async with hindsight_client_api.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = memora_client_api.AgentManagementApi(api_client)
+    api_instance = hindsight_client_api.AgentManagementApi(api_client)
     agent_id = 'agent_id_example' # str | 
-    update_personality_request = memora_client_api.UpdatePersonalityRequest() # UpdatePersonalityRequest | 
+    update_personality_request = hindsight_client_api.UpdatePersonalityRequest() # UpdatePersonalityRequest | 
 
     try:
         # Update agent personality

@@ -58,6 +58,3 @@ def test_chunk_text_64k():
     combined_length = sum(len(chunk) for chunk in chunks)
     assert combined_length >= len(text) * 0.95, "Lost too much content during chunking"
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

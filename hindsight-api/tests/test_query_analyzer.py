@@ -6,13 +6,11 @@ from datetime import datetime
 from hindsight_api.engine.query_analyzer import TransformerQueryAnalyzer, QueryAnalysis
 
 
-def test_query_analyzer_june_2024():
-    """Test extracting 'june 2024' from query."""
-    analyzer = TransformerQueryAnalyzer()
+def test_query_analyzer_june_2024(query_analyzer):
     reference_date = datetime(2025, 1, 15, 12, 0, 0)
 
     query = "june 2024"
-    analysis = analyzer.analyze(query, reference_date)
+    analysis = query_analyzer.analyze(query, reference_date)
 
     print(f"\nQuery: '{query}'")
     print(f"Analysis: {analysis}")
@@ -26,13 +24,11 @@ def test_query_analyzer_june_2024():
     assert analysis.temporal_constraint.end_date.day == 30
 
 
-def test_query_analyzer_dogs_june_2023():
-    """Test extracting temporal info from 'dogs in June 2023'."""
-    analyzer = TransformerQueryAnalyzer()
+def test_query_analyzer_dogs_june_2023(query_analyzer):
     reference_date = datetime(2025, 1, 15, 12, 0, 0)
 
     query = "dogs in June 2023"
-    analysis = analyzer.analyze(query, reference_date)
+    analysis = query_analyzer.analyze(query, reference_date)
 
     print(f"\nQuery: '{query}'")
     print(f"Analysis: {analysis}")
@@ -46,13 +42,11 @@ def test_query_analyzer_dogs_june_2023():
     assert analysis.temporal_constraint.end_date.day == 30
 
 
-def test_query_analyzer_march_2023():
-    """Test extracting 'March 2023' from query."""
-    analyzer = TransformerQueryAnalyzer()
+def test_query_analyzer_march_2023(query_analyzer):
     reference_date = datetime(2025, 1, 15, 12, 0, 0)
 
     query = "March 2023"
-    analysis = analyzer.analyze(query, reference_date)
+    analysis = query_analyzer.analyze(query, reference_date)
 
     print(f"\nQuery: '{query}'")
     print(f"Analysis: {analysis}")
@@ -66,13 +60,11 @@ def test_query_analyzer_march_2023():
     assert analysis.temporal_constraint.end_date.day == 31
 
 
-def test_query_analyzer_last_year():
-    """Test extracting 'last year' from query."""
-    analyzer = TransformerQueryAnalyzer()
+def test_query_analyzer_last_year(query_analyzer):
     reference_date = datetime(2025, 1, 15, 12, 0, 0)
 
     query = "last year"
-    analysis = analyzer.analyze(query, reference_date)
+    analysis = query_analyzer.analyze(query, reference_date)
 
     print(f"\nQuery: '{query}'")
     print(f"Analysis: {analysis}")
@@ -86,13 +78,11 @@ def test_query_analyzer_last_year():
     assert analysis.temporal_constraint.end_date.day == 31
 
 
-def test_query_analyzer_no_temporal():
-    """Test that queries without temporal info return None."""
-    analyzer = TransformerQueryAnalyzer()
+def test_query_analyzer_no_temporal(query_analyzer):
     reference_date = datetime(2025, 1, 15, 12, 0, 0)
 
     query = "what is the weather"
-    analysis = analyzer.analyze(query, reference_date)
+    analysis = query_analyzer.analyze(query, reference_date)
 
     print(f"\nQuery: '{query}'")
     print(f"Analysis: {analysis}")
@@ -100,13 +90,11 @@ def test_query_analyzer_no_temporal():
     assert analysis.temporal_constraint is None, "Should not extract temporal constraint"
 
 
-def test_query_analyzer_activities_june_2024():
-    """Test extracting temporal info from 'melanie activities in june 2024'."""
-    analyzer = TransformerQueryAnalyzer()
+def test_query_analyzer_activities_june_2024(query_analyzer):
     reference_date = datetime(2025, 1, 15, 12, 0, 0)
 
     query = "melanie activities in june 2024"
-    analysis = analyzer.analyze(query, reference_date)
+    analysis = query_analyzer.analyze(query, reference_date)
 
     print(f"\nQuery: '{query}'")
     print(f"Analysis: {analysis}")
@@ -120,5 +108,3 @@ def test_query_analyzer_activities_june_2024():
     assert analysis.temporal_constraint.end_date.day == 30
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-s"])

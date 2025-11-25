@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.batch_put_request import BatchPutRequest
+from hindsight_client_api.models.batch_put_request import BatchPutRequest
 
 # TODO update the JSON string below
 json = "{}"

@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.document_response import DocumentResponse
+from hindsight_client_api.models.document_response import DocumentResponse
 
 class TestDocumentResponse(unittest.TestCase):
     """DocumentResponse unit test stubs"""

@@ -8,6 +8,7 @@ This package contains all the implementation details of the memory engine:
 """
 
 from .memory_engine import MemoryEngine
+from .db_utils import acquire_with_retry
 from .embeddings import Embeddings, SentenceTransformersEmbeddings
 from .search_trace import (
     SearchTrace,
@@ -26,6 +27,7 @@ from .response_models import SearchResult, ThinkResult, MemoryFact
 
 __all__ = [
     "MemoryEngine",
+    "acquire_with_retry",
     "Embeddings",
     "SentenceTransformersEmbeddings",
     "SearchTrace",

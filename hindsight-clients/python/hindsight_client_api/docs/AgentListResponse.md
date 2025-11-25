@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.agent_list_response import AgentListResponse
+from hindsight_client_api.models.agent_list_response import AgentListResponse
 
 # TODO update the JSON string below
 json = "{}"

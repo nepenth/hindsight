@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.api.reasoning_api import ReasoningApi
+from hindsight_client_api.api.reasoning_api import ReasoningApi
 
 
 class TestReasoningApi(unittest.IsolatedAsyncioTestCase):

@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.models.graph_data_response import GraphDataResponse
+from hindsight_client_api.models.graph_data_response import GraphDataResponse
 
 class TestGraphDataResponse(unittest.TestCase):
     """GraphDataResponse unit test stubs"""

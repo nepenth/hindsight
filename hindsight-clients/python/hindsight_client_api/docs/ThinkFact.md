@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```python
-from memora_client_api.models.think_fact import ThinkFact
+from hindsight_client_api.models.think_fact import ThinkFact
 
 # TODO update the JSON string below
 json = "{}"

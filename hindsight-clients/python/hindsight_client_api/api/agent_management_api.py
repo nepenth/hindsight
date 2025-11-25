@@ -19,17 +19,17 @@ from typing_extensions import Annotated
 from pydantic import Field, StrictStr
 from typing import Any, Optional
 from typing_extensions import Annotated
-from memora_client_api.models.add_background_request import AddBackgroundRequest
-from memora_client_api.models.agent_list_response import AgentListResponse
-from memora_client_api.models.agent_profile_response import AgentProfileResponse
-from memora_client_api.models.background_response import BackgroundResponse
-from memora_client_api.models.create_agent_request import CreateAgentRequest
-from memora_client_api.models.delete_response import DeleteResponse
-from memora_client_api.models.update_personality_request import UpdatePersonalityRequest
+from hindsight_client_api.models.add_background_request import AddBackgroundRequest
+from hindsight_client_api.models.agent_list_response import AgentListResponse
+from hindsight_client_api.models.agent_profile_response import AgentProfileResponse
+from hindsight_client_api.models.background_response import BackgroundResponse
+from hindsight_client_api.models.create_agent_request import CreateAgentRequest
+from hindsight_client_api.models.delete_response import DeleteResponse
+from hindsight_client_api.models.update_personality_request import UpdatePersonalityRequest
 
-from memora_client_api.api_client import ApiClient, RequestSerialized
-from memora_client_api.api_response import ApiResponse
-from memora_client_api.rest import RESTResponseType
+from hindsight_client_api.api_client import ApiClient, RequestSerialized
+from hindsight_client_api.api_response import ApiResponse
+from hindsight_client_api.rest import RESTResponseType
 
 
 class AgentManagementApi:

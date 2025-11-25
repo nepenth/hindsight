@@ -14,7 +14,7 @@
 
 import unittest
 
-from memora_client_api.api.memory_operations_api import MemoryOperationsApi
+from hindsight_client_api.api.memory_operations_api import MemoryOperationsApi
 
 
 class TestMemoryOperationsApi(unittest.IsolatedAsyncioTestCase):
