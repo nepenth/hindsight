@@ -103,23 +103,20 @@ echo "=================================================="
 
 TYPESCRIPT_CLIENT_DIR="$CLIENTS_DIR/typescript"
 
-# Remove old generated client
-if [ -d "$TYPESCRIPT_CLIENT_DIR/src" ]; then
-    echo "Removing old TypeScript client..."
-    rm -rf "$TYPESCRIPT_CLIENT_DIR/src"
-fi
+# Remove old generated client (keep package.json, tsconfig.json, tests, src/, and config)
+echo "Removing old TypeScript generated code..."
+rm -rf "$TYPESCRIPT_CLIENT_DIR/generated"
 
-# Generate new client
+# Also remove legacy structure from old generator if it exists
+rm -rf "$TYPESCRIPT_CLIENT_DIR/core"
+rm -rf "$TYPESCRIPT_CLIENT_DIR/models"
+rm -rf "$TYPESCRIPT_CLIENT_DIR/services"
+rm -f "$TYPESCRIPT_CLIENT_DIR/index.ts"
+
+# Generate new client using @hey-api/openapi-ts
 echo "Generating from $OPENAPI_SPEC..."
-npx --yes openapi-typescript-codegen \
-    --input "$OPENAPI_SPEC" \
-    --output "$TYPESCRIPT_CLIENT_DIR" \
-    --client axios \
-    --useOptions \
-    --useUnionTypes \
-    --exportCore true \
-    --exportServices true \
-    --exportModels true
+cd "$TYPESCRIPT_CLIENT_DIR"
+npx --yes @hey-api/openapi-ts
 
 echo "✓ TypeScript client generated at $TYPESCRIPT_CLIENT_DIR"
 echo ""
