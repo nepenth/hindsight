@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-OpenAI Agent Fitness Coach with Memora Memory Backend.
+OpenAI Agent Fitness Coach with Hindsight Memory Backend.
 
-This demonstrates how to use OpenAI Agents with Memora as a memory layer.
-The OpenAI Agent handles conversation logic, while Memora provides
+This demonstrates how to use OpenAI Agents with Hindsight as a memory layer.
+The OpenAI Agent handles conversation logic, while Hindsight provides
 sophisticated memory storage and retrieval.
 """
 import os
@@ -38,7 +38,7 @@ def get_or_create_assistant():
     # Create new assistant
 
     assistant = client.beta.assistants.create(
-        name="Fitness Coach with Memora",
+        name="Fitness Coach with Hindsight",
         instructions="""You are an experienced and supportive fitness coach.
 
 **🚨 MOST IMPORTANT RULE - USER PREFERENCES (READ THIS FIRST):**
@@ -492,11 +492,11 @@ def interactive_chat():
     """Interactive chat session with the fitness coach."""
 
     print("\n" + "=" * 70)
-    print("🏋️ OPENAI FITNESS COACH (with Memora Memory)")
+    print("🏋️ OPENAI FITNESS COACH (with Hindsight Memory)")
     print("=" * 70)
     print("\nThis coach uses:")
     print("  • OpenAI Assistant for conversation")
-    print("  • Memora for long-term memory storage")
+    print("  • Hindsight for long-term memory storage")
     print("  • Function calling to retrieve relevant context")
     print("\n" + "=" * 70)
 

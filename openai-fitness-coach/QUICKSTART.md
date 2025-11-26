@@ -1,4 +1,4 @@
-# 🚀 Quick Start - OpenAI + Memora Integration
+# 🚀 Quick Start - OpenAI + Hindsight Integration
 
 Get up and running in 3 minutes!
 
@@ -9,7 +9,7 @@ Get up and running in 3 minutes!
    export OPENAI_API_KEY=your_openai_api_key
    ```
 
-2. **Memora API Running**
+2. **Hindsight API Running**
    ```bash
    # From memory-poc root directory
    ./start.sh
@@ -32,8 +32,8 @@ python demo.py
 **What the demo does:**
 1. Sets a fitness goal
 2. Logs sample workouts and meals
-3. Chats with OpenAI Agent (which retrieves memories from Memora)
-4. Shows how function calling bridges OpenAI + Memora
+3. Chats with OpenAI Agent (which retrieves memories from Hindsight)
+4. Shows how function calling bridges OpenAI + Hindsight
 
 ## 💬 Chat with Your Coach
 
@@ -72,8 +72,8 @@ When you ask: *"What did I do this week?"*
 
 1. **OpenAI Assistant** receives your question
 2. **Decides to call function:** `search_workouts(after_date="2024-11-18")`
-3. **Function calls Memora API** to retrieve workout memories
-4. **Memora returns** relevant workouts with temporal context
+3. **Function calls Hindsight API** to retrieve workout memories
+4. **Hindsight returns** relevant workouts with temporal context
 5. **OpenAI generates response** using retrieved memories
 6. **You get personalized answer** based on your actual data!
 
@@ -86,7 +86,7 @@ OpenAI Assistant
     ↓
 Function Call: search_workouts()
     ↓
-Memora API (retrieves memories)
+Hindsight API (retrieves memories)
     ↓
 OpenAI Assistant (generates response)
     ↓
@@ -95,19 +95,19 @@ OpenAI Assistant (generates response)
 
 ## 🆚 Comparison to Standard Demo
 
-| Feature | OpenAI + Memora | Standard Memora |
+| Feature | OpenAI + Hindsight | Standard Hindsight |
 |---------|-----------------|-----------------|
-| Conversation | OpenAI Assistant | Memora `/think` |
-| Memory | Memora (via functions) | Memora (built-in) |
+| Conversation | OpenAI Assistant | Hindsight `/think` |
+| Memory | Hindsight (via functions) | Hindsight (built-in) |
 | LLM Provider | OpenAI only | Configurable |
 | Integration | Function calling | Direct API |
-| Best For | OpenAI users | Memora-native apps |
+| Best For | OpenAI users | Hindsight-native apps |
 
 ## 💡 Key Insight
 
 This example shows how to **add sophisticated memory to any OpenAI Agent**:
 - OpenAI handles conversation
-- Memora handles memory (storage, retrieval, temporal queries)
+- Hindsight handles memory (storage, retrieval, temporal queries)
 - Function calling bridges them
 
 **You can apply this pattern to:**

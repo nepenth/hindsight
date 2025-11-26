@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Memory tools for OpenAI Agent to interact with Memora.
+Memory tools for OpenAI Agent to interact with Hindsight.
 
 These functions are called by the OpenAI Agent via function calling
-to store and retrieve memories from the Memora backend.
+to store and retrieve memories from the Hindsight backend.
 """
 import requests
 from typing import List, Dict, Optional
@@ -19,7 +19,7 @@ def retrieve_memories(
     top_k: int = 20
 ) -> Dict:
     """
-    Retrieve relevant memories from Memora based on a query.
+    Retrieve relevant memories from Hindsight based on a query.
 
     Args:
         query: Search query describing what memories to retrieve
@@ -69,7 +69,6 @@ def search_workouts(
     Returns:
         Dictionary with workout results
     """
-    # Build query - use broader terms to match Strava imports
     query_parts = []
 
     if workout_type:
@@ -95,8 +94,8 @@ def search_workouts(
 
     return retrieve_memories(
         query=query,
-        fact_types=["world", "agent"],  # Include both - Strava imports are stored as "agent"
-        top_k=50  # Increased from 20 to get more results
+        fact_types=["world", "agent"],
+        top_k=50
     )
 
 
@@ -124,7 +123,7 @@ def get_nutrition_summary(
 
     return retrieve_memories(
         query=query,
-        fact_types=["world", "agent"],  # Include both types
+        fact_types=["world", "agent"],
         top_k=30
     )
 
@@ -169,7 +168,7 @@ def store_memory(
     event_date: Optional[str] = None
 ) -> Dict:
     """
-    Store a new memory in Memora.
+    Store a new memory in Hindsight.
 
     Args:
         content: The memory content/description
@@ -212,7 +211,7 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "retrieve_memories",
-            "description": "General memory search across all user data including Strava activities, workouts, meals, goals. Use this as your primary search tool when you need comprehensive context. Supports semantic search with natural language queries.",
+            "description": "General memory search across all user data workouts, meals and goals. Use this as your primary search tool when you need comprehensive context. Supports semantic search with natural language queries.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -242,7 +241,7 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_workouts",
-            "description": "Search for workout and activity history including runs, rides, swims, strength training. Searches Strava imports and manually logged workouts. Use this for questions about training, running, cycling, exercise patterns, distances, paces.",
+            "description": "Search for workout and activity history including runs, rides, swims, strength training. Use this for questions about training, running, cycling, exercise patterns, distances, paces.",
             "parameters": {
                 "type": "object",
                 "properties": {

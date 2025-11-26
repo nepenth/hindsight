@@ -1,17 +1,19 @@
-# 🤖 OpenAI Agent + Memora Memory Integration
+# 🤖 OpenAI Agent + Hindsight Memory Integration
 
-A fitness coach example demonstrating how to use **OpenAI Agents** with **Memora as a memory backend**.
+A fitness coach example demonstrating how to use **OpenAI Agents** with **Hindsight as a memory backend**.
 
 ## 🎯 What This Demonstrates
 
 This example showcases:
 
 - ✅ **OpenAI Assistants** handling conversation logic
-- ✅ **Memora** providing sophisticated memory storage & retrieval
+- ✅ **Hindsight** providing sophisticated memory storage & retrieval
 - ✅ **Function calling** to bridge them together
+- ✅ **Streaming responses** for real-time interaction (enabled by default)
 - ✅ **Bidirectional memory** - both user data AND coach observations stored
+- ✅ **System-level post-processing** - automatic opinion storage for reliability
 - ✅ **Temporal-semantic memory** queries via function tools
-- ✅ **Preference learning** - coach remembers and respects user likes/dislikes
+- ✅ **Enhanced preference learning** - coach learns and respects user likes/dislikes
 - ✅ **Real-world integration pattern** for adding memory to AI agents
 
 ## 🏗️ Architecture
@@ -23,19 +25,19 @@ OpenAI Assistant
     ↓
 Function Call: store_memory(workout + preference)
     ↓
-Memora API (stores as world/agent)
+Hindsight API (stores as world/agent)
     ↓
 OpenAI Assistant: "What should I focus on?"
     ↓
 Function Call: retrieve_memories("workouts and preferences")
     ↓
-Memora API (returns workouts + preferences)
+Hindsight API (returns workouts + preferences)
     ↓
 OpenAI Assistant (analyzes, gives advice)
     ↓
 Function Call: store_memory(advice as opinion)
     ↓
-Memora API (stores coach's observation)
+Hindsight API (stores coach's observation)
     ↓
 Personalized Answer
 ```
@@ -44,11 +46,11 @@ Personalized Answer
 
 | Component | Standard Demo (`fitness-coach/`) | OpenAI Integration (`openai-fitness-coach/`) |
 |-----------|----------------------------------|---------------------------------------------|
-| **Conversation** | Memora `/think` endpoint | OpenAI Assistant API |
-| **Memory** | Memora (built-in) | Memora (via function calling) |
-| **LLM** | Configured in Memora | OpenAI GPT-4 |
+| **Conversation** | Hindsight `/think` endpoint | OpenAI Assistant API |
+| **Memory** | Hindsight (built-in) | Hindsight (via function calling) |
+| **LLM** | Configured in Hindsight | OpenAI GPT-4 |
 | **Opinion Formation** | Automatic in `/think` | Explicit via `store_memory(type="opinion")` |
-| **Best For** | Memora-native apps | Integrating memory into existing OpenAI agents |
+| **Best For** | Hindsight-native apps | Integrating memory into existing OpenAI agents |
 
 ## 🚀 Quick Start
 
@@ -59,7 +61,7 @@ Personalized Answer
    export OPENAI_API_KEY=your_openai_api_key
    ```
 
-2. **Memora API running**
+2. **Hindsight API running**
    ```bash
    # From memory-poc root
    ./start.sh
@@ -72,18 +74,23 @@ Personalized Answer
    cd ../openai-fitness-coach
    ```
 
-### Run the Demo
+### Run the Conversational Demo
 
 ```bash
 cd openai-fitness-coach
-python demo.py
+export OPENAI_API_KEY=your_key_here
+python demo_conversational.py
 ```
 
-The demo will:
-1. Set a fitness goal
-2. Log sample workouts and meals to Memora
-3. Use OpenAI Agent to chat (retrieves memories via function calling)
-4. Show how the agent gets context from Memora
+The demo showcases:
+1. **Natural language workout logging** - Tell the coach what you did conversationally
+2. **Preference learning** - Express likes/dislikes and watch the coach adapt
+3. **Goal tracking** - Set goals, track progress, achieve milestones
+4. **Bidirectional memory** - Both your activities AND coach's advice are stored
+5. **Streaming responses** - See responses appear in real-time
+6. **7 interactive phases** - From goal setting to achievement recognition
+
+The demo uses a separate agent (`fitness-coach-demo`) to avoid mixing with real data.
 
 ## 📝 Usage
 
@@ -130,7 +137,7 @@ get_user_goals()
 get_coach_opinions(about)
 ```
 
-Each function makes API calls to Memora to fetch relevant memories.
+Each function makes API calls to Hindsight to fetch relevant memories.
 
 ### 2. OpenAI Agent (`openai_coach.py`)
 
@@ -142,7 +149,7 @@ Creates an OpenAI Assistant with:
 When you ask a question:
 1. User message is sent to OpenAI Assistant
 2. Assistant decides which memory functions to call
-3. Functions fetch data from Memora
+3. Functions fetch data from Hindsight
 4. Assistant generates response using retrieved context
 
 ### 3. Function Calling Flow
@@ -156,7 +163,7 @@ search_workouts(
     workout_type="running"
 )
 
-# Function retrieves from Memora:
+# Function retrieves from Hindsight:
 {
   "results": [
     {"text": "User completed 45-minute cardio workout: running..."},
@@ -184,12 +191,12 @@ python openai_coach.py "Compare my training this month to last month"
 The agent will automatically:
 1. Identify what memories it needs
 2. Call the appropriate function tools
-3. Retrieve data from Memora
+3. Retrieve data from Hindsight
 4. Generate a personalized response
 
 ## 📊 Memory Types Retrieved
 
-The OpenAI Agent can retrieve different memory types from Memora:
+The OpenAI Agent can retrieve different memory types from Hindsight:
 
 - **World Facts** (`fact_type: "world"`): Workouts, meals, activities
 - **Agent Facts** (`fact_type: "agent"`): Goals, intentions
@@ -246,26 +253,26 @@ This pattern works for any application that needs memory:
 
 ## 🔗 Integration Pattern
 
-**To add Memora memory to your own OpenAI Agent:**
+**To add Hindsight memory to your own OpenAI Agent:**
 
-1. Define function tools that call Memora API
+1. Define function tools that call Hindsight API
 2. Register them with your OpenAI Assistant
-3. Implement function handlers to execute Memora queries
+3. Implement function handlers to execute Hindsight queries
 4. Let OpenAI Assistant decide when to retrieve memories
 
 The key benefit: **Separation of concerns**
 - OpenAI = Conversation logic
-- Memora = Memory storage, retrieval, temporal queries, entity linking
+- Hindsight = Memory storage, retrieval, temporal queries, entity linking
 
-## 🆚 When to Use This vs. Standard Memora
+## 🆚 When to Use This vs. Standard Hindsight
 
-**Use OpenAI + Memora (this example) when:**
+**Use OpenAI + Hindsight (this example) when:**
 - You want OpenAI's conversation capabilities
 - You're already using OpenAI Agents
 - You want explicit control over when to retrieve memories
-- You want to combine Memora with other OpenAI features
+- You want to combine Hindsight with other OpenAI features
 
-**Use Memora directly (`fitness-coach/`) when:**
+**Use Hindsight directly (`fitness-coach/`) when:**
 - You want a complete memory-first solution
 - You want automatic memory retrieval and opinion formation
 - You want to use different LLM providers (not just OpenAI)
@@ -280,15 +287,12 @@ After running this demo, you'll understand:
 3. How temporal-semantic queries work via function tools
 4. Real-world pattern for LLM + memory integration
 
-## 📁 Files
+## 📁 Core Files
 
-- `memory_tools.py` - Function tools that call Memora API
-- `openai_coach.py` - OpenAI Assistant wrapper with memory integration
-- `log_workout.py` - Log workouts to Memora
-- `log_meal.py` - Log meals to Memora
-- `log_goal.py` - Log fitness goals to Memora
-- `demo.py` - Interactive demo
-- `.openai_assistant_id` - Saved assistant ID (auto-generated)
+- `demo_conversational.py` - Conversational demo showcasing preference learning and goal tracking
+- `openai_coach.py` - OpenAI Assistant wrapper with streaming and memory integration
+- `memory_tools.py` - Function calling tools that bridge to Hindsight API
+- `.openai_assistant_id` - Saved assistant ID (auto-generated, gitignored)
 
 ## 🚨 Common Issues
 
@@ -304,7 +308,7 @@ python setup_coach.py
 ```
 
 **"Connection refused"**
-- Make sure Memora API is running: `./start.sh`
+- Make sure Hindsight API is running: `./start.sh`
 
 ## 🎉 Next Steps
 
@@ -318,5 +322,5 @@ python setup_coach.py
 
 **Built with:**
 - OpenAI Assistants API
-- Memora (temporal-semantic memory)
+- Hindsight (temporal-semantic memory)
 - Function calling for integration
