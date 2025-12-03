@@ -74,8 +74,10 @@ WORKDIR /app
 COPY --from=sdk-builder /app/sdk /app/sdk
 
 # Install Control Plane dependencies
+# Use npm install instead of npm ci to resolve platform-specific native bindings
+# (package-lock.json may have been generated on a different platform)
 COPY hindsight-control-plane/package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy Control Plane source
 COPY hindsight-control-plane/ ./
