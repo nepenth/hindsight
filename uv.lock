@@ -8,7 +8,6 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "benchmarks",
     "hindsight-all",
     "hindsight-api",
     "hindsight-client",
@@ -390,29 +389,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/77/e9/df2358efd7659577435e2177bfa69cba6c33216681af51a707193dec162a/beautifulsoup4-4.14.2.tar.gz", hash = "sha256:2a98ab9f944a11acee9cc848508ec28d9228abfd522ef0fad6a02a72e0ded69e", size = 625822 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/94/fe/3aed5d0be4d404d12d36ab97e2f1791424d9ca39c2f754a6285d59a3b01d/beautifulsoup4-4.14.2-py3-none-any.whl", hash = "sha256:5ef6fa3a8cbece8488d66985560f97ed091e22bbc4e9c2338508a9d5de6d4515", size = 106392 },
-]
-
-[[package]]
-name = "benchmarks"
-version = "0.0.7"
-source = { editable = "hindsight-dev/benchmarks" }
-dependencies = [
-    { name = "hindsight-api" },
-    { name = "openai" },
-    { name = "pydantic" },
-    { name = "python-fasthtml" },
-    { name = "rich" },
-    { name = "streamlit" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "hindsight-api", directory = "hindsight-api" },
-    { name = "openai", specifier = ">=1.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "python-fasthtml", specifier = ">=0.12.33" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "streamlit", specifier = ">=1.51.0" },
 ]
 
 [[package]]
@@ -1150,7 +1126,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "hindsight-api"
-version = "0.0.7"
+version = "0.0.9"
 source = { editable = "hindsight-api" }
 dependencies = [
     { name = "alembic" },
@@ -1250,7 +1226,7 @@ dev = [
 
 [[package]]
 name = "hindsight-client"
-version = "0.0.7"
+version = "0.0.9"
 source = { editable = "hindsight-clients/python" }
 dependencies = [
     { name = "aiohttp" },
@@ -1282,14 +1258,26 @@ provides-extras = ["test"]
 
 [[package]]
 name = "hindsight-dev"
-version = "0.0.7"
+version = "0.0.9"
 source = { editable = "hindsight-dev" }
 dependencies = [
     { name = "hindsight-api" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "python-fasthtml" },
+    { name = "rich" },
+    { name = "streamlit" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hindsight-api", editable = "hindsight-api" }]
+requires-dist = [
+    { name = "hindsight-api", editable = "hindsight-api" },
+    { name = "openai", specifier = ">=1.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "python-fasthtml", specifier = ">=0.12.33" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "streamlit", specifier = ">=1.51.0" },
+]
 
 [[package]]
 name = "httpcore"
