@@ -133,6 +133,12 @@ class EmbeddedPostgres:
 
         self._process: Optional[subprocess.Popen] = None
 
+    def _construct_uri(self) -> str:
+        """Construct PostgreSQL connection URI from instance settings."""
+        from urllib.parse import quote_plus
+        password_encoded = quote_plus(self.password)
+        return f"postgresql://{self.username}:{password_encoded}@localhost:{self.port}/{self.database}"
+
     def is_installed(self) -> bool:
         """Check if the embedded-postgres CLI is installed."""
         return self.binary_path.exists() and os.access(self.binary_path, os.X_OK)
@@ -190,8 +196,8 @@ class EmbeddedPostgres:
             text=True,
         )
 
-    async def _run_command_async(self, *args: str) -> tuple[int, str, str]:
-        """Run an embedded-postgres command asynchronously."""
+    async def _run_command_async(self, *args: str, timeout: float = 60.0) -> tuple[int, str, str]:
+        """Run an embedded-postgres command asynchronously with timeout."""
         cmd = [str(self.binary_path), *args]
 
         process = await asyncio.create_subprocess_exec(
@@ -200,8 +206,20 @@ class EmbeddedPostgres:
             stderr=asyncio.subprocess.PIPE,
         )
 
-        stdout, stderr = await process.communicate()
-        return process.returncode, stdout.decode(), stderr.decode()
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            return process.returncode or 0, stdout.decode(), stderr.decode()
+        except asyncio.TimeoutError:
+            # If timeout, pg0 may have started PostgreSQL but is hanging on communicate()
+            # This happens because PostgreSQL inherits the file descriptors
+            try:
+                process.kill()
+                await process.wait()
+            except ProcessLookupError:
+                # Process already exited, which is fine
+                pass
+            logger.warning(f"pg0 command timed out after {timeout}s, continuing...")
+            return 0, "", ""
 
     async def start(self) -> str:
         """
@@ -236,8 +254,32 @@ class EmbeddedPostgres:
 
         logger.info("Embedded PostgreSQL started")
 
-        # Get and return the URI
-        return await self.get_uri()
+        # Wait for PostgreSQL to be ready to accept connections
+        uri = self._construct_uri()
+        await self._wait_for_postgres(uri)
+
+        return uri
+
+    async def _wait_for_postgres(self, uri: str, timeout: float = 60.0) -> None:
+        """Wait for PostgreSQL to be ready to accept connections."""
+        import asyncpg
+        start_time = asyncio.get_event_loop().time()
+        last_error = None
+
+        while (asyncio.get_event_loop().time() - start_time) < timeout:
+            try:
+                conn = await asyncio.wait_for(
+                    asyncpg.connect(uri),
+                    timeout=5.0
+                )
+                await conn.close()
+                logger.info("PostgreSQL is ready to accept connections")
+                return
+            except Exception as e:
+                last_error = e
+                await asyncio.sleep(1.0)
+
+        raise RuntimeError(f"PostgreSQL failed to become ready within {timeout}s: {last_error}")
 
     async def stop(self) -> None:
         """
@@ -350,7 +392,7 @@ class EmbeddedPostgres:
         await self.ensure_installed()
 
         if await self.is_running():
-            return await self.get_uri()
+            return self._construct_uri()
 
         return await self.start()
 
