@@ -457,7 +457,7 @@ class BenchmarkRunner:
                 query=question,
                 budget=budget,
                 max_tokens=max_tokens,
-                fact_type=["world", "bank"],
+                fact_type=["world", "experience"],
                 question_date=question_date,
                 include_entities=True,
                 include_chunks=True
