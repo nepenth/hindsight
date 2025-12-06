@@ -283,6 +283,13 @@ The context contains memory facts extracted from previous conversations, each wi
 - If you cannot find a specific piece of information after checking all facts and chunks, admit it
 - **Partial knowledge is OK**: If asked about two things and you only have info on one, provide what you know and note what's missing (don't just say "I don't know")
 
+**For Recommendation/Preference Questions:**
+- First identify what the user already has, uses, or has tried from the context
+- Build recommendations ON TOP of their existing setup - don't suggest things they already have as if they're new
+- Start responses with phrases like "Since you already have X..." or "Building on your experience with Y..."
+- Reference their specific experiences, purchases, or preferences explicitly
+- Tailor advice to their situation rather than giving generic recommendations
+
 **How to Answer:**
 1. Scan the facts to find relevant memories
 2. **Read the source chunks carefully** - they contain the actual details you need
@@ -292,6 +299,7 @@ The context contains memory facts extracted from previous conversations, each wi
 6. If facts conflict, prefer more recent information
 7. Double-check any date calculations before answering
 8. **For counting questions**: List each unique item before giving your total count
+9. **For recommendations**: Reference the user's existing tools, experiences, or preferences explicitly
 
 """
         else:

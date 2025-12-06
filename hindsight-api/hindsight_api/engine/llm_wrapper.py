@@ -5,7 +5,7 @@ import os
 import time
 import asyncio
 from typing import Optional, Any, Dict, List
-from openai import AsyncOpenAI, RateLimitError, APIError, APIStatusError, LengthFinishReasonError
+from openai import AsyncOpenAI, RateLimitError, APIError, APIStatusError, APIConnectionError, LengthFinishReasonError
 from google import genai
 from google.genai import types as genai_types
 from google.genai import errors as genai_errors
@@ -201,6 +201,18 @@ class LLMConfig:
                     raise OutputTooLongError(
                         f"LLM output exceeded token limits. Input may need to be split into smaller chunks."
                     ) from e
+
+                except APIConnectionError as e:
+                    # Handle connection errors (server disconnected, network issues) with retry
+                    last_exception = e
+                    if attempt < max_retries:
+                        logger.warning(f"Connection error, retrying... (attempt {attempt + 1}/{max_retries + 1})")
+                        backoff = min(initial_backoff * (2 ** attempt), max_backoff)
+                        await asyncio.sleep(backoff)
+                        continue
+                    else:
+                        logger.error(f"Connection error after {max_retries + 1} attempts: {str(e)}")
+                        raise
 
                 except APIStatusError as e:
                     last_exception = e
