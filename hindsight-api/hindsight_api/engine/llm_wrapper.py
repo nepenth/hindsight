@@ -11,6 +11,9 @@ from google.genai import types as genai_types
 from google.genai import errors as genai_errors
 import logging
 
+# Seed applied to every Groq request for deterministic behavior.
+DEFAULT_LLM_SEED = 4242
+
 logger = logging.getLogger(__name__)
 
 # Disable httpx logging
@@ -136,6 +139,10 @@ class LLMConfig:
                 "messages": messages,
                 **kwargs
             }
+
+            if self.provider == "groq":
+                call_params["seed"] = DEFAULT_LLM_SEED
+            
             if self.provider == "groq":
                 call_params["extra_body"] = {
                     "service_tier": "auto",
