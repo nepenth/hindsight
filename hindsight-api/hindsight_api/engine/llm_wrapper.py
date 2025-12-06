@@ -40,6 +40,7 @@ class LLMConfig:
         api_key: str,
         base_url: str,
         model: str,
+        reasoning_effort: Optional[str] = None
     ):
         """
         Initialize LLM configuration.
@@ -88,7 +89,7 @@ class LLMConfig:
         else:
             self._client = AsyncOpenAI(api_key=self.api_key, max_retries=0)
             self._gemini_client = None
-
+        self.reasoning_effort = reasoning_effort
         logger.info(
             f"Initialized LLM: provider={self.provider}, model={self.model}, base_url={self.base_url}"
         )
@@ -139,7 +140,7 @@ class LLMConfig:
             if self.provider == "groq":
                 call_params["extra_body"] = {
                     "service_tier": "auto",
-                    "reasoning_effort": "low",  # Reduce reasoning overhead
+                    "reasoning_effort": self.reasoning_effort or "low",  # Reduce reasoning overhead
                     "include_reasoning": False,  # Disable hidden reasoning tokens
                 }
 
@@ -372,6 +373,7 @@ class LLMConfig:
             api_key=api_key,
             base_url=base_url,
             model=model,
+            reasoning_effort="low"
         )
 
     @classmethod
@@ -401,4 +403,5 @@ class LLMConfig:
             api_key=api_key,
             base_url=base_url,
             model=model,
+            reasoning_effort="high"
         )

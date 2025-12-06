@@ -130,6 +130,93 @@ class QuestionAnswer(pydantic.BaseModel):
     answer: str
     reasoning: str
 
+
+def format_recall_result(recall_result: Dict[str, Any]) -> str:
+    """
+    Format recall result for LLM consumption, grouping memories with their chunks.
+
+    The output format groups memories by their source chunk, making it easier
+    for the LLM to understand the context of each memory.
+    """
+    results = recall_result.get("results", [])
+    chunks = recall_result.get("chunks", {})
+    entities = recall_result.get("entities", {})
+
+    if not results:
+        return "No memories found."
+
+    output_parts = []
+
+    # Group memories by chunk_id
+    memories_by_chunk: Dict[str, List[Dict]] = {}
+    memories_without_chunk: List[Dict] = []
+
+    for memory in results:
+        chunk_id = memory.get("chunk_id")
+        if chunk_id and chunks:
+            # Extract document_id and chunk_index from chunk_id
+            # Format: bank_id_document_id_chunk_index (e.g., "longmemeval_abc123_session1_0")
+            # We need to find the matching key in chunks dict which is "{document_id}_{chunk_index}"
+            parts = chunk_id.rsplit("_", 1)
+            if len(parts) == 2:
+                chunk_key = f"{memory.get('document_id', '')}_{parts[-1]}"
+                if chunk_key not in memories_by_chunk:
+                    memories_by_chunk[chunk_key] = []
+                memories_by_chunk[chunk_key].append(memory)
+            else:
+                memories_without_chunk.append(memory)
+        else:
+            memories_without_chunk.append(memory)
+
+    # Format memories grouped by chunk
+    for chunk_key, chunk_memories in memories_by_chunk.items():
+        chunk_info = chunks.get(chunk_key, {})
+        chunk_text = chunk_info.get("chunk_text", "")
+
+        output_parts.append(f"=== Source Chunk ===")
+        if chunk_text:
+            output_parts.append(f"Raw conversation:\n{chunk_text}")
+        output_parts.append(f"\nExtracted memories from this chunk:")
+
+        for mem in chunk_memories:
+            mem_lines = [f"- {mem.get('text', '')}"]
+            if mem.get("occurred_start"):
+                mem_lines.append(f"  Date: {mem.get('occurred_start')}")
+            if mem.get("fact_type"):
+                mem_lines.append(f"  Type: {mem.get('fact_type')}")
+            if mem.get("entities"):
+                mem_lines.append(f"  Entities: {', '.join(mem.get('entities', []))}")
+            output_parts.append("\n".join(mem_lines))
+
+        output_parts.append("")  # Empty line between chunks
+
+    # Format memories without chunks
+    if memories_without_chunk:
+        output_parts.append("=== Other Memories ===")
+        for mem in memories_without_chunk:
+            mem_lines = [f"- {mem.get('text', '')}"]
+            if mem.get("occurred_start"):
+                mem_lines.append(f"  Date: {mem.get('occurred_start')}")
+            if mem.get("fact_type"):
+                mem_lines.append(f"  Type: {mem.get('fact_type')}")
+            if mem.get("entities"):
+                mem_lines.append(f"  Entities: {', '.join(mem.get('entities', []))}")
+            output_parts.append("\n".join(mem_lines))
+        output_parts.append("")
+
+    # Format entity observations if available
+    if entities:
+        output_parts.append("=== Entity Knowledge ===")
+        for entity_name, entity_state in entities.items():
+            observations = entity_state.get("observations", [])
+            if observations:
+                output_parts.append(f"\n{entity_name}:")
+                for obs in observations:
+                    output_parts.append(f"  - {obs.get('text', '')}")
+
+    return "\n".join(output_parts)
+
+
 class LongMemEvalAnswerGenerator(LLMAnswerGenerator):
     """LongMemEval-specific answer generator using configurable LLM provider."""
 
@@ -159,10 +246,11 @@ class LongMemEvalAnswerGenerator(LLMAnswerGenerator):
                 Tuple of (answer, reasoning, None)
                 - None indicates to use the memories from recall_result
             """
-            context = json.dumps(recall_result)
+
+            context = format_recall_result(recall_result)
 
             # Format question date if provided
-            formatted_question_date = question_date.strftime('%Y-%m-%d %H:%M:%S UTC') if question_date else "Not specified"
+            formatted_question_date = question_date.strftime('%Y-%m-%d') if question_date else "Not specified"
 
             # Use LLM to generate answer
             try:
@@ -176,10 +264,11 @@ class LongMemEvalAnswerGenerator(LLMAnswerGenerator):
 1. Start by scanning retrieved context to understand the facts and events that happened and the timeline.
 2. Reason about all the memories and find the right answer, considering the most recent memory as an update of the current facts.
 3. If you have 2 possible answers, just say both.
+4. Do not over think about the future work of the user, just speak occurred facts (not future plans or just mentions of future interests).
 
 In general the answer must be comprehensive and plenty of details from the retrieved context.
 
-For quantitative questions, use numbers and units. Example: 'How many..', just answer the number and which ones. Consider EACH item even if it's not the most recent one. Reason and do calculation for complex questions.
+For quantitative questions, use numbers and units. Example: 'How many..', explain what you choose and what you exclude (e.g. bought vs received). Consider EACH item even if it's not the most recent one. Reason and do calculation for complex questions.
 If questions asks a location (where...?) make sure to include the location name.
 For recommendations/suggestions, use the retrieved context to understand the user's preferences and user's personal experiences, and provide a possible answer based on those. Include the reasoning and explicitly say what the user prefers, before making suggestions (user previous experiences or specific requests FROM the user). Consider as much user preferences as possible in your answer.
 For questions asking for help or instructions, consider the users' recent memories and previous interactions with the assistant to understand their current situation better (recent purchases, specific product models used..) 
@@ -190,8 +279,24 @@ For comparative questions, say you don't know the answer if you don't have infor
 For questions related to time/date, carefully review the question date and the memories date to correctly answer the question.
 For questions related to time/date calculation (e.g. How many days passed between X and Y?), carefully review the memories date to correctly answer the question and only provide an answer if you have information about both X and Y, otherwise say it's not possible to calculate and why.
 
+For question with relative dates (e.g. "last month", "last week") provide responses both as "current" (maybe the question date is nearly at the end of the month and it implies "past"=>current finishing") and also as "previous" (the full last month/week). Explain both in your answer.
+Consider "path month", as last 30 days, "path week" as last 7 days... not the full month/week.
+If you think the question is not accurate based on your memories, just say that in your answer with a possible answer.
+Do not be too picky or restricted in your answer, do complete answers and explain / add more details on similar possible answer that you're not sure the user wants to be included. (e.g. asks for 'model kits', you can also include toy vehicles.)
+
+For multi step questions, first think about what you need to find in the memories (e.g. the day you went to X, the number of items of type Y), then find those in the memories, then do the calculation or reasoning to get the final answer. Explain all steps in your answer.
 Consider assistant's previous actions (e.g., bookings, reminders) as impactful to the user experiences.
 
+EXAMPLE 1:
+Question: How many toys did I get in the last month? (question date=2025-12-31)
+Answer: You bought 2 airplane toys the 13 of December 2025 and you received a car toy for Christmas.
+
+Memories: 
+- User bought 2 airplane toys. Date=the 13 of December 2025.
+- User found a car toy under the tree. Date=25 of December 2025.
+
+
+DATA:
 
 Question: {question}
 Question Date: {formatted_question_date}
@@ -207,6 +312,7 @@ Answer:
                     response_format=QuestionAnswer,
                     scope="memory",
                     max_tokens=8192,
+                    temperature=0,
                 )
                 return answer_obj.answer, answer_obj.reasoning + " (question date: " + formatted_question_date + ")", None
             except Exception as e:
@@ -257,15 +363,14 @@ async def run_benchmark(
         console.print("[red]Error: --max-instances, --max-questions-per-category, and --category are mutually exclusive[/red]")
         return
 
-    # Validate --only-ingested can't be combined with other dataset filters
+    # Validate --only-ingested can't be combined with certain dataset filters
+    # Note: --category IS allowed with --only-ingested (filter by category first, then only ingested)
     if only_ingested:
         incompatible_flags = []
         if only_failed:
             incompatible_flags.append("--only-failed")
         if only_invalid:
             incompatible_flags.append("--only-invalid")
-        if category is not None:
-            incompatible_flags.append("--category")
         if question_id is not None:
             incompatible_flags.append("--question-id")
         if max_instances_per_category is not None:
@@ -635,7 +740,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--only-ingested",
         action="store_true",
-        help="Only run questions whose memory bank already exists (has been ingested). Automatically skips ingestion. Cannot be combined with --only-failed, --only-invalid, --category, --question-id, or --max-instances-per-category."
+        help="Only run questions whose memory bank already exists (has been ingested). Automatically skips ingestion. Can be combined with --category to filter ingested items by category. Cannot be combined with --only-failed, --only-invalid, --question-id, or --max-instances-per-category."
     )
     parser.add_argument(
         "--category",
