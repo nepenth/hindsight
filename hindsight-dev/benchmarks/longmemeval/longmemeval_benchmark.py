@@ -133,18 +133,23 @@ class QuestionAnswer(pydantic.BaseModel):
 class LongMemEvalAnswerGenerator(LLMAnswerGenerator):
     """LongMemEval-specific answer generator using configurable LLM provider."""
 
-    def __init__(self, context_format: str = "json"):
+    def __init__(self, context_format: str = "json", category_prompts: Optional[Dict[str, str]] = None):
         """Initialize with LLM configuration for answer generation.
 
         Args:
             context_format: How to format the retrieved context. Options:
                 - "json": Raw JSON dump of recall_result (original behavior)
                 - "structured": Human-readable format with facts grouped with source chunks
+            category_prompts: Optional dict mapping category names to custom prompt templates.
+                Keys should be category names (e.g., 'single-session-preference').
+                Values should be prompt templates with placeholders: {context_instructions}, {question}, {formatted_question_date}, {context}
+                If None or category not found, uses default prompt.
         """
         self.llm_config = LLMConfig.for_answer_generation()
         self.client = self.llm_config._client
         self.model = self.llm_config.model
         self.context_format = context_format
+        self.category_prompts = category_prompts or {}
 
     def _format_context_json(self, recall_result: Dict[str, Any]) -> str:
         """Original JSON dump format."""
@@ -235,6 +240,38 @@ class LongMemEvalAnswerGenerator(LLMAnswerGenerator):
                 formatted_parts.append("\n".join(entity_parts))
 
         return "\n\n---\n\n".join(formatted_parts)
+
+    def _get_default_prompt_template(self) -> str:
+        """Get the default prompt template for answer generation."""
+        return """You are a helpful assistant that must answer user questions based on the previous conversations.
+
+{context_instructions}**Answer Guidelines:**
+1. Start by scanning retrieved context to understand the facts and events that happened and the timeline.
+2. Reason about all the memories and find the right answer, considering the most recent memory as an update of the current facts.
+3. If you have 2 possible answers, just say both.
+
+In general the answer must be comprehensive and plenty of details from the retrieved context.
+
+For quantitative/counting questions ("how many..."): First list each unique item in your reasoning (1. X, 2. Y, 3. Z...), scanning ALL facts, then count them for your answer.
+If questions asks a location (where...?) make sure to include the location name.
+For recommendation questions ("can you recommend...", "suggest...", "any tips..."): DO NOT give actual recommendations. Instead, describe what KIND the user would prefer based on their context. Example answer format: "The user would prefer recommendations for [category] that focus on [their interest]. They would not prefer [what to avoid based on context]."
+For questions asking for help or instructions, consider the users' recent memories and previous interactions with the assistant to understand their current situation better (recent purchases, specific product models used..)
+For specific number/value questions, use the context to understand what is the most up-to-date number based on recency, but also include the reasoning (in the answer) on previous possible values and why you think are less relevant.
+For open questions, include as much details as possible from different sources that are relevant.
+For questions where a specific entity/role is mentioned and it's different from your memory, just say the truth, don't make up anything just to fulfill the question. For example, if the question is about a specific sport, you should consider if the memories and the question are about the same sport. (e.g. american football vs soccer, shows vs podcasts)
+For comparative questions, say you don't know the answer if you don't have information about both sides. (or more sides)
+For questions related to time/date, carefully review the question date and the memories date to correctly answer the question.
+For questions related to time/date calculation (e.g. How many days passed between X and Y?), carefully review the memories date to correctly answer the question and only provide an answer if you have information about both X and Y, otherwise say it's not possible to calculate and why.
+
+Consider assistant's previous actions (e.g., bookings, reminders) as impactful to the user experiences.
+
+Question: {question}
+Question Date: {formatted_question_date}
+
+Retrieved Context:
+{context}
+
+Answer:"""
 
     def _get_context_instructions(self) -> str:
         """Get instructions for interpreting the context based on format."""
@@ -356,44 +393,27 @@ The context contains memory facts extracted from previous conversations, each wi
             # Format question date if provided
             formatted_question_date = question_date.strftime('%Y-%m-%d %H:%M:%S UTC') if question_date else "Not specified"
 
+            # Select prompt template based on category
+            if question_type and question_type in self.category_prompts:
+                prompt_template = self.category_prompts[question_type]
+            else:
+                prompt_template = self._get_default_prompt_template()
+
+            # Format the prompt with context
+            prompt_content = prompt_template.format(
+                context_instructions=context_instructions,
+                question=question,
+                formatted_question_date=formatted_question_date,
+                context=context
+            )
+
             # Use LLM to generate answer
             try:
                 answer_obj = await self.llm_config.call(
                     messages=[
                         {
                             "role": "user",
-                            "content": f"""You are a helpful assistant that must answer user questions based on the previous conversations.
-
-{context_instructions}**Answer Guidelines:**
-1. Start by scanning retrieved context to understand the facts and events that happened and the timeline.
-2. Reason about all the memories and find the right answer, considering the most recent memory as an update of the current facts.
-3. If you have 2 possible answers, just say both.
-
-In general the answer must be comprehensive and plenty of details from the retrieved context.
-
-For quantitative/counting questions ("how many..."): First list each unique item in your reasoning (1. X, 2. Y, 3. Z...), scanning ALL facts, then count them for your answer.
-If questions asks a location (where...?) make sure to include the location name.
-For recommendation questions ("can you recommend...", "suggest...", "any tips..."): DO NOT give actual recommendations. Instead, describe what KIND the user would prefer based on their context. Example answer format: "The user would prefer recommendations for [category] that focus on [their interest]. They would not prefer [what to avoid based on context]."
-For questions asking for help or instructions, consider the users' recent memories and previous interactions with the assistant to understand their current situation better (recent purchases, specific product models used..)
-For specific number/value questions, use the context to understand what is the most up-to-date number based on recency, but also include the reasoning (in the answer) on previous possible values and why you think are less relevant.
-For open questions, include as much details as possible from different sources that are relevant.
-For questions where a specific entity/role is mentioned and it's different from your memory, just say the truth, don't make up anything just to fulfill the question. For example, if the question is about a specific sport, you should consider if the memories and the question are about the same sport. (e.g. american football vs soccer, shows vs podcasts)
-For comparative questions, say you don't know the answer if you don't have information about both sides. (or more sides)
-For questions related to time/date, carefully review the question date and the memories date to correctly answer the question.
-For questions related to time/date calculation (e.g. How many days passed between X and Y?), carefully review the memories date to correctly answer the question and only provide an answer if you have information about both X and Y, otherwise say it's not possible to calculate and why.
-
-Consider assistant's previous actions (e.g., bookings, reminders) as impactful to the user experiences.
-
-
-Question: {question}
-Question Date: {formatted_question_date}
-
-Retrieved Context:
-{context}
-
-
-Answer:
-"""
+                            "content": prompt_content
                         }
                     ],
                     response_format=QuestionAnswer,
@@ -425,7 +445,8 @@ async def run_benchmark(
     max_concurrent_items: int = 1,
     results_filename: str = "benchmark_results.json",
     context_format: str = "json",
-    source_results: str = None
+    source_results: str = None,
+    category_prompts: Optional[Dict[str, str]] = None
 ):
     """
     Run the LongMemEval benchmark.
@@ -447,6 +468,7 @@ async def run_benchmark(
         results_filename: Filename for results (default: benchmark_results.json). Directory is fixed to results/.
         context_format: How to format context for answer generation. "json" (raw JSON) or "structured" (human-readable with facts+chunks).
         source_results: Source results file to read failed/invalid questions from (for --only-failed/--only-invalid). Defaults to benchmark_results.json.
+        category_prompts: Optional dict mapping category names to custom prompt templates. If provided, questions in matching categories will use the custom prompt instead of the default.
     """
     from rich.console import Console
     console = Console()
@@ -592,7 +614,7 @@ async def run_benchmark(
         else:
             console.print(f"[green]Found {total_found} {filter_type} items to re-evaluate[/green]")
 
-    answer_generator = LongMemEvalAnswerGenerator(context_format=context_format)
+    answer_generator = LongMemEvalAnswerGenerator(context_format=context_format, category_prompts=category_prompts)
     answer_evaluator = LLMAnswerEvaluator()
 
     # Log context format being used
@@ -939,6 +961,12 @@ if __name__ == "__main__":
         default=None,
         help="Source results file to read failed/invalid questions from (for --only-failed/--only-invalid). Defaults to benchmark_results.json if not specified."
     )
+    parser.add_argument(
+        "--category-prompts",
+        type=str,
+        default=None,
+        help="Path to JSON file containing category-specific prompt templates. Format: {\"category_name\": \"prompt_template_with_{placeholders}\"}"
+    )
 
     args = parser.parse_args()
 
@@ -950,6 +978,16 @@ if __name__ == "__main__":
     # --max-instances-per-category can't be combined with --max-instances or --category
     if args.max_instances_per_category is not None and (args.max_instances is not None or args.category is not None):
         parser.error("--max-questions-per-category cannot be combined with --max-instances or --category")
+
+    # Load category prompts if provided
+    category_prompts = None
+    if args.category_prompts:
+        try:
+            with open(args.category_prompts, 'r') as f:
+                category_prompts = json.load(f)
+            print(f"📝 Loaded category prompts for: {', '.join(category_prompts.keys())}")
+        except Exception as e:
+            parser.error(f"Failed to load category prompts from {args.category_prompts}: {str(e)}")
 
     results = asyncio.run(run_benchmark(
         max_instances=args.max_instances,
@@ -967,5 +1005,6 @@ if __name__ == "__main__":
         max_concurrent_items=args.parallel,
         results_filename=args.results_filename,
         context_format=args.context_format,
-        source_results=args.source_results
+        source_results=args.source_results,
+        category_prompts=category_prompts
     ))

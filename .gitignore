@@ -34,3 +34,5 @@ hindsight-dev/benchmarks/locomo/results/
 hindsight-dev/benchmarks/longmemeval/results/
 hindsight-cli/target
 hindsight-clients/rust/target
+
+results/

@@ -581,6 +581,7 @@ class BenchmarkRunner:
                             'reasoning': reasoning,
                             'category': category,
                             'retrieved_memories': memories_without_embeddings,
+                            'chunks': chunks,
                             'is_invalid': False,
                             'error': None
                         }
@@ -595,6 +596,7 @@ class BenchmarkRunner:
                             'reasoning': f'Error: {str(e)}',
                             'category': category,
                             'retrieved_memories': [],
+                            'chunks': {},
                             'is_invalid': True,
                             'error': str(e)
                         }
