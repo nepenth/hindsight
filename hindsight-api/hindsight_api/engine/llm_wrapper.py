@@ -43,6 +43,7 @@ class LLMConfig:
         api_key: str,
         base_url: str,
         model: str,
+            reasoning_effort: str = "low",
     ):
         """
         Initialize LLM configuration.
@@ -57,6 +58,7 @@ class LLMConfig:
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
+        self.reasoning_effort = reasoning_effort
 
         # Validate provider
         if self.provider not in ["openai", "groq", "ollama", "gemini"]:
@@ -146,7 +148,7 @@ class LLMConfig:
             if self.provider == "groq":
                 call_params["extra_body"] = {
                     "service_tier": "auto",
-                    "reasoning_effort": "low",  # Reduce reasoning overhead
+                    "reasoning_effort": self.reasoning_effort,
                     "include_reasoning": False,  # Disable hidden reasoning tokens
                 }
 
@@ -422,6 +424,7 @@ class LLMConfig:
             api_key=api_key,
             base_url=base_url,
             model=model,
+            reasoning_effort="low"
         )
 
     @classmethod
@@ -451,6 +454,7 @@ class LLMConfig:
             api_key=api_key,
             base_url=base_url,
             model=model,
+            reasoning_effort="high"
         )
 
     @classmethod
@@ -480,4 +484,5 @@ class LLMConfig:
             api_key=api_key,
             base_url=base_url,
             model=model,
+            reasoning_effort="high"
         )

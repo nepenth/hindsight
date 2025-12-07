@@ -42,28 +42,36 @@ def get_model_config() -> Dict[str, Dict[str, str]]:
     """
     Get the model configuration for all three LLM roles.
 
+    Reads directly from environment variables without instantiating LLM clients.
+
     Returns:
         Dict with 'hindsight', 'answer_generation', and 'judge' keys,
         each containing 'provider' and 'model' info.
     """
-    from hindsight_api.engine.llm_wrapper import LLMConfig
+    # Memory/Hindsight config (base config)
+    memory_provider = os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq")
+    memory_model = os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b")
 
-    memory_config = LLMConfig.for_memory()
-    answer_config = LLMConfig.for_answer_generation()
-    judge_config = LLMConfig.for_judge()
+    # Answer generation config (falls back to memory config)
+    answer_provider = os.getenv("HINDSIGHT_API_ANSWER_LLM_PROVIDER", memory_provider)
+    answer_model = os.getenv("HINDSIGHT_API_ANSWER_LLM_MODEL", memory_model)
+
+    # Judge config (falls back to memory config)
+    judge_provider = os.getenv("HINDSIGHT_API_JUDGE_LLM_PROVIDER", memory_provider)
+    judge_model = os.getenv("HINDSIGHT_API_JUDGE_LLM_MODEL", memory_model)
 
     return {
         'hindsight': {
-            'provider': memory_config.provider,
-            'model': memory_config.model,
+            'provider': memory_provider,
+            'model': memory_model,
         },
         'answer_generation': {
-            'provider': answer_config.provider,
-            'model': answer_config.model,
+            'provider': answer_provider,
+            'model': answer_model,
         },
         'judge': {
-            'provider': judge_config.provider,
-            'model': judge_config.model,
+            'provider': judge_provider,
+            'model': judge_model,
         }
     }
 
@@ -452,6 +460,9 @@ class BenchmarkRunner:
             # Use MemoryEngine directly
             # Map thinking_budget to budget level
             budget = Budget.LOW if thinking_budget <= 30 else Budget.MID if thinking_budget <= 70 else Budget.HIGH
+
+            import time
+            recall_start_time = time.time()
             search_result = await self.memory.recall_async(
                 bank_id=agent_id,
                 query=question,
@@ -462,6 +473,13 @@ class BenchmarkRunner:
                 include_entities=True,
                 include_chunks=True
             )
+            recall_time = time.time() - recall_start_time
+
+            # Log recall stats
+            num_results = len(search_result.results) if search_result.results else 0
+            num_chunks = len(search_result.chunks) if search_result.chunks else 0
+            num_entities = len(search_result.entities) if search_result.entities else 0
+            logging.info(f"Recall stats: {num_results} facts, {num_chunks} chunks, {num_entities} entities in {recall_time:.2f}s")
 
             # Convert entire RecallResult to dictionary for answer generation
             recall_result_dict = search_result.model_dump()

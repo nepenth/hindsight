@@ -162,11 +162,17 @@ class LongMemEvalAnswerGenerator(LLMAnswerGenerator):
             ---
 
             Fact 2: ...
+
+            === Entity Observations ===
+            Entity: [name]
+            - [observation 1]
+            - [observation 2]
         """
         results = recall_result.get("results", [])
         chunks = recall_result.get("chunks", {})
+        entities = recall_result.get("entities", {})
 
-        if not results:
+        if not results and not entities:
             return "No memories found."
 
         formatted_parts = []
@@ -215,6 +221,19 @@ class LongMemEvalAnswerGenerator(LLMAnswerGenerator):
 
             formatted_parts.append("\n".join(entry_parts))
 
+        # Add entity observations section if present
+        if entities:
+            entity_parts = ["=== Entity Observations ==="]
+            for entity_name, entity_state in entities.items():
+                observations = entity_state.get("observations", [])
+                if observations:
+                    entity_parts.append(f"\nEntity: {entity_name}")
+                    for obs in observations:
+                        obs_text = obs.get("text", "")
+                        entity_parts.append(f"  - {obs_text}")
+            if len(entity_parts) > 1:  # More than just the header
+                formatted_parts.append("\n".join(entity_parts))
+
         return "\n\n---\n\n".join(formatted_parts)
 
     def _get_context_instructions(self) -> str:
@@ -253,11 +272,11 @@ The context contains memory facts extracted from previous conversations, each wi
 - Show your date conversion work in your reasoning
 
 **Counting Questions (CRITICAL for "how many" questions):**
-- **Count every unique item** - don't stop at the first few you find
+- **Scan ALL facts first** - go through every single fact before counting, don't stop early
+- **List each item explicitly in your reasoning** before giving the count: "1. X, 2. Y, 3. Z = 3 total"
 - **Check all facts and chunks** before giving your final count
 - **Watch for duplicates**: The same item may appear in multiple facts. Deduplicate by checking if two facts refer to the same underlying item/event
 - **Watch for different descriptions of same thing**: "Dr. Patel (ENT specialist)" and "the ENT specialist" might be the same doctor
-- **List each item as you count** to avoid missing any: "1. X, 2. Y, 3. Z = 3 items"
 - **Don't over-interpret**: A project you "completed" is different from a project you're "leading"
 - **Don't double-count**: If the same charity event is mentioned in two conversations, it's still one event
 
@@ -283,22 +302,22 @@ The context contains memory facts extracted from previous conversations, each wi
 - If you cannot find a specific piece of information after checking all facts and chunks, admit it
 - **Partial knowledge is OK**: If asked about two things and you only have info on one, provide what you know and note what's missing (don't just say "I don't know")
 
-**For Recommendation/Preference Questions:**
-- First identify what the user already has, uses, or has tried from the context
-- Build recommendations ON TOP of their existing setup - don't suggest things they already have as if they're new
-- Start responses with phrases like "Since you already have X..." or "Building on your experience with Y..."
-- Reference their specific experiences, purchases, or preferences explicitly
-- Tailor advice to their situation rather than giving generic recommendations
+**For Recommendation/Preference Questions (tips, suggestions, advice):**
+- **DO NOT invent specific recommendations** (no made-up product names, course names, paper titles, channel names, etc.)
+- **DO mention specific brands/products the user ALREADY uses** from the context
+- Describe WHAT KIND of recommendation the user would prefer, referencing their existing tools/brands
+- Keep answers concise - focus on key preferences (brand, quality level, specific interests) not exhaustive category lists
+- First scan ALL facts for user's existing tools, brands, stated preferences
 
 **How to Answer:**
-1. Scan the facts to find relevant memories
+1. Scan ALL facts to find relevant memories - don't stop after finding a few
 2. **Read the source chunks carefully** - they contain the actual details you need
 3. Convert all relative times to absolute dates
 4. Use temporal information to understand when things happened
 5. Synthesize information from multiple facts if needed
 6. If facts conflict, prefer more recent information
 7. Double-check any date calculations before answering
-8. **For counting questions**: List each unique item before giving your total count
+8. **For counting questions ("how many")**: First list each unique item in your reasoning (1. X, 2. Y, 3. Z...), then count them
 9. **For recommendations**: Reference the user's existing tools, experiences, or preferences explicitly
 
 """
@@ -352,9 +371,9 @@ The context contains memory facts extracted from previous conversations, each wi
 
 In general the answer must be comprehensive and plenty of details from the retrieved context.
 
-For quantitative questions, use numbers and units. Example: 'How many..', just answer the number and which ones. Consider EACH item even if it's not the most recent one. Reason and do calculation for complex questions.
+For quantitative/counting questions ("how many..."): First list each unique item in your reasoning (1. X, 2. Y, 3. Z...), scanning ALL facts, then count them for your answer.
 If questions asks a location (where...?) make sure to include the location name.
-For recommendations/suggestions, use the retrieved context to understand the user's preferences and user's personal experiences, and provide a possible answer based on those. Include the reasoning and explicitly say what the user prefers, before making suggestions (user previous experiences or specific requests FROM the user). Consider as much user preferences as possible in your answer.
+For recommendation questions ("can you recommend...", "suggest...", "any tips..."): DO NOT give actual recommendations. Instead, describe what KIND the user would prefer based on their context. Example answer format: "The user would prefer recommendations for [category] that focus on [their interest]. They would not prefer [what to avoid based on context]."
 For questions asking for help or instructions, consider the users' recent memories and previous interactions with the assistant to understand their current situation better (recent purchases, specific product models used..)
 For specific number/value questions, use the context to understand what is the most up-to-date number based on recency, but also include the reasoning (in the answer) on previous possible values and why you think are less relevant.
 For open questions, include as much details as possible from different sources that are relevant.
