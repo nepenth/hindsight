@@ -19,6 +19,46 @@ Universal LLM memory integration via LiteLLM. Add persistent memory to any LLM a
 pip install hindsight-litellm
 ```
 
+## Core Concepts
+
+### bank_id vs entity_id
+
+These two identifiers control how memories are organized and isolated:
+
+| Identifier | Represents | Example |
+|------------|-----------|---------|
+| `bank_id` | Your agent or application | `"customer-support-bot"` |
+| `entity_id` | The end user being served | `"user-alice"`, `"user-bob"` |
+
+**Why entity_id matters**: When building multi-user applications, you need memory isolation between users. Without it, memories leak across users:
+
+```python
+# Without entity_id - memories are shared (dangerous for multi-user apps!)
+configure(bank_id="my-bot")
+
+# User Alice says: "I'm allergic to peanuts"
+# User Bob asks: "What am I allergic to?"
+# Bob gets told: "You're allergic to peanuts" -- Memory leak!
+```
+
+```python
+# With entity_id - memories are isolated per user
+configure(bank_id="my-bot", entity_id="alice")
+# Alice's memories stay with Alice
+
+set_entity("bob")
+# Bob has his own isolated memory space
+```
+
+**When to use entity_id**:
+- Multi-tenant SaaS applications
+- Customer support agents serving many customers
+- Any app where multiple users interact with the same agent
+
+**When you DON'T need entity_id**:
+- Single-user applications (personal CLI tools, local assistants)
+- Shared knowledge bases where all users should see the same memories
+
 ## Quick Start
 
 ```python
