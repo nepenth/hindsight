@@ -59,6 +59,8 @@ set_entity("bob")
 - Single-user applications (personal CLI tools, local assistants)
 - Shared knowledge bases where all users should see the same memories
 
+**How it works**: When you set `entity_id`, it's combined with `bank_id` to create a scoped bank ID (e.g., `"my-bot:alice"`). This means each user effectively gets their own memory bank, providing complete isolation.
+
 ## Quick Start
 
 ```python
