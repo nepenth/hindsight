@@ -200,7 +200,24 @@ const sidebars: SidebarsConfig = {
     {
       type: 'doc',
       id: 'cookbook/index',
-      label: 'Cookbook',
+      label: 'Overview',
+    },
+    {
+      type: 'category',
+      label: 'Use Cases',
+      collapsible: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'cookbook/per-user-memory',
+          label: 'Per-User Memory',
+        },
+        {
+          type: 'doc',
+          id: 'cookbook/support-agent-with-shared-knowledge',
+          label: 'Support Agent + Shared Knowledge',
+        },
+      ],
     },
   ],
   changelogSidebar: [

@@ -123,6 +123,13 @@ jobs:
       with:
         python-version-file: ".python-version"
 
+    - name: Install pg0
+      run: |
+        mkdir -p ~/.local/bin
+        curl -fsSL https://github.com/nicoloboschi/pg0/releases/latest/download/pg0-linux-amd64 -o ~/.local/bin/pg0
+        chmod +x ~/.local/bin/pg0
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
     - name: Build API
       working-directory: ./hindsight-api
       run: uv build
@@ -157,6 +164,13 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version-file: ".python-version"
+
+    - name: Install pg0
+      run: |
+        mkdir -p ~/.local/bin
+        curl -fsSL https://github.com/nicoloboschi/pg0/releases/latest/download/pg0-linux-amd64 -o ~/.local/bin/pg0
+        chmod +x ~/.local/bin/pg0
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Build API
       working-directory: ./hindsight-api
@@ -236,6 +250,13 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
+
+    - name: Install pg0
+      run: |
+        mkdir -p ~/.local/bin
+        curl -fsSL https://github.com/nicoloboschi/pg0/releases/latest/download/pg0-linux-amd64 -o ~/.local/bin/pg0
+        chmod +x ~/.local/bin/pg0
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Build API
       working-directory: ./hindsight-api
@@ -322,6 +343,13 @@ jobs:
           ~/.cargo/git
           hindsight-clients/rust/target
         key: ${{ runner.os }}-cargo-client-${{ hashFiles('hindsight-clients/rust/Cargo.lock') }}
+
+    - name: Install pg0
+      run: |
+        mkdir -p ~/.local/bin
+        curl -fsSL https://github.com/nicoloboschi/pg0/releases/latest/download/pg0-linux-amd64 -o ~/.local/bin/pg0
+        chmod +x ~/.local/bin/pg0
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Build API
       working-directory: ./hindsight-api
