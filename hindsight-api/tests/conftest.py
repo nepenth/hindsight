@@ -5,7 +5,6 @@ import pytest
 import pytest_asyncio
 import asyncio
 import os
-import filelock
 from pathlib import Path
 from dotenv import load_dotenv
 from hindsight_api import MemoryEngine, LLMConfig, SentenceTransformersEmbeddings
@@ -42,15 +41,15 @@ def db_url():
 
 
 @pytest.fixture(scope="session")
-def pg0_db_url(db_url, tmp_path_factory, worker_id):
+def pg0_db_url(db_url):
     """
     Session-scoped fixture that ensures pg0 is running, migrations are applied,
     and returns the database URL.
 
     If HINDSIGHT_API_DATABASE_URL is set, uses that directly (no pg0 management).
-    Otherwise, starts pg0 once for the entire test session.
+    Otherwise, starts pg0 for the test session.
 
-    Uses filelock to ensure only one pytest-xdist worker starts pg0.
+    pg0's ensure_running() is idempotent - if pg0 is already running, it just returns the URL.
     Migrations use PostgreSQL advisory locks internally, so they're safe to call
     from multiple workers - only one will actually run migrations.
 
@@ -58,39 +57,18 @@ def pg0_db_url(db_url, tmp_path_factory, worker_id):
     processes that share the same pg0 instance. pg0 will persist for the next test run.
     """
     if db_url:
-        # Use provided database URL directly (assume migrations already applied)
+        # Use provided database URL directly
         return db_url
 
-    # Get shared temp dir for coordination between xdist workers
-    if worker_id == "master":
-        # Running without xdist (-n 0 or no -n flag)
-        root_tmp_dir = tmp_path_factory.getbasetemp()
-    else:
-        # Running with xdist - use parent dir shared by all workers
-        root_tmp_dir = tmp_path_factory.getbasetemp().parent
+    # Start pg0 (idempotent - if already running, just returns URL)
+    pg0 = EmbeddedPostgres(name=DEFAULT_PG0_INSTANCE_NAME, port=DEFAULT_PG0_PORT)
 
-    # Use a lock file to ensure only one worker starts pg0
-    # (we can't use DB locks before the DB exists)
-    lock_file = root_tmp_dir / "pg0_setup.lock"
-    url_file = root_tmp_dir / "pg0_url.txt"
-
-    with filelock.FileLock(str(lock_file)):
-        if url_file.exists():
-            # Another worker already started pg0
-            url = url_file.read_text().strip()
-        else:
-            # First worker - start pg0
-            pg0 = EmbeddedPostgres(name=DEFAULT_PG0_INSTANCE_NAME, port=DEFAULT_PG0_PORT)
-
-            # Run ensure_running in a new event loop
-            loop = asyncio.new_event_loop()
-            try:
-                url = loop.run_until_complete(pg0.ensure_running())
-            finally:
-                loop.close()
-
-            # Save URL for other workers
-            url_file.write_text(url)
+    # Run ensure_running in a new event loop
+    loop = asyncio.new_event_loop()
+    try:
+        url = loop.run_until_complete(pg0.ensure_running())
+    finally:
+        loop.close()
 
     # Run migrations - uses PostgreSQL advisory lock internally,
     # so safe to call from multiple workers (only one will actually run migrations)
