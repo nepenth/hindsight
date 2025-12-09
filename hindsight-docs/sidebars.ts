@@ -35,6 +35,11 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'developer/storage',
+          label: 'Storage',
+        },
+        {
+          type: 'doc',
           id: 'developer/rag-vs-hindsight',
           label: 'RAG vs Memory',
         },
