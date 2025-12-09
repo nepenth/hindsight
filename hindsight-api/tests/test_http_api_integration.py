@@ -197,10 +197,10 @@ async def test_full_api_workflow(api_client, test_bank_id):
             "items": [
                 {
                     "content": "Project timeline: MVP launch in Q1, Beta in Q2.",
-                    "context": "product roadmap"
+                    "context": "product roadmap",
+                    "document_id": "roadmap-2024-q1"
                 }
-            ],
-            "document_id": "roadmap-2024-q1"
+            ]
         }
     )
     assert response.status_code == 200
@@ -380,10 +380,10 @@ async def test_document_deletion(api_client):
             "items": [
                 {
                     "content": "The quarterly sales report shows a 25% increase in revenue.",
-                    "context": "Q1 financial review"
+                    "context": "Q1 financial review",
+                    "document_id": "sales-report-q1-2024"
                 }
-            ],
-            "document_id": "sales-report-q1-2024"
+            ]
         }
     )
     assert response.status_code == 200

@@ -234,6 +234,13 @@ class EmbeddedPostgres:
             return match.group(1)
         return None
 
+    async def _get_version(self) -> str:
+        """Get the pg0 version."""
+        returncode, stdout, stderr = await self._run_command_async("--version", timeout=10)
+        if returncode == 0 and stdout:
+            return stdout.strip()
+        return "unknown"
+
     async def start(self, max_retries: int = 3, retry_delay: float = 2.0) -> str:
         """
         Start the PostgreSQL server with retry logic.
@@ -251,7 +258,9 @@ class EmbeddedPostgres:
         if not self.is_installed():
             raise RuntimeError("pg0 is not installed. Call ensure_installed() first.")
 
-        logger.info(f"Starting embedded PostgreSQL (name: {self.name}, port: {self.port})...")
+        # Log pg0 version
+        version = await self._get_version()
+        logger.info(f"Starting embedded PostgreSQL with pg0 {version} (name: {self.name}, port: {self.port})...")
 
         last_error = None
         for attempt in range(1, max_retries + 1):

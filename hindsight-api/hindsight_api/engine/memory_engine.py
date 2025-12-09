@@ -406,8 +406,13 @@ class MemoryEngine:
                 kwargs = {"name": self._pg0_instance_name}
                 if self._pg0_port is not None:
                     kwargs["port"] = self._pg0_port
-                self._pg0 = EmbeddedPostgres(**kwargs)
-                self.db_url = await self._pg0.ensure_running()
+                pg0 = EmbeddedPostgres(**kwargs)
+                # Check if pg0 is already running before we start it
+                was_already_running = await pg0.is_running()
+                self.db_url = await pg0.ensure_running()
+                # Only track pg0 (to stop later) if WE started it
+                if not was_already_running:
+                    self._pg0 = pg0
 
         def load_embeddings():
             """Load embedding model (CPU-bound)."""
@@ -2625,7 +2630,13 @@ Guidelines:
         if self._llm_config is None:
             raise ValueError("Memory LLM API key not set. Set HINDSIGHT_API_LLM_API_KEY environment variable.")
 
+        reflect_start = time.time()
+        reflect_id = f"{bank_id[:8]}-{int(time.time() * 1000) % 100000}"
+        log_buffer = []
+        log_buffer.append(f"[REFLECT {reflect_id}] Query: '{query[:50]}...'")
+
         # Steps 1-3: Run multi-fact-type search (12-way retrieval: 4 methods × 3 fact types)
+        recall_start = time.time()
         search_result = await self.recall_async(
             bank_id=bank_id,
             query=query,
@@ -2635,23 +2646,21 @@ Guidelines:
             fact_type=['experience', 'world', 'opinion'],
             include_entities=True
         )
+        recall_time = time.time() - recall_start
 
         all_results = search_result.results
-        logger.info(f"[THINK] Search returned {len(all_results)} results")
 
         # Split results by fact type for structured response
         agent_results = [r for r in all_results if r.fact_type == 'experience']
         world_results = [r for r in all_results if r.fact_type == 'world']
         opinion_results = [r for r in all_results if r.fact_type == 'opinion']
 
-        logger.info(f"[THINK] Split results - agent: {len(agent_results)}, world: {len(world_results)}, opinion: {len(opinion_results)}")
+        log_buffer.append(f"[REFLECT {reflect_id}] Recall: {len(all_results)} facts (experience={len(agent_results)}, world={len(world_results)}, opinion={len(opinion_results)}) in {recall_time:.3f}s")
 
         # Format facts for LLM
         agent_facts_text = think_utils.format_facts_for_prompt(agent_results)
         world_facts_text = think_utils.format_facts_for_prompt(world_results)
         opinion_facts_text = think_utils.format_facts_for_prompt(opinion_results)
-
-        logger.info(f"[THINK] Formatted facts - agent: {len(agent_facts_text)} chars, world: {len(world_facts_text)} chars, opinion: {len(opinion_facts_text)} chars")
 
         # Get bank profile (name, disposition + background)
         profile = await self.get_bank_profile(bank_id)
@@ -2671,10 +2680,11 @@ Guidelines:
             context=context,
         )
 
-        logger.info(f"[THINK] Full prompt length: {len(prompt)} chars")
+        log_buffer.append(f"[REFLECT {reflect_id}] Prompt: {len(prompt)} chars")
 
         system_message = think_utils.get_system_message(disposition)
 
+        llm_start = time.time()
         answer_text = await self._llm_config.call(
             messages=[
                 {"role": "system", "content": system_message},
@@ -2684,6 +2694,7 @@ Guidelines:
             temperature=0.9,
             max_tokens=1000
         )
+        llm_time = time.time() - llm_start
 
         answer_text = answer_text.strip()
 
@@ -2694,6 +2705,10 @@ Guidelines:
             'answer_text': answer_text,
             'query': query
         })
+
+        total_time = time.time() - reflect_start
+        log_buffer.append(f"[REFLECT {reflect_id}] Complete: {len(answer_text)} chars response, LLM {llm_time:.3f}s, total {total_time:.3f}s")
+        logger.info("\n" + "\n".join(log_buffer))
 
         # Return response with facts split by type
         return ReflectResult(
@@ -2743,7 +2758,7 @@ Guidelines:
                     )
 
         except Exception as e:
-            logger.warning(f"[THINK] Failed to extract/store opinions: {str(e)}")
+            logger.warning(f"[REFLECT] Failed to extract/store opinions: {str(e)}")
 
     async def get_entity_observations(
         self,

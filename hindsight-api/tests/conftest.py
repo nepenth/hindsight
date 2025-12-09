@@ -3,6 +3,7 @@ Pytest configuration and shared fixtures.
 """
 import pytest
 import pytest_asyncio
+import asyncio
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -10,9 +11,11 @@ from hindsight_api import MemoryEngine, LLMConfig, SentenceTransformersEmbedding
 
 from hindsight_api.engine.cross_encoder import SentenceTransformersCrossEncoder
 from hindsight_api.engine.query_analyzer import DateparserQueryAnalyzer
+from hindsight_api.pg0 import EmbeddedPostgres
 
-# Default database URL using pg0 with test-specific instance on a different port
-DEFAULT_DATABASE_URL = "pg0://hindsight-test:5556"
+# Default pg0 instance configuration for tests
+DEFAULT_PG0_INSTANCE_NAME = "hindsight-test"
+DEFAULT_PG0_PORT = 5556
 
 
 # Load environment variables from .env at the start of test session
@@ -31,15 +34,39 @@ def db_url():
     """
     Provide a PostgreSQL connection URL for tests.
 
-    Supports:
-    - pg0://instance-name - Start a pg0 instance with the given name
-    - pg0:// or pg0 - Start a pg0 instance with default name "hindsight"
-    - postgresql://... - Use the provided URL directly
-
-    Set HINDSIGHT_API_DATABASE_URL environment variable to override.
-    Default: pg0://hindsight-test
+    If HINDSIGHT_API_DATABASE_URL is set, use it directly.
+    Otherwise, return None to indicate pg0 should be used (managed by pg0_instance fixture).
     """
-    return os.getenv("HINDSIGHT_API_DATABASE_URL", DEFAULT_DATABASE_URL)
+    return os.getenv("HINDSIGHT_API_DATABASE_URL")
+
+
+@pytest.fixture(scope="session")
+def pg0_db_url(db_url):
+    """
+    Session-scoped fixture that ensures pg0 is running and returns the database URL.
+
+    If HINDSIGHT_API_DATABASE_URL is set, uses that directly (no pg0 management).
+    Otherwise, starts pg0 once for the entire test session.
+
+    Note: We don't stop pg0 at the end because pytest-xdist runs workers in separate
+    processes that share the same pg0 instance. Each worker gets this fixture independently.
+    pg0 will be stopped manually or will persist for the next test run (which is fine).
+    """
+    if db_url:
+        # Use provided database URL directly
+        return db_url
+
+    # Start pg0 synchronously (session fixtures can't be async with xdist)
+    pg0 = EmbeddedPostgres(name=DEFAULT_PG0_INSTANCE_NAME, port=DEFAULT_PG0_PORT)
+
+    # Run ensure_running in a new event loop
+    loop = asyncio.new_event_loop()
+    try:
+        url = loop.run_until_complete(pg0.ensure_running())
+    finally:
+        loop.close()
+
+    return url
 
 
 @pytest.fixture(scope="session")
@@ -71,7 +98,7 @@ def query_analyzer():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def memory(db_url, embeddings, cross_encoder, query_analyzer):
+async def memory(pg0_db_url, embeddings, cross_encoder, query_analyzer):
     """
     Provide a MemoryEngine instance for each test.
 
@@ -81,9 +108,11 @@ async def memory(db_url, embeddings, cross_encoder, query_analyzer):
     3. Each test needs its own pool in its own event loop
 
     Uses small pool sizes since tests run in parallel.
+    Uses pg0_db_url (a postgresql:// URL) directly, so MemoryEngine won't try to
+    manage pg0 lifecycle - that's handled by the session-scoped pg0_db_url fixture.
     """
     mem = MemoryEngine(
-        db_url=db_url,
+        db_url=pg0_db_url,  # Direct postgresql:// URL, not pg0://
         memory_llm_provider=os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"),
         memory_llm_api_key=os.getenv("HINDSIGHT_API_LLM_API_KEY"),
         memory_llm_model=os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b"),
