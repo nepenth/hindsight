@@ -164,13 +164,13 @@ jobs:
       working-directory: ./hindsight-clients/python
       run: uv build
 
-    - name: Install API dependencies
-      working-directory: ./hindsight-api
-      run: uv sync
-
     - name: Install client test dependencies
       working-directory: ./hindsight-clients/python
       run: uv sync --extra test
+
+    - name: Install API dependencies
+      working-directory: ./hindsight-api
+      run: uv sync
 
     - name: Create .env file
       run: |
