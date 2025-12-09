@@ -305,4 +305,4 @@ jobs:
 
     - name: Run Rust client tests
       working-directory: ./hindsight-clients/rust
-      run: cargo test
+      run: cargo test --lib

@@ -4,15 +4,15 @@ Pytest configuration and shared fixtures.
 import pytest
 import pytest_asyncio
 import os
-import filelock
 from pathlib import Path
 from dotenv import load_dotenv
 from hindsight_api import MemoryEngine, LLMConfig, SentenceTransformersEmbeddings
-import asyncpg
-from testcontainers.postgres import PostgresContainer
 
 from hindsight_api.engine.cross_encoder import SentenceTransformersCrossEncoder
 from hindsight_api.engine.query_analyzer import DateparserQueryAnalyzer
+
+# Default database URL using pg0 with test-specific instance on a different port
+DEFAULT_DATABASE_URL = "pg0://hindsight-test:5556"
 
 
 # Load environment variables from .env at the start of test session
@@ -27,45 +27,19 @@ def pytest_configure(config):
 
 
 @pytest.fixture(scope="session")
-def postgres_container(tmp_path_factory, worker_id):
+def db_url():
     """
-    Start a postgres container shared across all test workers.
-    Uses filelock to ensure only one worker starts the container.
+    Provide a PostgreSQL connection URL for tests.
 
-    - worker_id == "master": running without -n (single process)
-    - worker_id == "gw0", "gw1", etc.: running with -n (parallel workers)
+    Supports:
+    - pg0://instance-name - Start a pg0 instance with the given name
+    - pg0:// or pg0 - Start a pg0 instance with default name "hindsight"
+    - postgresql://... - Use the provided URL directly
+
+    Set HINDSIGHT_API_DATABASE_URL environment variable to override.
+    Default: pg0://hindsight-test
     """
-    # Get shared temp dir (same for all workers)
-    if worker_id == "master":
-        root_tmp_dir = tmp_path_factory.getbasetemp()
-    else:
-        root_tmp_dir = tmp_path_factory.getbasetemp().parent
-
-    db_url_file = root_tmp_dir / "postgres_url"
-    lock_file = root_tmp_dir / "postgres.lock"
-    container = None
-
-    with filelock.FileLock(str(lock_file)):
-        if db_url_file.exists():
-            # Another worker already started the container
-            db_url = db_url_file.read_text()
-        else:
-            # First worker - start the container
-            container = PostgresContainer("pgvector/pgvector:pg16")
-            container.start()
-            db_url = container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-            db_url_file.write_text(db_url)
-
-            # Run migrations
-            from hindsight_api.migrations import run_migrations
-            run_migrations(db_url)
-
-    os.environ["HINDSIGHT_API_DATABASE_URL"] = db_url
-    yield db_url
-
-    # Only the worker that started the container stops it
-    if container is not None:
-        container.stop()
+    return os.getenv("HINDSIGHT_API_DATABASE_URL", DEFAULT_DATABASE_URL)
 
 
 @pytest.fixture(scope="session")
@@ -97,7 +71,7 @@ def query_analyzer():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def memory(postgres_container, embeddings, cross_encoder, query_analyzer):
+async def memory(db_url, embeddings, cross_encoder, query_analyzer):
     """
     Provide a MemoryEngine instance for each test.
 
@@ -106,11 +80,10 @@ async def memory(postgres_container, embeddings, cross_encoder, query_analyzer):
     2. asyncpg pools are bound to the event loop that created them
     3. Each test needs its own pool in its own event loop
 
-    Uses small pool sizes since tests run in parallel and share a single
-    testcontainer PostgreSQL instance with limited resources.
+    Uses small pool sizes since tests run in parallel.
     """
     mem = MemoryEngine(
-        db_url=postgres_container,
+        db_url=db_url,
         memory_llm_provider=os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"),
         memory_llm_api_key=os.getenv("HINDSIGHT_API_LLM_API_KEY"),
         memory_llm_model=os.getenv("HINDSIGHT_API_LLM_MODEL", "openai/gpt-oss-120b"),

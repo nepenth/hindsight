@@ -13,8 +13,8 @@ from hindsight_api.api import create_app
 @pytest_asyncio.fixture
 async def api_client(memory):
     """Create an async test client for the FastAPI app."""
-    # Memory is already initialized by the conftest fixture
-    app = create_app(memory, run_migrations=False, initialize_memory=False)
+    # Memory is already initialized by the conftest fixture (with migrations)
+    app = create_app(memory, initialize_memory=False)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

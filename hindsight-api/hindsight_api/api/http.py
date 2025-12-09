@@ -698,13 +698,13 @@ class DeleteResponse(BaseModel):
     success: bool
 
 
-def create_app(memory: MemoryEngine, run_migrations: bool = True, initialize_memory: bool = True) -> FastAPI:
+def create_app(memory: MemoryEngine, initialize_memory: bool = True) -> FastAPI:
     """
     Create and configure the FastAPI application.
 
     Args:
-        memory: MemoryEngine instance (already initialized with required parameters)
-        run_migrations: Whether to run database migrations on startup (default: True)
+        memory: MemoryEngine instance (already initialized with required parameters).
+                Migrations are controlled by the MemoryEngine's run_migrations parameter.
         initialize_memory: Whether to initialize memory system on startup (default: True)
 
     Returns:
@@ -735,15 +735,10 @@ def create_app(memory: MemoryEngine, run_migrations: bool = True, initialize_mem
             app.state.prometheus_reader = None
             # Metrics collector is already initialized as no-op by default
 
-        # Startup: Initialize database and memory system
+        # Startup: Initialize database and memory system (migrations run inside initialize if enabled)
         if initialize_memory:
             await memory.initialize()
             logging.info("Memory system initialized")
-
-        if run_migrations:
-            from hindsight_api.migrations import run_migrations as do_migrations
-            do_migrations(memory.db_url)
-            logging.info("Database migrations applied")
 
 
 

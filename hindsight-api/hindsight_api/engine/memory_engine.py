@@ -110,12 +110,14 @@ class MemoryEngine:
         pool_min_size: int = 5,
         pool_max_size: int = 100,
         task_backend: Optional[TaskBackend] = None,
+        run_migrations: bool = True,
     ):
         """
         Initialize the temporal + semantic memory system.
 
         Args:
             db_url: PostgreSQL connection URL (postgresql://user:pass@host:port/dbname). Required.
+                    Also supports pg0 URLs: "pg0" or "pg0://instance-name" or "pg0://instance-name:port"
             memory_llm_provider: LLM provider for memory operations: "openai", "groq", or "ollama". Required.
             memory_llm_api_key: API key for the LLM provider. Required.
             memory_llm_model: Model name to use for all memory operations (put/think/opinions). Required.
@@ -129,16 +131,38 @@ class MemoryEngine:
             pool_max_size: Maximum number of connections in the pool (default: 100)
                           Increase for parallel think/search operations (e.g., 200-300 for 100+ parallel thinks)
             task_backend: Custom task backend for async task execution. If not provided, uses AsyncIOQueueBackend
+            run_migrations: Whether to run database migrations during initialize(). Default: True
         """
         if not db_url:
             raise ValueError("Database url is required")
         # Track pg0 instance (if used)
         self._pg0: Optional[EmbeddedPostgres] = None
+        self._pg0_instance_name: Optional[str] = None
 
         # Initialize PostgreSQL connection URL
         # The actual URL will be set during initialize() after starting the server
-        self._use_pg0 = db_url == "pg0"
-        self.db_url = db_url if not self._use_pg0 else None
+        # Supports: "pg0" (default instance), "pg0://instance-name" (named instance), or regular postgresql:// URL
+        if db_url == "pg0":
+            self._use_pg0 = True
+            self._pg0_instance_name = "hindsight"
+            self._pg0_port = None  # Use default port
+            self.db_url = None
+        elif db_url.startswith("pg0://"):
+            self._use_pg0 = True
+            # Parse instance name and optional port: pg0://instance-name or pg0://instance-name:port
+            url_part = db_url[6:]  # Remove "pg0://"
+            if ":" in url_part:
+                self._pg0_instance_name, port_str = url_part.rsplit(":", 1)
+                self._pg0_port = int(port_str)
+            else:
+                self._pg0_instance_name = url_part or "hindsight"
+                self._pg0_port = None  # Use default port
+            self.db_url = None
+        else:
+            self._use_pg0 = False
+            self._pg0_instance_name = None
+            self._pg0_port = None
+            self.db_url = db_url
 
 
         # Set default base URL if not provided
@@ -155,6 +179,7 @@ class MemoryEngine:
         self._initialized = False
         self._pool_min_size = pool_min_size
         self._pool_max_size = pool_max_size
+        self._run_migrations = run_migrations
 
         # Initialize entity resolver (will be created in initialize())
         self.entity_resolver = None
@@ -378,7 +403,10 @@ class MemoryEngine:
         async def start_pg0():
             """Start pg0 if configured."""
             if self._use_pg0:
-                self._pg0 = EmbeddedPostgres()
+                kwargs = {"name": self._pg0_instance_name}
+                if self._pg0_port is not None:
+                    kwargs["port"] = self._pg0_port
+                self._pg0 = EmbeddedPostgres(**kwargs)
                 self.db_url = await self._pg0.ensure_running()
 
         def load_embeddings():
@@ -407,6 +435,12 @@ class MemoryEngine:
             await asyncio.gather(
                 pg0_task, embeddings_future, cross_encoder_future, query_analyzer_future
             )
+
+        # Run database migrations if enabled
+        if self._run_migrations:
+            from ..migrations import run_migrations
+            logger.info("Running database migrations...")
+            run_migrations(self.db_url)
 
         logger.info(f"Connecting to PostgreSQL at {self.db_url}")
 
