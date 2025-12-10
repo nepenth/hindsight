@@ -34,6 +34,9 @@ class HindsightConfig:
         enabled: Master switch to enable/disable Hindsight integration
         excluded_models: List of model patterns to exclude from interception
         verbose: Enable verbose logging
+        bank_name: Optional display name for the memory bank
+        background: Optional background/instructions for memory extraction
+        use_reflect: Use reflect API instead of recall for memory injection (synthesizes answer)
     """
 
     hindsight_api_url: str = "http://localhost:8888"
@@ -52,6 +55,10 @@ class HindsightConfig:
     enabled: bool = True
     excluded_models: List[str] = field(default_factory=list)
     verbose: bool = False
+    bank_name: Optional[str] = None  # Display name for the memory bank
+    background: Optional[str] = None  # Background/instructions for memory extraction
+    use_reflect: bool = False  # Use reflect instead of recall for memory injection
+    reflect_include_facts: bool = False  # Include facts used by reflect in debug info
 
 
 # Global configuration instance
@@ -75,6 +82,10 @@ def configure(
     enabled: bool = True,
     excluded_models: Optional[List[str]] = None,
     verbose: bool = False,
+    bank_name: Optional[str] = None,
+    background: Optional[str] = None,
+    use_reflect: bool = False,
+    reflect_include_facts: bool = False,
 ) -> HindsightConfig:
     """Configure global Hindsight integration settings for LiteLLM.
 
@@ -98,6 +109,16 @@ def configure(
         enabled: Master switch to enable/disable Hindsight integration
         excluded_models: List of model patterns to exclude from interception
         verbose: Enable verbose logging
+        bank_name: Optional display name for the memory bank
+        background: Optional background/instructions that help Hindsight understand
+            what information is important to extract and remember from conversations.
+            This is passed to create_bank() to configure the memory bank.
+        use_reflect: Use reflect API instead of recall for memory injection.
+            When True, Hindsight will synthesize a contextual answer based on
+            memories rather than returning raw memory facts.
+        reflect_include_facts: When use_reflect=True, include the facts that
+            were used to generate the reflect response in the debug info.
+            This is useful for debugging what memories the reflect API used.
 
     Returns:
         The configured HindsightConfig instance
@@ -110,6 +131,8 @@ def configure(
         ...     entity_id="user-123",  # Multi-user support
         ...     store_conversations=True,
         ...     inject_memories=True,
+        ...     background="This agent routes customer requests to support channels. "
+        ...                "Remember which types of issues should go to which channels.",
         ... )
         >>> enable()  # Register callbacks with LiteLLM
     """
@@ -132,9 +155,63 @@ def configure(
         enabled=enabled,
         excluded_models=excluded_models or [],
         verbose=verbose,
+        bank_name=bank_name,
+        background=background,
+        use_reflect=use_reflect,
+        reflect_include_facts=reflect_include_facts,
     )
 
+    # If background or bank_name is provided, create/update the bank
+    if bank_id and (background or bank_name):
+        _create_or_update_bank(
+            hindsight_api_url=hindsight_api_url,
+            bank_id=bank_id,
+            name=bank_name,
+            background=background,
+            verbose=verbose,
+        )
+
     return _global_config
+
+
+def _create_or_update_bank(
+    hindsight_api_url: str,
+    bank_id: str,
+    name: Optional[str] = None,
+    background: Optional[str] = None,
+    verbose: bool = False,
+) -> None:
+    """Create or update a memory bank with the given configuration.
+
+    This is called automatically by configure() when background or bank_name is provided.
+    """
+    try:
+        from hindsight_client import Hindsight
+
+        client = Hindsight(hindsight_api_url)
+        client.create_bank(
+            bank_id=bank_id,
+            name=name,
+            background=background,
+        )
+        if verbose:
+            import logging
+            logging.getLogger("hindsight_litellm").info(
+                f"Created/updated bank '{bank_id}' with background"
+            )
+    except ImportError:
+        if verbose:
+            import logging
+            logging.getLogger("hindsight_litellm").warning(
+                "hindsight_client not installed. Cannot create bank with background. "
+                "Install with: pip install hindsight-client"
+            )
+    except Exception as e:
+        if verbose:
+            import logging
+            logging.getLogger("hindsight_litellm").warning(
+                f"Failed to create/update bank: {e}"
+            )
 
 
 def get_config() -> Optional[HindsightConfig]:

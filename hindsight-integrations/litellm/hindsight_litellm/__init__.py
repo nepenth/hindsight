@@ -41,7 +41,7 @@ Direct recall API:
     >>> configure(bank_id="my-agent", hindsight_api_url="http://localhost:8888")
     >>>
     >>> # Query memories directly
-    >>> memories = recall("what projects am I working on?", limit=5)
+    >>> memories = recall("what projects am I working on?")
     >>> for m in memories:
     ...     print(f"- [{m.fact_type}] {m.text}")
 
@@ -103,10 +103,20 @@ Configuration options:
     - recall_budget: Budget for memory recall (low, mid, high)
     - excluded_models: List of model patterns to exclude from interception
     - verbose: Enable verbose logging
+    - bank_name: Display name for the memory bank
+    - background: Instructions that help Hindsight understand what to remember
+
+Background example:
+    >>> configure(
+    ...     bank_id="routing-agent",
+    ...     background="This agent routes customer requests to support channels. "
+    ...                "Remember which types of issues should go to which channels.",
+    ... )
 """
 
 from contextlib import contextmanager
-from typing import Optional, List
+from dataclasses import dataclass
+from typing import Optional, List, Any
 
 import litellm
 
@@ -132,6 +142,16 @@ from .wrappers import (
     recall,
     arecall,
     RecallResult,
+    RecallResponse,
+    RecallDebugInfo,
+    reflect,
+    areflect,
+    ReflectResult,
+    ReflectDebugInfo,
+    retain,
+    aretain,
+    RetainResult,
+    RetainDebugInfo,
     wrap_openai,
     wrap_anthropic,
     HindsightOpenAI,
@@ -149,13 +169,86 @@ _original_completion = None
 _original_acompletion = None
 
 
+@dataclass
+class InjectionDebugInfo:
+    """Debug information from a memory injection operation.
+
+    This is populated when verbose=True in the config and can be retrieved
+    via get_last_injection_debug() after a completion() call.
+
+    Attributes:
+        mode: The injection mode used ("reflect" or "recall")
+        query: The user query used for memory lookup
+        bank_id: The bank ID used
+        scoped_bank_id: The bank ID with entity scoping applied
+        entity_id: The entity ID used (if any)
+        memory_context: The formatted memory context that was injected
+        reflect_text: The raw reflect text (when mode="reflect")
+        reflect_facts: The facts used to generate the reflect response (when reflect_include_facts=True)
+        recall_results: The raw recall results (when mode="recall")
+        results_count: Number of memories/results found
+        injected: Whether memories were actually injected into the prompt
+        error: Error message if injection failed (None on success)
+    """
+    mode: str  # "reflect" or "recall"
+    query: str
+    bank_id: str
+    scoped_bank_id: str
+    entity_id: Optional[str]
+    memory_context: str  # The formatted context that was injected
+    reflect_text: Optional[str] = None  # Raw reflect response text
+    reflect_facts: Optional[List[dict]] = None  # Facts used by reflect (when reflect_include_facts=True)
+    recall_results: Optional[List[dict]] = None  # Raw recall results
+    results_count: int = 0
+    injected: bool = False
+    error: Optional[str] = None  # Error message if injection failed
+
+
+# Store the last injection debug info (populated when verbose=True)
+_last_injection_debug: Optional[InjectionDebugInfo] = None
+
+
+def get_last_injection_debug() -> Optional[InjectionDebugInfo]:
+    """Get debug info from the last memory injection operation.
+
+    When verbose=True in the config, this returns information about
+    what memories were injected into the last completion() call.
+
+    Returns:
+        InjectionDebugInfo if verbose mode captured injection info, None otherwise
+
+    Example:
+        >>> from hindsight_litellm import configure, enable, completion, get_last_injection_debug
+        >>> configure(bank_id="my-agent", verbose=True, use_reflect=True)
+        >>> enable()
+        >>> response = completion(model="gpt-4o-mini", messages=[...])
+        >>> debug = get_last_injection_debug()
+        >>> if debug:
+        ...     print(f"Injected {debug.results_count} memories via {debug.mode}")
+        ...     print(f"Reflect text: {debug.reflect_text}")
+    """
+    return _last_injection_debug
+
+
+def clear_injection_debug() -> None:
+    """Clear the stored injection debug info."""
+    global _last_injection_debug
+    _last_injection_debug = None
+
+
 def _inject_memories(messages: List[dict]) -> List[dict]:
     """Inject memories into messages list.
 
     Returns the modified messages list with memories injected into the system message.
+    Uses reflect API when config.use_reflect=True, otherwise uses recall API.
+
+    When verbose=True in config, stores debug info retrievable via get_last_injection_debug().
     """
+    global _last_injection_debug
     import logging
-    import requests
+
+    # Clear previous debug info
+    _last_injection_debug = None
 
     if not is_configured():
         return messages
@@ -180,50 +273,146 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
         return messages
 
     try:
+        from hindsight_client import Hindsight
+
         # Build scoped bank_id
         scoped_bank_id = config.bank_id
         if config.entity_id:
             scoped_bank_id = f"{config.bank_id}:{config.entity_id}"
 
-        # Build recall request
-        url = f"{config.hindsight_api_url}/v1/default/banks/{scoped_bank_id}/memories/recall"
-        request_data = {
-            "query": user_query,
-            "budget": config.recall_budget or "mid",
-            "max_tokens": config.max_memory_tokens or 2000,
-        }
-        if config.fact_types:
-            request_data["types"] = config.fact_types
+        # Track debug info
+        mode = "reflect" if config.use_reflect else "recall"
+        reflect_text = None
+        reflect_facts = None
+        recall_results = None
+        results_count = 0
+        memory_context = ""
 
-        headers = {"Content-Type": "application/json"}
-        if config.api_key:
-            headers["Authorization"] = f"Bearer {config.api_key}"
+        # Create client
+        client = Hindsight(base_url=config.hindsight_api_url, timeout=30.0)
 
-        response = requests.post(url, json=request_data, headers=headers, timeout=30)
-        response.raise_for_status()
-        response_data = response.json()
-        results = response_data.get("results", [])
+        # Use reflect API if use_reflect is enabled
+        if config.use_reflect:
+            # If reflect_include_facts is enabled, use the API directly to include facts
+            if config.reflect_include_facts:
+                from hindsight_client_api.models import reflect_request, reflect_include_options
+                request_obj = reflect_request.ReflectRequest(
+                    query=user_query,
+                    budget=config.recall_budget or "mid",
+                    include=reflect_include_options.ReflectIncludeOptions(facts={}),
+                )
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(client._api.reflect(scoped_bank_id, request_obj))
+                # Extract facts from based_on
+                if hasattr(result, 'based_on') and result.based_on:
+                    reflect_facts = [
+                        {
+                            "text": f.text if hasattr(f, 'text') else str(f),
+                            "type": getattr(f, 'type', None),
+                            "context": getattr(f, 'context', None),
+                        }
+                        for f in result.based_on
+                    ]
+            else:
+                result = client.reflect(
+                    bank_id=scoped_bank_id,
+                    query=user_query,
+                    budget=config.recall_budget or "mid",
+                )
+            reflect_text = result.text if hasattr(result, 'text') else str(result)
 
-        if not results:
-            return messages
+            if not reflect_text:
+                # Store debug info for empty result
+                if config.verbose:
+                    _last_injection_debug = InjectionDebugInfo(
+                        mode=mode,
+                        query=user_query,
+                        bank_id=config.bank_id,
+                        scoped_bank_id=scoped_bank_id,
+                        entity_id=config.entity_id,
+                        memory_context="",
+                        reflect_text="",
+                        reflect_facts=reflect_facts,
+                        results_count=0,
+                        injected=False,
+                    )
+                return messages
 
-        # Format memories
-        memory_lines = []
-        for i, result in enumerate(results[:config.max_memories], 1):
-            text = result.get("text", "")
-            fact_type = result.get("type", result.get("fact_type", "world"))
-            if text:
-                type_label = fact_type.upper() if fact_type else "MEMORY"
-                memory_lines.append(f"{i}. [{type_label}] {text}")
+            results_count = 1  # reflect returns a single synthesized response
+            memory_context = (
+                "# Relevant Context from Memory\n"
+                f"{reflect_text}"
+            )
+        else:
+            # Use recall API (original behavior)
+            result = client.recall(
+                bank_id=scoped_bank_id,
+                query=user_query,
+                budget=config.recall_budget or "mid",
+                max_tokens=config.max_memory_tokens or 2000,
+                types=config.fact_types,
+            )
+            results = result.results if hasattr(result, 'results') else []
+            # Convert to dicts for debug info
+            recall_results = [
+                {
+                    "text": r.text if hasattr(r, 'text') else str(r),
+                    "type": getattr(r, 'type', 'world'),
+                }
+                for r in results
+            ]
 
-        if not memory_lines:
-            return messages
+            if not results:
+                # Store debug info for empty result
+                if config.verbose:
+                    _last_injection_debug = InjectionDebugInfo(
+                        mode=mode,
+                        query=user_query,
+                        bank_id=config.bank_id,
+                        scoped_bank_id=scoped_bank_id,
+                        entity_id=config.entity_id,
+                        memory_context="",
+                        recall_results=[],
+                        results_count=0,
+                        injected=False,
+                    )
+                return messages
 
-        memory_context = (
-            "# Relevant Memories\n"
-            "The following information from memory may be relevant:\n\n"
-            + "\n".join(memory_lines)
-        )
+            # Format memories
+            memory_lines = []
+            for i, r in enumerate(results[:config.max_memories], 1):
+                text = r.text if hasattr(r, 'text') else str(r)
+                fact_type = getattr(r, 'type', 'world')
+                if text:
+                    type_label = fact_type.upper() if fact_type else "MEMORY"
+                    memory_lines.append(f"{i}. [{type_label}] {text}")
+
+            if not memory_lines:
+                if config.verbose:
+                    _last_injection_debug = InjectionDebugInfo(
+                        mode=mode,
+                        query=user_query,
+                        bank_id=config.bank_id,
+                        scoped_bank_id=scoped_bank_id,
+                        entity_id=config.entity_id,
+                        memory_context="",
+                        recall_results=recall_results,
+                        results_count=0,
+                        injected=False,
+                    )
+                return messages
+
+            results_count = len(memory_lines)
+            memory_context = (
+                "# Relevant Memories\n"
+                "The following information from memory may be relevant:\n\n"
+                + "\n".join(memory_lines)
+            )
 
         # Inject into messages
         updated_messages = list(messages)
@@ -246,15 +435,62 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                 "content": memory_context
             })
 
+        # Store debug info when verbose
         if config.verbose:
+            _last_injection_debug = InjectionDebugInfo(
+                mode=mode,
+                query=user_query,
+                bank_id=config.bank_id,
+                scoped_bank_id=scoped_bank_id,
+                entity_id=config.entity_id,
+                memory_context=memory_context,
+                reflect_text=reflect_text,
+                reflect_facts=reflect_facts,
+                recall_results=recall_results,
+                results_count=results_count,
+                injected=True,
+            )
             logger = logging.getLogger("hindsight_litellm")
-            logger.info(f"Injected {len(results)} memories into prompt")
+            logger.info(f"Injected memories using {mode} into prompt")
 
         return updated_messages
 
+    except ImportError as e:
+        if config.verbose:
+            logging.getLogger("hindsight_litellm").warning(
+                f"hindsight_client not installed: {e}. Install with: pip install hindsight-client"
+            )
+            _last_injection_debug = InjectionDebugInfo(
+                mode="reflect" if config.use_reflect else "recall",
+                query=user_query or "",
+                bank_id=config.bank_id or "",
+                scoped_bank_id=scoped_bank_id if 'scoped_bank_id' in dir() else config.bank_id or "",
+                entity_id=config.entity_id,
+                memory_context="",
+                results_count=0,
+                injected=False,
+                error=f"hindsight_client not installed: {e}",
+            )
+        return messages
     except Exception as e:
+        # Always set debug info on error when verbose mode is on
         if config.verbose:
             logging.getLogger("hindsight_litellm").warning(f"Failed to inject memories: {e}")
+            # Build scoped bank_id for debug info
+            scoped_bank_id = config.bank_id
+            if config.entity_id:
+                scoped_bank_id = f"{config.bank_id}:{config.entity_id}"
+            _last_injection_debug = InjectionDebugInfo(
+                mode="reflect" if config.use_reflect else "recall",
+                query=user_query or "",
+                bank_id=config.bank_id or "",
+                scoped_bank_id=scoped_bank_id or "",
+                entity_id=config.entity_id,
+                memory_context="",
+                results_count=0,
+                injected=False,
+                error=str(e),
+            )
         return messages
 
 
@@ -483,6 +719,8 @@ def hindsight_memory(
     document_id: Optional[str] = None,
     excluded_models: Optional[List[str]] = None,
     verbose: bool = False,
+    bank_name: Optional[str] = None,
+    background: Optional[str] = None,
 ):
     """Context manager for temporary Hindsight memory integration.
 
@@ -505,6 +743,8 @@ def hindsight_memory(
         document_id: Optional document ID for grouping conversations
         excluded_models: List of model patterns to exclude
         verbose: Enable verbose logging
+        bank_name: Optional display name for the memory bank
+        background: Optional background/instructions for memory extraction
 
     Example:
         >>> from hindsight_litellm import hindsight_memory
@@ -536,6 +776,8 @@ def hindsight_memory(
             document_id=document_id,
             excluded_models=excluded_models,
             verbose=verbose,
+            bank_name=bank_name,
+            background=background,
         )
         enable()
         yield
@@ -559,6 +801,8 @@ def hindsight_memory(
                 document_id=previous_config.document_id,
                 excluded_models=previous_config.excluded_models,
                 verbose=previous_config.verbose,
+                bank_name=previous_config.bank_name,
+                background=previous_config.background,
             )
             if was_enabled:
                 enable()
@@ -583,10 +827,16 @@ __all__ = [
     "get_session",
     "set_entity",
     "get_entity",
-    # Direct recall API
+    # Direct memory APIs
     "recall",
     "arecall",
     "RecallResult",
+    "reflect",
+    "areflect",
+    "ReflectResult",
+    "retain",
+    "aretain",
+    "RetainResult",
     # Native client wrappers
     "wrap_openai",
     "wrap_anthropic",
@@ -598,6 +848,10 @@ __all__ = [
     "reset_config",
     "HindsightConfig",
     "MemoryInjectionMode",
+    # Injection debug (verbose mode)
+    "get_last_injection_debug",
+    "clear_injection_debug",
+    "InjectionDebugInfo",
     # Callback (for advanced usage)
     "HindsightCallback",
     "get_callback",

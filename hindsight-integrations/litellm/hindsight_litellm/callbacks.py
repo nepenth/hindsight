@@ -312,14 +312,16 @@ class HindsightCallback(CustomLogger):
         model: str,
         config: HindsightConfig,
     ) -> None:
-        """Store the conversation to Hindsight (sync) using direct HTTP."""
-        try:
-            # Extract user input (last user message only)
-            user_input = self._extract_user_query(messages)
-            if not user_input:
-                return
+        """Store the conversation to Hindsight (sync) using direct HTTP.
 
-            # Extract assistant response
+        By default, stores the full conversation history passed to the LLM.
+        Each message is stored as a separate item, all linked by document_id
+        (using session_id if set, otherwise a generated one).
+
+        Hindsight will process the document as a whole for memory extraction.
+        """
+        try:
+            # Extract assistant response from the LLM response
             assistant_output = ""
             if response.choices and len(response.choices) > 0:
                 choice = response.choices[0]
@@ -329,9 +331,42 @@ class HindsightCallback(CustomLogger):
             if not assistant_output:
                 return
 
-            # Skip if this looks like our injected memory context
-            if user_input.startswith("# Relevant Memories"):
+            # Build conversation items - each message becomes a separate item
+            # All linked by document_id for Hindsight to process together
+            items = []
+            for msg in messages:
+                role = msg.get("role", "").upper()
+                content = msg.get("content", "")
+
+                # Skip system messages - they're instructions, not conversation
+                if role == "SYSTEM":
+                    continue
+
+                # Skip if this looks like our injected memory context
+                if isinstance(content, str) and content.startswith("# Relevant Memories"):
+                    continue
+
+                # Handle structured content (e.g., vision messages)
+                if isinstance(content, list):
+                    text_parts = []
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            text_parts.append(item.get("text", ""))
+                    content = " ".join(text_parts)
+
+                if content:
+                    # Map roles to clearer labels
+                    label = "USER" if role == "USER" else "ASSISTANT"
+                    items.append(f"{label}: {content}")
+
+            # Add the new assistant response
+            items.append(f"ASSISTANT: {assistant_output}")
+
+            if not items:
                 return
+
+            # Use last user message for deduplication hash
+            user_input = self._extract_user_query(messages) or ""
 
             # Deduplication check
             conv_hash = self._compute_conversation_hash(user_input, assistant_output)
@@ -340,9 +375,12 @@ class HindsightCallback(CustomLogger):
                     logger.debug(f"Skipping duplicate conversation: {conv_hash}")
                 return
 
-            # Build conversation content for storage
-            # Format: Clear USER/ASSISTANT structure for Hindsight to extract facts from
-            conversation_text = f"USER: {user_input}\n\nASSISTANT: {assistant_output}"
+            # Use session_id as document_id if set, otherwise use config.document_id
+            doc_id = config.document_id or config.session_id
+
+            # Build the full conversation as a single item for now
+            # (Future: could store each message as separate item in same document)
+            conversation_text = "\n\n".join(items)
 
             # Build metadata
             metadata = {
@@ -372,11 +410,10 @@ class HindsightCallback(CustomLogger):
                         "content": conversation_text,
                         "context": f"conversation:litellm:{model}",
                         "metadata": metadata,
+                        "document_id": doc_id,  # Group by session/document
                     }
                 ],
             }
-            if config.document_id:
-                request_data["document_id"] = config.document_id
 
             self._http_post(url, request_data, config)
 

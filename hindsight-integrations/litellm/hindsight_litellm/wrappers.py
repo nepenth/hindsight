@@ -29,16 +29,48 @@ class RecallResult:
         return self.text
 
 
+@dataclass
+class RecallDebugInfo:
+    """Debug information from a recall operation."""
+    query: str
+    bank_id: str
+    scoped_bank_id: str
+    entity_id: Optional[str]
+    budget: str
+    max_tokens: int
+    fact_types: Optional[List[str]]
+    results_count: int
+    api_url: str
+
+
+@dataclass
+class RecallResponse:
+    """Response from a recall operation, including results and optional debug info."""
+    results: List[RecallResult]
+    debug: Optional[RecallDebugInfo] = None
+
+    def __iter__(self):
+        return iter(self.results)
+
+    def __len__(self):
+        return len(self.results)
+
+    def __getitem__(self, key):
+        return self.results[key]
+
+    def __bool__(self):
+        return bool(self.results)
+
+
 def recall(
     query: str,
-    limit: int = 10,
     bank_id: Optional[str] = None,
     entity_id: Optional[str] = None,
     fact_types: Optional[List[str]] = None,
     budget: Optional[str] = None,
     max_tokens: Optional[int] = None,
     hindsight_api_url: Optional[str] = None,
-) -> List[RecallResult]:
+) -> RecallResponse:
     """Recall memories from Hindsight.
 
     This function allows you to manually query memories without making an LLM call.
@@ -46,16 +78,16 @@ def recall(
 
     Args:
         query: The query string to search memories for
-        limit: Maximum number of memories to return (default: 10)
         bank_id: Override the configured bank_id
         entity_id: Override the configured entity_id for multi-user isolation
         fact_types: Filter by fact types (world, agent, opinion, observation)
-        budget: Recall budget level (low, mid, high)
+        budget: Recall budget level (low, mid, high) - controls how many memories are returned
         max_tokens: Maximum tokens for memory context
         hindsight_api_url: Override the configured API URL
 
     Returns:
-        List of RecallResult objects containing matched memories
+        RecallResponse containing matched memories (iterable like a list).
+        When verbose=True in config, includes debug info via .debug attribute.
 
     Raises:
         RuntimeError: If Hindsight is not configured and no overrides provided
@@ -65,11 +97,17 @@ def recall(
         >>> configure(bank_id="my-agent", hindsight_api_url="http://localhost:8888")
         >>>
         >>> # Query memories
-        >>> memories = recall("what projects am I working on?", limit=5)
+        >>> memories = recall("what projects am I working on?")
         >>> for m in memories:
         ...     print(f"- [{m.fact_type}] {m.text}")
         - [world] User is building a FastAPI project
         - [opinion] User prefers Python over JavaScript
+        >>>
+        >>> # With verbose mode, access debug info
+        >>> configure(bank_id="my-agent", verbose=True)
+        >>> memories = recall("what projects am I working on?")
+        >>> if memories.debug:
+        ...     print(f"Queried bank: {memories.debug.scoped_bank_id}")
     """
     # Get config or use overrides
     config = get_config()
@@ -108,7 +146,7 @@ def recall(
         # Convert to RecallResult objects
         recall_results = []
         if results:
-            for r in results[:limit]:
+            for r in results:
                 if hasattr(r, 'text'):
                     # Object with attributes
                     fact_type = getattr(r, 'type', None) or getattr(r, 'fact_type', 'unknown')
@@ -128,7 +166,22 @@ def recall(
                         metadata=r.get('metadata'),
                     ))
 
-        return recall_results
+        # Include debug info if verbose
+        debug_info = None
+        if config and config.verbose:
+            debug_info = RecallDebugInfo(
+                query=query,
+                bank_id=target_bank_id,
+                scoped_bank_id=scoped_bank_id,
+                entity_id=target_entity_id,
+                budget=target_budget,
+                max_tokens=target_max_tokens,
+                fact_types=target_fact_types,
+                results_count=len(recall_results),
+                api_url=api_url,
+            )
+
+        return RecallResponse(results=recall_results, debug=debug_info)
 
     except ImportError as e:
         raise RuntimeError(f"hindsight-client not installed: {e}")
@@ -140,14 +193,13 @@ def recall(
 
 async def arecall(
     query: str,
-    limit: int = 10,
     bank_id: Optional[str] = None,
     entity_id: Optional[str] = None,
     fact_types: Optional[List[str]] = None,
     budget: Optional[str] = None,
     max_tokens: Optional[int] = None,
     hindsight_api_url: Optional[str] = None,
-) -> List[RecallResult]:
+) -> RecallResponse:
     """Async version of recall().
 
     See recall() for full documentation.
@@ -158,12 +210,311 @@ async def arecall(
         None,
         lambda: recall(
             query=query,
-            limit=limit,
             bank_id=bank_id,
             entity_id=entity_id,
             fact_types=fact_types,
             budget=budget,
             max_tokens=max_tokens,
+            hindsight_api_url=hindsight_api_url,
+        )
+    )
+
+
+@dataclass
+class ReflectDebugInfo:
+    """Debug information from a reflect operation."""
+    query: str
+    bank_id: str
+    scoped_bank_id: str
+    entity_id: Optional[str]
+    budget: str
+    context: Optional[str]
+    api_url: str
+
+
+@dataclass
+class ReflectResult:
+    """Result from a reflect operation."""
+    text: str
+    based_on: Optional[Dict[str, List[Any]]] = None
+    debug: Optional[ReflectDebugInfo] = None
+
+    def __str__(self) -> str:
+        return self.text
+
+
+def reflect(
+    query: str,
+    bank_id: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    budget: Optional[str] = None,
+    context: Optional[str] = None,
+    hindsight_api_url: Optional[str] = None,
+) -> ReflectResult:
+    """Generate a contextual answer based on memories.
+
+    Unlike recall() which returns raw memory facts, reflect() uses an LLM
+    to synthesize a coherent answer based on the bank's memories.
+
+    Args:
+        query: The question or prompt to answer
+        bank_id: Override the configured bank_id
+        entity_id: Override the configured entity_id for multi-user isolation
+        budget: Budget level for reflection (low, mid, high)
+        context: Additional context to include in the reflection
+        hindsight_api_url: Override the configured API URL
+
+    Returns:
+        ReflectResult with synthesized answer text
+
+    Raises:
+        RuntimeError: If Hindsight is not configured and no overrides provided
+
+    Example:
+        >>> from hindsight_litellm import configure, reflect
+        >>> configure(bank_id="my-agent", hindsight_api_url="http://localhost:8888")
+        >>>
+        >>> # Get a synthesized answer based on memories
+        >>> result = reflect("What projects am I working on?")
+        >>> print(result.text)
+        Based on our conversations, you're working on a FastAPI project...
+    """
+    config = get_config()
+
+    api_url = hindsight_api_url or (config.hindsight_api_url if config else None)
+    target_bank_id = bank_id or (config.bank_id if config else None)
+    target_entity_id = entity_id or (config.entity_id if config else None)
+    target_budget = budget or (config.recall_budget if config else "mid")
+
+    if not api_url or not target_bank_id:
+        raise RuntimeError(
+            "Hindsight not configured. Call configure() or provide bank_id and hindsight_api_url."
+        )
+
+    try:
+        from hindsight_client import Hindsight
+
+        client = Hindsight(base_url=api_url, timeout=30.0)
+
+        # Build bank_id with entity scoping if entity_id is set
+        scoped_bank_id = target_bank_id
+        if target_entity_id:
+            scoped_bank_id = f"{target_bank_id}:{target_entity_id}"
+
+        # Call reflect API
+        result = client.reflect(
+            bank_id=scoped_bank_id,
+            query=query,
+            budget=target_budget,
+            context=context,
+        )
+
+        # Convert to ReflectResult
+        text = result.text if hasattr(result, 'text') else str(result)
+        based_on = getattr(result, 'based_on', None)
+
+        # Include debug info if verbose
+        debug_info = None
+        if config and config.verbose:
+            debug_info = ReflectDebugInfo(
+                query=query,
+                bank_id=target_bank_id,
+                scoped_bank_id=scoped_bank_id,
+                entity_id=target_entity_id,
+                budget=target_budget,
+                context=context,
+                api_url=api_url,
+            )
+
+        return ReflectResult(text=text, based_on=based_on, debug=debug_info)
+
+    except ImportError as e:
+        raise RuntimeError(f"hindsight-client not installed: {e}")
+    except Exception as e:
+        if config and config.verbose:
+            logger.warning(f"Failed to reflect: {e}")
+        raise
+
+
+async def areflect(
+    query: str,
+    bank_id: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    budget: Optional[str] = None,
+    context: Optional[str] = None,
+    hindsight_api_url: Optional[str] = None,
+) -> ReflectResult:
+    """Async version of reflect().
+
+    See reflect() for full documentation.
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: reflect(
+            query=query,
+            bank_id=bank_id,
+            entity_id=entity_id,
+            budget=budget,
+            context=context,
+            hindsight_api_url=hindsight_api_url,
+        )
+    )
+
+
+@dataclass
+class RetainDebugInfo:
+    """Debug information from a retain operation."""
+    content: str
+    bank_id: str
+    scoped_bank_id: str
+    entity_id: Optional[str]
+    context: Optional[str]
+    document_id: Optional[str]
+    metadata: Optional[Dict[str, str]]
+    api_url: str
+
+
+@dataclass
+class RetainResult:
+    """Result from a retain operation."""
+    success: bool
+    items_count: int = 0
+    debug: Optional[RetainDebugInfo] = None
+
+    def __bool__(self) -> bool:
+        return self.success
+
+
+def retain(
+    content: str,
+    bank_id: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    context: Optional[str] = None,
+    document_id: Optional[str] = None,
+    metadata: Optional[Dict[str, str]] = None,
+    hindsight_api_url: Optional[str] = None,
+) -> RetainResult:
+    """Store content to Hindsight memory.
+
+    This function allows you to manually store content to memory without
+    making an LLM call. Useful for storing feedback, user preferences,
+    or any other information you want the system to remember.
+
+    Args:
+        content: The text content to store
+        bank_id: Override the configured bank_id
+        entity_id: Override the configured entity_id for multi-user isolation
+        context: Context description for the memory (e.g., "customer_feedback")
+        document_id: Optional document ID for grouping related memories
+        metadata: Optional key-value metadata to attach to the memory
+        hindsight_api_url: Override the configured API URL
+
+    Returns:
+        RetainResult indicating success
+
+    Raises:
+        RuntimeError: If Hindsight is not configured and no overrides provided
+
+    Example:
+        >>> from hindsight_litellm import configure, retain
+        >>> configure(bank_id="my-agent", hindsight_api_url="http://localhost:8888")
+        >>>
+        >>> # Store feedback
+        >>> retain("User prefers dark mode", context="user_preference")
+        >>>
+        >>> # Store with metadata
+        >>> retain(
+        ...     "Customer reported billing issue resolved",
+        ...     context="support_ticket",
+        ...     metadata={"ticket_id": "12345", "status": "resolved"}
+        ... )
+    """
+    config = get_config()
+
+    api_url = hindsight_api_url or (config.hindsight_api_url if config else None)
+    target_bank_id = bank_id or (config.bank_id if config else None)
+    target_entity_id = entity_id or (config.entity_id if config else None)
+    target_document_id = document_id or (config.document_id if config else None)
+
+    if not api_url or not target_bank_id:
+        raise RuntimeError(
+            "Hindsight not configured. Call configure() or provide bank_id and hindsight_api_url."
+        )
+
+    try:
+        from hindsight_client import Hindsight
+
+        client = Hindsight(base_url=api_url, timeout=30.0)
+
+        # Build bank_id with entity scoping if entity_id is set
+        scoped_bank_id = target_bank_id
+        if target_entity_id:
+            scoped_bank_id = f"{target_bank_id}:{target_entity_id}"
+
+        # Call retain API
+        result = client.retain(
+            bank_id=scoped_bank_id,
+            content=content,
+            context=context,
+            document_id=target_document_id,
+            metadata=metadata,
+        )
+
+        # Check success
+        success = getattr(result, 'success', True)
+        items_count = getattr(result, 'items_count', 1)
+
+        # Include debug info if verbose
+        debug_info = None
+        if config and config.verbose:
+            logger.info(f"Stored content to Hindsight bank: {target_bank_id}")
+            debug_info = RetainDebugInfo(
+                content=content,
+                bank_id=target_bank_id,
+                scoped_bank_id=scoped_bank_id,
+                entity_id=target_entity_id,
+                context=context,
+                document_id=target_document_id,
+                metadata=metadata,
+                api_url=api_url,
+            )
+
+        return RetainResult(success=success, items_count=items_count, debug=debug_info)
+
+    except ImportError as e:
+        raise RuntimeError(f"hindsight-client not installed: {e}")
+    except Exception as e:
+        if config and config.verbose:
+            logger.warning(f"Failed to retain: {e}")
+        raise
+
+
+async def aretain(
+    content: str,
+    bank_id: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    context: Optional[str] = None,
+    document_id: Optional[str] = None,
+    metadata: Optional[Dict[str, str]] = None,
+    hindsight_api_url: Optional[str] = None,
+) -> RetainResult:
+    """Async version of retain().
+
+    See retain() for full documentation.
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: retain(
+            content=content,
+            bank_id=bank_id,
+            entity_id=entity_id,
+            context=context,
+            document_id=document_id,
+            metadata=metadata,
             hindsight_api_url=hindsight_api_url,
         )
     )
