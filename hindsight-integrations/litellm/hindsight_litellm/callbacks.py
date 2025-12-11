@@ -173,8 +173,10 @@ class HindsightCallback(CustomLogger):
         if not results:
             return ""
 
+        # Apply limit if set, otherwise use all results
+        results_to_use = results[:config.max_memories] if config.max_memories else results
         memory_lines = []
-        for i, result in enumerate(results[:config.max_memories], 1):
+        for i, result in enumerate(results_to_use, 1):
             # Handle both RecallResult objects and dicts
             if hasattr(result, 'text'):
                 text = result.text or ""

@@ -47,7 +47,7 @@ class HindsightConfig:
     store_conversations: bool = True
     inject_memories: bool = True
     injection_mode: MemoryInjectionMode = MemoryInjectionMode.SYSTEM_MESSAGE
-    max_memories: int = 10
+    max_memories: Optional[int] = None  # None = no limit (use all results from API)
     max_memory_tokens: int = 2000
     recall_budget: str = "mid"  # low, mid, high
     fact_types: Optional[List[str]] = None  # world, agent, opinion, observation
@@ -74,7 +74,7 @@ def configure(
     store_conversations: bool = True,
     inject_memories: bool = True,
     injection_mode: MemoryInjectionMode = MemoryInjectionMode.SYSTEM_MESSAGE,
-    max_memories: int = 10,
+    max_memories: Optional[int] = None,
     max_memory_tokens: int = 2000,
     recall_budget: str = "mid",
     fact_types: Optional[List[str]] = None,

@@ -548,7 +548,7 @@ class HindsightOpenAI:
         session_id: Optional[str] = None,
         store_conversations: bool = True,
         inject_memories: bool = True,
-        max_memories: int = 10,
+        max_memories: Optional[int] = None,
         recall_budget: str = "mid",
         verbose: bool = False,
     ):
@@ -562,7 +562,7 @@ class HindsightOpenAI:
             session_id: Session identifier for conversation grouping
             store_conversations: Whether to store conversations
             inject_memories: Whether to inject relevant memories
-            max_memories: Maximum number of memories to inject
+            max_memories: Maximum number of memories to inject (None = no limit)
             recall_budget: Budget level for memory recall (low, mid, high)
             verbose: Enable verbose logging
         """
@@ -608,14 +608,15 @@ class HindsightOpenAI:
                 bank_id=self._get_scoped_bank_id(),
                 query=query,
                 budget=self._recall_budget,
-                max_tokens=self._max_memories * 200,
+                max_tokens=self._max_memories * 200 if self._max_memories else 2000,
             )
 
             if not results:
                 return ""
 
+            results_to_use = results[:self._max_memories] if self._max_memories else results
             memory_lines = []
-            for i, r in enumerate(results[:self._max_memories], 1):
+            for i, r in enumerate(results_to_use, 1):
                 text = r.text if hasattr(r, 'text') else str(r)
                 fact_type = r.fact_type if hasattr(r, 'fact_type') else 'memory'
                 memory_lines.append(f"{i}. [{fact_type.upper()}] {text}")
@@ -759,7 +760,7 @@ class HindsightAnthropic:
         session_id: Optional[str] = None,
         store_conversations: bool = True,
         inject_memories: bool = True,
-        max_memories: int = 10,
+        max_memories: Optional[int] = None,
         recall_budget: str = "mid",
         verbose: bool = False,
     ):
@@ -773,7 +774,7 @@ class HindsightAnthropic:
             session_id: Session identifier for conversation grouping
             store_conversations: Whether to store conversations
             inject_memories: Whether to inject relevant memories
-            max_memories: Maximum number of memories to inject
+            max_memories: Maximum number of memories to inject (None = no limit)
             recall_budget: Budget level for memory recall (low, mid, high)
             verbose: Enable verbose logging
         """
@@ -819,14 +820,15 @@ class HindsightAnthropic:
                 bank_id=self._get_scoped_bank_id(),
                 query=query,
                 budget=self._recall_budget,
-                max_tokens=self._max_memories * 200,
+                max_tokens=self._max_memories * 200 if self._max_memories else 2000,
             )
 
             if not results:
                 return ""
 
+            results_to_use = results[:self._max_memories] if self._max_memories else results
             memory_lines = []
-            for i, r in enumerate(results[:self._max_memories], 1):
+            for i, r in enumerate(results_to_use, 1):
                 text = r.text if hasattr(r, 'text') else str(r)
                 fact_type = r.fact_type if hasattr(r, 'fact_type') else 'memory'
                 memory_lines.append(f"{i}. [{fact_type.upper()}] {text}")
@@ -942,7 +944,7 @@ def wrap_openai(
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
-    max_memories: int = 10,
+    max_memories: Optional[int] = None,
     recall_budget: str = "mid",
     verbose: bool = False,
 ) -> HindsightOpenAI:
@@ -959,7 +961,7 @@ def wrap_openai(
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations
         inject_memories: Whether to inject relevant memories
-        max_memories: Maximum number of memories to inject
+        max_memories: Maximum number of memories to inject (None = no limit)
         recall_budget: Budget level for memory recall (low, mid, high)
         verbose: Enable verbose logging
 
@@ -1004,7 +1006,7 @@ def wrap_anthropic(
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
-    max_memories: int = 10,
+    max_memories: Optional[int] = None,
     recall_budget: str = "mid",
     verbose: bool = False,
 ) -> HindsightAnthropic:
@@ -1021,7 +1023,7 @@ def wrap_anthropic(
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations
         inject_memories: Whether to inject relevant memories
-        max_memories: Maximum number of memories to inject
+        max_memories: Maximum number of memories to inject (None = no limit)
         recall_budget: Budget level for memory recall (low, mid, high)
         verbose: Enable verbose logging
 

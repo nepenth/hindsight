@@ -357,7 +357,13 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                 max_tokens=config.max_memory_tokens or 2000,
                 types=config.fact_types,
             )
-            results = result.results if hasattr(result, 'results') else []
+            # client.recall() returns a list directly, not an object with .results
+            if isinstance(result, list):
+                results = result
+            elif hasattr(result, 'results'):
+                results = result.results
+            else:
+                results = []
             # Convert to dicts for debug info
             recall_results = [
                 {
@@ -383,9 +389,10 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                     )
                 return messages
 
-            # Format memories
+            # Format memories (apply limit if set, otherwise use all)
+            results_to_use = results[:config.max_memories] if config.max_memories else results
             memory_lines = []
-            for i, r in enumerate(results[:config.max_memories], 1):
+            for i, r in enumerate(results_to_use, 1):
                 text = r.text if hasattr(r, 'text') else str(r)
                 fact_type = getattr(r, 'type', 'world')
                 if text:
