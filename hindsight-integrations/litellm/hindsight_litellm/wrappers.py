@@ -34,8 +34,6 @@ class RecallDebugInfo:
     """Debug information from a recall operation."""
     query: str
     bank_id: str
-    scoped_bank_id: str
-    entity_id: Optional[str]
     budget: str
     max_tokens: int
     fact_types: Optional[List[str]]
@@ -65,7 +63,6 @@ class RecallResponse:
 def recall(
     query: str,
     bank_id: Optional[str] = None,
-    entity_id: Optional[str] = None,
     fact_types: Optional[List[str]] = None,
     budget: Optional[str] = None,
     max_tokens: Optional[int] = None,
@@ -78,8 +75,8 @@ def recall(
 
     Args:
         query: The query string to search memories for
-        bank_id: Override the configured bank_id
-        entity_id: Override the configured entity_id for multi-user isolation
+        bank_id: Override the configured bank_id. For multi-user support,
+            use different bank_ids per user (e.g., f"user-{user_id}")
         fact_types: Filter by fact types (world, agent, opinion, observation)
         budget: Recall budget level (low, mid, high) - controls how many memories are returned
         max_tokens: Maximum tokens for memory context
@@ -107,14 +104,13 @@ def recall(
         >>> configure(bank_id="my-agent", verbose=True)
         >>> memories = recall("what projects am I working on?")
         >>> if memories.debug:
-        ...     print(f"Queried bank: {memories.debug.scoped_bank_id}")
+        ...     print(f"Queried bank: {memories.debug.bank_id}")
     """
     # Get config or use overrides
     config = get_config()
 
     api_url = hindsight_api_url or (config.hindsight_api_url if config else None)
     target_bank_id = bank_id or (config.bank_id if config else None)
-    target_entity_id = entity_id or (config.entity_id if config else None)
     target_fact_types = fact_types or (config.fact_types if config else None)
     target_budget = budget or (config.recall_budget if config else "mid")
     target_max_tokens = max_tokens or (config.max_memory_tokens if config else 2000)
@@ -129,14 +125,9 @@ def recall(
 
         client = Hindsight(base_url=api_url, timeout=30.0)
 
-        # Build bank_id with entity scoping if entity_id is set
-        scoped_bank_id = target_bank_id
-        if target_entity_id:
-            scoped_bank_id = f"{target_bank_id}:{target_entity_id}"
-
         # Call recall API
         results = client.recall(
-            bank_id=scoped_bank_id,
+            bank_id=target_bank_id,
             query=query,
             types=target_fact_types,
             budget=target_budget,
@@ -172,8 +163,6 @@ def recall(
             debug_info = RecallDebugInfo(
                 query=query,
                 bank_id=target_bank_id,
-                scoped_bank_id=scoped_bank_id,
-                entity_id=target_entity_id,
                 budget=target_budget,
                 max_tokens=target_max_tokens,
                 fact_types=target_fact_types,
@@ -194,7 +183,6 @@ def recall(
 async def arecall(
     query: str,
     bank_id: Optional[str] = None,
-    entity_id: Optional[str] = None,
     fact_types: Optional[List[str]] = None,
     budget: Optional[str] = None,
     max_tokens: Optional[int] = None,
@@ -211,7 +199,6 @@ async def arecall(
         lambda: recall(
             query=query,
             bank_id=bank_id,
-            entity_id=entity_id,
             fact_types=fact_types,
             budget=budget,
             max_tokens=max_tokens,
@@ -225,8 +212,6 @@ class ReflectDebugInfo:
     """Debug information from a reflect operation."""
     query: str
     bank_id: str
-    scoped_bank_id: str
-    entity_id: Optional[str]
     budget: str
     context: Optional[str]
     api_url: str
@@ -246,7 +231,6 @@ class ReflectResult:
 def reflect(
     query: str,
     bank_id: Optional[str] = None,
-    entity_id: Optional[str] = None,
     budget: Optional[str] = None,
     context: Optional[str] = None,
     hindsight_api_url: Optional[str] = None,
@@ -258,8 +242,8 @@ def reflect(
 
     Args:
         query: The question or prompt to answer
-        bank_id: Override the configured bank_id
-        entity_id: Override the configured entity_id for multi-user isolation
+        bank_id: Override the configured bank_id. For multi-user support,
+            use different bank_ids per user (e.g., f"user-{user_id}")
         budget: Budget level for reflection (low, mid, high)
         context: Additional context to include in the reflection
         hindsight_api_url: Override the configured API URL
@@ -283,7 +267,6 @@ def reflect(
 
     api_url = hindsight_api_url or (config.hindsight_api_url if config else None)
     target_bank_id = bank_id or (config.bank_id if config else None)
-    target_entity_id = entity_id or (config.entity_id if config else None)
     target_budget = budget or (config.recall_budget if config else "mid")
 
     if not api_url or not target_bank_id:
@@ -296,14 +279,9 @@ def reflect(
 
         client = Hindsight(base_url=api_url, timeout=30.0)
 
-        # Build bank_id with entity scoping if entity_id is set
-        scoped_bank_id = target_bank_id
-        if target_entity_id:
-            scoped_bank_id = f"{target_bank_id}:{target_entity_id}"
-
         # Call reflect API
         result = client.reflect(
-            bank_id=scoped_bank_id,
+            bank_id=target_bank_id,
             query=query,
             budget=target_budget,
             context=context,
@@ -319,8 +297,6 @@ def reflect(
             debug_info = ReflectDebugInfo(
                 query=query,
                 bank_id=target_bank_id,
-                scoped_bank_id=scoped_bank_id,
-                entity_id=target_entity_id,
                 budget=target_budget,
                 context=context,
                 api_url=api_url,
@@ -339,7 +315,6 @@ def reflect(
 async def areflect(
     query: str,
     bank_id: Optional[str] = None,
-    entity_id: Optional[str] = None,
     budget: Optional[str] = None,
     context: Optional[str] = None,
     hindsight_api_url: Optional[str] = None,
@@ -355,7 +330,6 @@ async def areflect(
         lambda: reflect(
             query=query,
             bank_id=bank_id,
-            entity_id=entity_id,
             budget=budget,
             context=context,
             hindsight_api_url=hindsight_api_url,
@@ -368,8 +342,6 @@ class RetainDebugInfo:
     """Debug information from a retain operation."""
     content: str
     bank_id: str
-    scoped_bank_id: str
-    entity_id: Optional[str]
     context: Optional[str]
     document_id: Optional[str]
     metadata: Optional[Dict[str, str]]
@@ -390,7 +362,6 @@ class RetainResult:
 def retain(
     content: str,
     bank_id: Optional[str] = None,
-    entity_id: Optional[str] = None,
     context: Optional[str] = None,
     document_id: Optional[str] = None,
     metadata: Optional[Dict[str, str]] = None,
@@ -404,8 +375,8 @@ def retain(
 
     Args:
         content: The text content to store
-        bank_id: Override the configured bank_id
-        entity_id: Override the configured entity_id for multi-user isolation
+        bank_id: Override the configured bank_id. For multi-user support,
+            use different bank_ids per user (e.g., f"user-{user_id}")
         context: Context description for the memory (e.g., "customer_feedback")
         document_id: Optional document ID for grouping related memories
         metadata: Optional key-value metadata to attach to the memory
@@ -435,7 +406,6 @@ def retain(
 
     api_url = hindsight_api_url or (config.hindsight_api_url if config else None)
     target_bank_id = bank_id or (config.bank_id if config else None)
-    target_entity_id = entity_id or (config.entity_id if config else None)
     target_document_id = document_id or (config.document_id if config else None)
 
     if not api_url or not target_bank_id:
@@ -448,14 +418,9 @@ def retain(
 
         client = Hindsight(base_url=api_url, timeout=30.0)
 
-        # Build bank_id with entity scoping if entity_id is set
-        scoped_bank_id = target_bank_id
-        if target_entity_id:
-            scoped_bank_id = f"{target_bank_id}:{target_entity_id}"
-
         # Call retain API
         result = client.retain(
-            bank_id=scoped_bank_id,
+            bank_id=target_bank_id,
             content=content,
             context=context,
             document_id=target_document_id,
@@ -473,8 +438,6 @@ def retain(
             debug_info = RetainDebugInfo(
                 content=content,
                 bank_id=target_bank_id,
-                scoped_bank_id=scoped_bank_id,
-                entity_id=target_entity_id,
                 context=context,
                 document_id=target_document_id,
                 metadata=metadata,
@@ -494,7 +457,6 @@ def retain(
 async def aretain(
     content: str,
     bank_id: Optional[str] = None,
-    entity_id: Optional[str] = None,
     context: Optional[str] = None,
     document_id: Optional[str] = None,
     metadata: Optional[Dict[str, str]] = None,
@@ -511,7 +473,6 @@ async def aretain(
         lambda: retain(
             content=content,
             bank_id=bank_id,
-            entity_id=entity_id,
             context=context,
             document_id=document_id,
             metadata=metadata,
@@ -544,7 +505,6 @@ class HindsightOpenAI:
         client: Any,
         bank_id: str,
         hindsight_api_url: str = "http://localhost:8888",
-        entity_id: Optional[str] = None,
         session_id: Optional[str] = None,
         store_conversations: bool = True,
         inject_memories: bool = True,
@@ -556,9 +516,9 @@ class HindsightOpenAI:
 
         Args:
             client: The OpenAI client instance to wrap
-            bank_id: Memory bank ID for memory operations
+            bank_id: Memory bank ID for memory operations. For multi-user support,
+                use different bank_ids per user (e.g., f"user-{user_id}")
             hindsight_api_url: URL of the Hindsight API server
-            entity_id: User identifier for multi-user memory isolation
             session_id: Session identifier for conversation grouping
             store_conversations: Whether to store conversations
             inject_memories: Whether to inject relevant memories
@@ -569,7 +529,6 @@ class HindsightOpenAI:
         self._client = client
         self._bank_id = bank_id
         self._api_url = hindsight_api_url
-        self._entity_id = entity_id
         self._session_id = session_id
         self._store_conversations = store_conversations
         self._inject_memories = inject_memories
@@ -591,12 +550,6 @@ class HindsightOpenAI:
             )
         return self._hindsight_client
 
-    def _get_scoped_bank_id(self) -> str:
-        """Get bank_id with entity scoping if set."""
-        if self._entity_id:
-            return f"{self._bank_id}:{self._entity_id}"
-        return self._bank_id
-
     def _recall_memories(self, query: str) -> str:
         """Recall and format memories for injection."""
         if not self._inject_memories:
@@ -605,7 +558,7 @@ class HindsightOpenAI:
         try:
             client = self._get_hindsight_client()
             results = client.recall(
-                bank_id=self._get_scoped_bank_id(),
+                bank_id=self._bank_id,
                 query=query,
                 budget=self._recall_budget,
                 max_tokens=self._max_memories * 200 if self._max_memories else 2000,
@@ -652,7 +605,7 @@ class HindsightOpenAI:
                 metadata["session_id"] = self._session_id
 
             client.retain(
-                bank_id=self._get_scoped_bank_id(),
+                bank_id=self._bank_id,
                 content=conversation_text,
                 context=f"conversation:openai:{model}",
                 metadata=metadata,
@@ -756,7 +709,6 @@ class HindsightAnthropic:
         client: Any,
         bank_id: str,
         hindsight_api_url: str = "http://localhost:8888",
-        entity_id: Optional[str] = None,
         session_id: Optional[str] = None,
         store_conversations: bool = True,
         inject_memories: bool = True,
@@ -768,9 +720,9 @@ class HindsightAnthropic:
 
         Args:
             client: The Anthropic client instance to wrap
-            bank_id: Memory bank ID for memory operations
+            bank_id: Memory bank ID for memory operations. For multi-user support,
+                use different bank_ids per user (e.g., f"user-{user_id}")
             hindsight_api_url: URL of the Hindsight API server
-            entity_id: User identifier for multi-user memory isolation
             session_id: Session identifier for conversation grouping
             store_conversations: Whether to store conversations
             inject_memories: Whether to inject relevant memories
@@ -781,7 +733,6 @@ class HindsightAnthropic:
         self._client = client
         self._bank_id = bank_id
         self._api_url = hindsight_api_url
-        self._entity_id = entity_id
         self._session_id = session_id
         self._store_conversations = store_conversations
         self._inject_memories = inject_memories
@@ -803,12 +754,6 @@ class HindsightAnthropic:
             )
         return self._hindsight_client
 
-    def _get_scoped_bank_id(self) -> str:
-        """Get bank_id with entity scoping if set."""
-        if self._entity_id:
-            return f"{self._bank_id}:{self._entity_id}"
-        return self._bank_id
-
     def _recall_memories(self, query: str) -> str:
         """Recall and format memories for injection."""
         if not self._inject_memories:
@@ -817,7 +762,7 @@ class HindsightAnthropic:
         try:
             client = self._get_hindsight_client()
             results = client.recall(
-                bank_id=self._get_scoped_bank_id(),
+                bank_id=self._bank_id,
                 query=query,
                 budget=self._recall_budget,
                 max_tokens=self._max_memories * 200 if self._max_memories else 2000,
@@ -864,7 +809,7 @@ class HindsightAnthropic:
                 metadata["session_id"] = self._session_id
 
             client.retain(
-                bank_id=self._get_scoped_bank_id(),
+                bank_id=self._bank_id,
                 content=conversation_text,
                 context=f"conversation:anthropic:{model}",
                 metadata=metadata,
@@ -940,7 +885,6 @@ def wrap_openai(
     client: Any,
     bank_id: str,
     hindsight_api_url: str = "http://localhost:8888",
-    entity_id: Optional[str] = None,
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
@@ -955,9 +899,9 @@ def wrap_openai(
 
     Args:
         client: The OpenAI client instance to wrap
-        bank_id: Memory bank ID for memory operations
+        bank_id: Memory bank ID for memory operations. For multi-user support,
+            use different bank_ids per user (e.g., f"user-{user_id}")
         hindsight_api_url: URL of the Hindsight API server
-        entity_id: User identifier for multi-user memory isolation
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations
         inject_memories: Whether to inject relevant memories
@@ -975,8 +919,7 @@ def wrap_openai(
         >>> client = OpenAI()
         >>> wrapped = wrap_openai(
         ...     client,
-        ...     bank_id="my-agent",
-        ...     entity_id="user-123",  # Multi-user support
+        ...     bank_id=f"user-{user_id}",  # Multi-user support via separate banks
         ... )
         >>>
         >>> response = wrapped.chat.completions.create(
@@ -988,7 +931,6 @@ def wrap_openai(
         client=client,
         bank_id=bank_id,
         hindsight_api_url=hindsight_api_url,
-        entity_id=entity_id,
         session_id=session_id,
         store_conversations=store_conversations,
         inject_memories=inject_memories,
@@ -1002,7 +944,6 @@ def wrap_anthropic(
     client: Any,
     bank_id: str,
     hindsight_api_url: str = "http://localhost:8888",
-    entity_id: Optional[str] = None,
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
@@ -1017,9 +958,9 @@ def wrap_anthropic(
 
     Args:
         client: The Anthropic client instance to wrap
-        bank_id: Memory bank ID for memory operations
+        bank_id: Memory bank ID for memory operations. For multi-user support,
+            use different bank_ids per user (e.g., f"user-{user_id}")
         hindsight_api_url: URL of the Hindsight API server
-        entity_id: User identifier for multi-user memory isolation
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations
         inject_memories: Whether to inject relevant memories
@@ -1037,8 +978,7 @@ def wrap_anthropic(
         >>> client = Anthropic()
         >>> wrapped = wrap_anthropic(
         ...     client,
-        ...     bank_id="my-agent",
-        ...     entity_id="user-123",  # Multi-user support
+        ...     bank_id=f"user-{user_id}",  # Multi-user support via separate banks
         ... )
         >>>
         >>> response = wrapped.messages.create(
@@ -1051,7 +991,6 @@ def wrap_anthropic(
         client=client,
         bank_id=bank_id,
         hindsight_api_url=hindsight_api_url,
-        entity_id=entity_id,
         session_id=session_id,
         store_conversations=store_conversations,
         inject_memories=inject_memories,

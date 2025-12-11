@@ -248,10 +248,8 @@ class HindsightCallback(CustomLogger):
 
         return updated_messages
 
-    def _get_scoped_bank_id(self, config: HindsightConfig) -> str:
-        """Get bank_id with entity scoping if entity_id is set."""
-        if config.entity_id:
-            return f"{config.bank_id}:{config.entity_id}"
+    def _get_bank_id(self, config: HindsightConfig) -> str:
+        """Get the bank_id for API calls."""
         return config.bank_id
 
     def _recall_memories_sync(
@@ -261,8 +259,8 @@ class HindsightCallback(CustomLogger):
     ) -> List[Dict[str, Any]]:
         """Recall relevant memories from Hindsight (sync) using direct HTTP."""
         try:
-            scoped_bank_id = self._get_scoped_bank_id(config)
-            url = f"{config.hindsight_api_url}/v1/default/banks/{scoped_bank_id}/memories/recall"
+            bank_id = self._get_bank_id(config)
+            url = f"{config.hindsight_api_url}/v1/default/banks/{bank_id}/memories/recall"
 
             request_data = {
                 "query": query,
@@ -399,12 +397,8 @@ class HindsightCallback(CustomLogger):
             if config.session_id:
                 metadata["session_id"] = config.session_id
 
-            # Add entity_id to metadata if set
-            if config.entity_id:
-                metadata["entity_id"] = config.entity_id
-
-            scoped_bank_id = self._get_scoped_bank_id(config)
-            url = f"{config.hindsight_api_url}/v1/default/banks/{scoped_bank_id}/memories"
+            bank_id = self._get_bank_id(config)
+            url = f"{config.hindsight_api_url}/v1/default/banks/{bank_id}/memories"
 
             request_data = {
                 "items": [

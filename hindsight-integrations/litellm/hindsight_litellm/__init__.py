@@ -9,7 +9,7 @@ Features:
 - Automatic conversation storage after LLM calls
 - Works with any LiteLLM-supported provider
 - Zero code changes to existing LiteLLM usage
-- Multi-user support via entity_id
+- Multi-user support via separate bank_ids
 - Session management for conversation threading
 - Direct recall API for manual memory queries
 - Native client wrappers for OpenAI and Anthropic
@@ -20,8 +20,7 @@ Basic usage:
     >>> # Configure Hindsight integration
     >>> configure(
     ...     hindsight_api_url="http://localhost:8888",
-    ...     bank_id="my-agent",
-    ...     entity_id="user-123",  # Multi-user support
+    ...     bank_id="user-123",  # Use separate bank_ids for multi-user support
     ...     store_conversations=True,
     ...     inject_memories=True,
     ... )
@@ -50,7 +49,7 @@ Native client wrappers:
     >>> from hindsight_litellm import wrap_openai
     >>>
     >>> client = OpenAI()
-    >>> wrapped = wrap_openai(client, bank_id="my-agent", entity_id="user-123")
+    >>> wrapped = wrap_openai(client, bank_id="user-123")
     >>>
     >>> response = wrapped.chat.completions.create(
     ...     model="gpt-4",
@@ -86,20 +85,20 @@ Works with any LiteLLM-supported provider:
 Context manager usage:
     >>> from hindsight_litellm import hindsight_memory
     >>>
-    >>> with hindsight_memory(bank_id="my-agent", entity_id="user-123"):
+    >>> with hindsight_memory(bank_id="user-123"):
     ...     response = litellm.completion(model="gpt-4", messages=[...])
     >>> # Memory integration automatically disabled after context
 
 Configuration options:
     - hindsight_api_url: URL of your Hindsight API server
-    - bank_id: Memory bank ID for memory operations (required)
+    - bank_id: Memory bank ID for memory operations (required). For multi-user
+        support, use different bank_ids per user (e.g., f"user-{user_id}")
     - api_key: Optional API key for Hindsight authentication
-    - entity_id: User identifier for multi-user memory isolation
     - session_id: Session identifier for conversation grouping
     - store_conversations: Whether to store conversations (default: True)
     - inject_memories: Whether to inject relevant memories (default: True)
     - injection_mode: How to inject memories (system_message or prepend_user)
-    - max_memories: Maximum number of memories to inject (default: 10)
+    - max_memories: Maximum number of memories to inject (None = unlimited)
     - recall_budget: Budget for memory recall (low, mid, high)
     - excluded_models: List of model patterns to exclude from interception
     - verbose: Enable verbose logging
@@ -128,8 +127,6 @@ from .config import (
     new_session,
     set_session,
     get_session,
-    set_entity,
-    get_entity,
     HindsightConfig,
     MemoryInjectionMode,
 )
@@ -180,8 +177,6 @@ class InjectionDebugInfo:
         mode: The injection mode used ("reflect" or "recall")
         query: The user query used for memory lookup
         bank_id: The bank ID used
-        scoped_bank_id: The bank ID with entity scoping applied
-        entity_id: The entity ID used (if any)
         memory_context: The formatted memory context that was injected
         reflect_text: The raw reflect text (when mode="reflect")
         reflect_facts: The facts used to generate the reflect response (when reflect_include_facts=True)
@@ -193,8 +188,6 @@ class InjectionDebugInfo:
     mode: str  # "reflect" or "recall"
     query: str
     bank_id: str
-    scoped_bank_id: str
-    entity_id: Optional[str]
     memory_context: str  # The formatted context that was injected
     reflect_text: Optional[str] = None  # Raw reflect response text
     reflect_facts: Optional[List[dict]] = None  # Facts used by reflect (when reflect_include_facts=True)
@@ -275,10 +268,8 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
     try:
         from hindsight_client import Hindsight
 
-        # Build scoped bank_id
-        scoped_bank_id = config.bank_id
-        if config.entity_id:
-            scoped_bank_id = f"{config.bank_id}:{config.entity_id}"
+        # Use bank_id directly (no entity scoping)
+        bank_id = config.bank_id
 
         # Track debug info
         mode = "reflect" if config.use_reflect else "recall"
@@ -307,7 +298,7 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                 except RuntimeError:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(client._api.reflect(scoped_bank_id, request_obj))
+                result = loop.run_until_complete(client._api.reflect(bank_id, request_obj))
                 # Extract facts from based_on
                 if hasattr(result, 'based_on') and result.based_on:
                     reflect_facts = [
@@ -320,7 +311,7 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                     ]
             else:
                 result = client.reflect(
-                    bank_id=scoped_bank_id,
+                    bank_id=bank_id,
                     query=user_query,
                     budget=config.recall_budget or "mid",
                 )
@@ -332,9 +323,7 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                     _last_injection_debug = InjectionDebugInfo(
                         mode=mode,
                         query=user_query,
-                        bank_id=config.bank_id,
-                        scoped_bank_id=scoped_bank_id,
-                        entity_id=config.entity_id,
+                        bank_id=bank_id,
                         memory_context="",
                         reflect_text="",
                         reflect_facts=reflect_facts,
@@ -351,7 +340,7 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
         else:
             # Use recall API (original behavior)
             result = client.recall(
-                bank_id=scoped_bank_id,
+                bank_id=bank_id,
                 query=user_query,
                 budget=config.recall_budget or "mid",
                 max_tokens=config.max_memory_tokens or 2000,
@@ -379,9 +368,7 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                     _last_injection_debug = InjectionDebugInfo(
                         mode=mode,
                         query=user_query,
-                        bank_id=config.bank_id,
-                        scoped_bank_id=scoped_bank_id,
-                        entity_id=config.entity_id,
+                        bank_id=bank_id,
                         memory_context="",
                         recall_results=[],
                         results_count=0,
@@ -404,9 +391,7 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                     _last_injection_debug = InjectionDebugInfo(
                         mode=mode,
                         query=user_query,
-                        bank_id=config.bank_id,
-                        scoped_bank_id=scoped_bank_id,
-                        entity_id=config.entity_id,
+                        bank_id=bank_id,
                         memory_context="",
                         recall_results=recall_results,
                         results_count=0,
@@ -447,9 +432,7 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
             _last_injection_debug = InjectionDebugInfo(
                 mode=mode,
                 query=user_query,
-                bank_id=config.bank_id,
-                scoped_bank_id=scoped_bank_id,
-                entity_id=config.entity_id,
+                bank_id=bank_id,
                 memory_context=memory_context,
                 reflect_text=reflect_text,
                 reflect_facts=reflect_facts,
@@ -471,8 +454,6 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
                 mode="reflect" if config.use_reflect else "recall",
                 query=user_query or "",
                 bank_id=config.bank_id or "",
-                scoped_bank_id=scoped_bank_id if 'scoped_bank_id' in dir() else config.bank_id or "",
-                entity_id=config.entity_id,
                 memory_context="",
                 results_count=0,
                 injected=False,
@@ -483,16 +464,10 @@ def _inject_memories(messages: List[dict]) -> List[dict]:
         # Always set debug info on error when verbose mode is on
         if config.verbose:
             logging.getLogger("hindsight_litellm").warning(f"Failed to inject memories: {e}")
-            # Build scoped bank_id for debug info
-            scoped_bank_id = config.bank_id
-            if config.entity_id:
-                scoped_bank_id = f"{config.bank_id}:{config.entity_id}"
             _last_injection_debug = InjectionDebugInfo(
                 mode="reflect" if config.use_reflect else "recall",
                 query=user_query or "",
                 bank_id=config.bank_id or "",
-                scoped_bank_id=scoped_bank_id or "",
-                entity_id=config.entity_id,
                 memory_context="",
                 results_count=0,
                 injected=False,
@@ -714,12 +689,11 @@ def hindsight_memory(
     hindsight_api_url: str = "http://localhost:8888",
     bank_id: Optional[str] = None,
     api_key: Optional[str] = None,
-    entity_id: Optional[str] = None,
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
     injection_mode: MemoryInjectionMode = MemoryInjectionMode.SYSTEM_MESSAGE,
-    max_memories: int = 10,
+    max_memories: Optional[int] = None,
     max_memory_tokens: int = 2000,
     recall_budget: str = "mid",
     fact_types: Optional[List[str]] = None,
@@ -736,14 +710,14 @@ def hindsight_memory(
 
     Args:
         hindsight_api_url: URL of the Hindsight API server
-        bank_id: Memory bank ID for memory operations (required)
+        bank_id: Memory bank ID for memory operations (required). For multi-user
+            support, use different bank_ids per user (e.g., f"user-{user_id}")
         api_key: Optional API key for Hindsight authentication
-        entity_id: User identifier for multi-user memory isolation
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations
         inject_memories: Whether to inject relevant memories
         injection_mode: How to inject memories
-        max_memories: Maximum number of memories to inject
+        max_memories: Maximum number of memories to inject (None = unlimited)
         max_memory_tokens: Maximum tokens for memory context
         recall_budget: Budget for memory recall (low, mid, high)
         fact_types: List of fact types to filter (world, agent, opinion, observation)
@@ -757,7 +731,7 @@ def hindsight_memory(
         >>> from hindsight_litellm import hindsight_memory
         >>> import litellm
         >>>
-        >>> with hindsight_memory(bank_id="my-agent", entity_id="user-123"):
+        >>> with hindsight_memory(bank_id="user-123"):
         ...     response = litellm.completion(model="gpt-4", messages=[...])
         >>> # Memory integration automatically disabled after context
     """
@@ -771,7 +745,6 @@ def hindsight_memory(
             hindsight_api_url=hindsight_api_url,
             bank_id=bank_id,
             api_key=api_key,
-            entity_id=entity_id,
             session_id=session_id,
             store_conversations=store_conversations,
             inject_memories=inject_memories,
@@ -796,7 +769,6 @@ def hindsight_memory(
                 hindsight_api_url=previous_config.hindsight_api_url,
                 bank_id=previous_config.bank_id,
                 api_key=previous_config.api_key,
-                entity_id=previous_config.entity_id,
                 session_id=previous_config.session_id,
                 store_conversations=previous_config.store_conversations,
                 inject_memories=previous_config.inject_memories,
@@ -828,12 +800,10 @@ __all__ = [
     # LLM completion wrappers (convenience)
     "completion",
     "acompletion",
-    # Session/Entity management
+    # Session management
     "new_session",
     "set_session",
     "get_session",
-    "set_entity",
-    "get_entity",
     # Direct memory APIs
     "recall",
     "arecall",

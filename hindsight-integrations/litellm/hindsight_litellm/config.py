@@ -19,9 +19,9 @@ class HindsightConfig:
 
     Attributes:
         hindsight_api_url: URL of the Hindsight API server
-        bank_id: Memory bank ID for memory operations (required)
+        bank_id: Memory bank ID for memory operations (required). For multi-user
+            support, use different bank_ids per user (e.g., f"user-{user_id}")
         api_key: Optional API key for Hindsight authentication
-        entity_id: User/entity identifier for memory scoping (multi-user support)
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations to Hindsight
         inject_memories: Whether to inject relevant memories into prompts
@@ -42,7 +42,6 @@ class HindsightConfig:
     hindsight_api_url: str = "http://localhost:8888"
     bank_id: Optional[str] = None
     api_key: Optional[str] = None
-    entity_id: Optional[str] = None  # User identifier for multi-user memory isolation
     session_id: Optional[str] = None  # Session identifier for conversation grouping
     store_conversations: bool = True
     inject_memories: bool = True
@@ -69,7 +68,6 @@ def configure(
     hindsight_api_url: str = "http://localhost:8888",
     bank_id: Optional[str] = None,
     api_key: Optional[str] = None,
-    entity_id: Optional[str] = None,
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
@@ -94,9 +92,9 @@ def configure(
 
     Args:
         hindsight_api_url: URL of the Hindsight API server
-        bank_id: Memory bank ID for memory operations (required)
+        bank_id: Memory bank ID for memory operations (required). For multi-user
+            support, use different bank_ids per user (e.g., f"user-{user_id}")
         api_key: Optional API key for Hindsight authentication
-        entity_id: User/entity identifier for multi-user memory isolation
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations to Hindsight
         inject_memories: Whether to inject relevant memories into prompts
@@ -127,8 +125,7 @@ def configure(
         >>> from hindsight_litellm import configure, enable
         >>> configure(
         ...     hindsight_api_url="http://localhost:8888",
-        ...     bank_id="my-agent",
-        ...     entity_id="user-123",  # Multi-user support
+        ...     bank_id="user-123",  # Per-user bank for multi-user support
         ...     store_conversations=True,
         ...     inject_memories=True,
         ...     background="This agent routes customer requests to support channels. "
@@ -142,7 +139,6 @@ def configure(
         hindsight_api_url=hindsight_api_url,
         bank_id=bank_id,
         api_key=api_key,
-        entity_id=entity_id,
         session_id=session_id,
         store_conversations=store_conversations,
         inject_memories=inject_memories,
@@ -309,36 +305,3 @@ def get_session() -> Optional[str]:
     return _global_config.session_id
 
 
-def set_entity(entity_id: str) -> None:
-    """Set the entity ID for multi-user memory isolation.
-
-    Args:
-        entity_id: The entity/user identifier
-
-    Raises:
-        RuntimeError: If Hindsight has not been configured
-
-    Example:
-        >>> from hindsight_litellm import configure, set_entity
-        >>> configure(bank_id="my-agent")
-        >>> set_entity("user-123")  # Switch to this user's memories
-    """
-    global _global_config
-
-    if _global_config is None:
-        raise RuntimeError(
-            "Hindsight not configured. Call configure() before set_entity()."
-        )
-
-    _global_config.entity_id = entity_id
-
-
-def get_entity() -> Optional[str]:
-    """Get the current entity ID.
-
-    Returns:
-        The current entity ID, or None if not set
-    """
-    if _global_config is None:
-        return None
-    return _global_config.entity_id
