@@ -198,7 +198,7 @@ jobs:
 
     - name: Install client test dependencies
       working-directory: ./hindsight-clients/python
-      run: uv sync --extra test
+      run: uv sync --extra test --index-strategy unsafe-best-match
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
