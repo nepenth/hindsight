@@ -132,9 +132,10 @@ jobs:
 
     - name: Install dependencies
       working-directory: ./hindsight-api
-      run: uv sync --extra test
-      env:
-        UV_INDEX_URL: https://download.pytorch.org/whl/cpu
+      run: |
+        # Install CPU-only PyTorch to avoid downloading 2.7GB of CUDA libraries
+        uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+        uv sync --extra test
 
     - name: Cache HuggingFace models
       uses: actions/cache@v4
@@ -200,9 +201,10 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync
-      env:
-        UV_INDEX_URL: https://download.pytorch.org/whl/cpu
+      run: |
+        # Install CPU-only PyTorch to avoid downloading 2.7GB of CUDA libraries
+        uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+        uv sync
 
     - name: Create .env file
       run: |
@@ -276,9 +278,10 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync
-      env:
-        UV_INDEX_URL: https://download.pytorch.org/whl/cpu
+      run: |
+        # Install CPU-only PyTorch to avoid downloading 2.7GB of CUDA libraries
+        uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+        uv sync
 
     - name: Install TypeScript client dependencies
       working-directory: ./hindsight-clients/typescript
@@ -367,9 +370,10 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync
-      env:
-        UV_INDEX_URL: https://download.pytorch.org/whl/cpu
+      run: |
+        # Install CPU-only PyTorch to avoid downloading 2.7GB of CUDA libraries
+        uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+        uv sync
 
     - name: Create .env file
       run: |
