@@ -108,8 +108,8 @@ jobs:
       HINDSIGHT_API_LLM_API_KEY: ${{ secrets.GROQ_API_KEY }}
       HINDSIGHT_API_LLM_MODEL: openai/gpt-oss-20b
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Force CPU-only PyTorch in CI to avoid 2.7GB CUDA downloads
-      PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+      # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
+      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v4
@@ -134,7 +134,7 @@ jobs:
 
     - name: Install dependencies
       working-directory: ./hindsight-api
-      run: uv sync --extra test
+      run: uv sync --extra test --no-install-project
 
     - name: Cache HuggingFace models
       uses: actions/cache@v4
@@ -168,8 +168,8 @@ jobs:
       HINDSIGHT_API_LLM_MODEL: openai/gpt-oss-20b
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Force CPU-only PyTorch in CI to avoid 2.7GB CUDA downloads
-      PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+      # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
+      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v4
@@ -202,7 +202,7 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync
+      run: uv sync --no-install-project
 
     - name: Create .env file
       run: |
@@ -247,8 +247,8 @@ jobs:
       HINDSIGHT_API_LLM_MODEL: openai/gpt-oss-20b
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Force CPU-only PyTorch in CI to avoid 2.7GB CUDA downloads
-      PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+      # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
+      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v4
@@ -278,7 +278,7 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync
+      run: uv sync --no-install-project
 
     - name: Install TypeScript client dependencies
       working-directory: ./hindsight-clients/typescript
@@ -331,8 +331,8 @@ jobs:
       HINDSIGHT_API_LLM_MODEL: openai/gpt-oss-20b
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Force CPU-only PyTorch in CI to avoid 2.7GB CUDA downloads
-      PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+      # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
+      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v4
@@ -369,7 +369,7 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync
+      run: uv sync --no-install-project
 
     - name: Create .env file
       run: |
