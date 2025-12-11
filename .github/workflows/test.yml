@@ -134,7 +134,7 @@ jobs:
 
     - name: Install dependencies
       working-directory: ./hindsight-api
-      run: uv sync --extra test --no-install-project
+      run: uv sync --extra test --no-install-project --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
       uses: actions/cache@v4
@@ -202,7 +202,7 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync --no-install-project
+      run: uv sync --no-install-project --index-strategy unsafe-best-match
 
     - name: Create .env file
       run: |
@@ -278,7 +278,7 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync --no-install-project
+      run: uv sync --no-install-project --index-strategy unsafe-best-match
 
     - name: Install TypeScript client dependencies
       working-directory: ./hindsight-clients/typescript
@@ -369,7 +369,7 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api
-      run: uv sync --no-install-project
+      run: uv sync --no-install-project --index-strategy unsafe-best-match
 
     - name: Create .env file
       run: |
