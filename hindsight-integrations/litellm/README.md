@@ -270,7 +270,7 @@ result = retain(
     content="User mentioned they're working on a machine learning project",
     context="Discussion about current projects",
 )
-print(f"Retained with document ID: {result.document_id}")
+print(f"Retained successfully: {result.success}, items: {result.items_count}")
 ```
 
 ### Async APIs
