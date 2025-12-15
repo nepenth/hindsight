@@ -26,12 +26,14 @@ The following models have been tested and verified to work correctly with Hindsi
 
 | Provider | Model |
 |----------|-------|
+| **OpenAI** | `gpt-5.2` |
 | **OpenAI** | `gpt-5` |
 | **OpenAI** | `gpt-5-mini` |
 | **OpenAI** | `gpt-5-nano` |
 | **OpenAI** | `gpt-4.1-mini` |
 | **OpenAI** | `gpt-4.1-nano` |
 | **OpenAI** | `gpt-4o-mini` |
+| **Gemini** | `gemini-3.0-pro` |
 | **Gemini** | `gemini-2.5-flash` |
 | **Gemini** | `gemini-2.5-flash-lite` |
 | **Groq** | `openai/gpt-oss-120b` |
