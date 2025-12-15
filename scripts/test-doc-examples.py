@@ -355,6 +355,15 @@ IMPORTANT RULES:
 - For cleanup, use requests.delete("{hindsight_url}/v1/default/banks/<bank_id>") - there is NO delete_bank() method
 - For Python, wrap in try/finally to ensure cleanup runs, print "TEST PASSED" on success
 
+PLACEHOLDER SUBSTITUTION (applies to ALL languages):
+- Documentation often uses placeholders like `<bank_id>`, `<query>`, `my-bank`, etc.
+- You MUST replace these with actual working values in your test script:
+  - `<bank_id>` or `my-bank` → generate a unique ID like f"doc-test-{{uuid.uuid4()}}"
+  - `<query>` → use a realistic query like "What do you know?"
+  - `<content>` → use sample content like "Alice works at Google as a software engineer"
+  - `<document_id>` → use a unique ID like f"doc-{{uuid.uuid4()}}"
+- The test MUST use real values, not literal placeholder strings like "<bank_id>"
+
 WORKING DIRECTORY RULES:
 - The test script will run from a temp directory, NOT from the repository
 - Repository root is: {repo_root}
@@ -463,8 +472,11 @@ BASH/CLI RULES:
 - The CLI command is 'hindsight'
 - Check the "Hindsight CLI status" above - if it says "NOT INSTALLED", mark ALL examples that use the 'hindsight' CLI command as NOT testable (reason: "CLI not installed")
 - Mark 'cargo build' and 'cargo test' as NOT testable (reason: "Build command - too slow for CI")
-- For pytest commands: Use absolute paths like 'cd {repo_root}/hindsight-api && uv run pytest tests/ -v'
-- Mark any 'pytest' command that doesn't specify a real directory as NOT testable (reason: "Test command requires specific setup")
+- Mark any 'pytest' or 'uv run pytest' commands as NOT testable (reason: "Test suite already covered by dedicated CI job")
+- PLACEHOLDER SUBSTITUTION: If the code contains placeholders like `<bank_id>`, `<query>`, `<content>`, etc., replace them with realistic test values. For example:
+  - `<bank_id>` → use a unique test bank ID like "doc-test-$(uuidgen | tr '[:upper:]' '[:lower:]')"
+  - `<query>` → use a sample query like "What do you know?"
+  - `<content>` → use sample content like "Test memory content"
 
 PYTHON IMPORT RULES:
 - ALWAYS include ALL necessary imports at the top of your test script, even if the code snippet doesn't show them
