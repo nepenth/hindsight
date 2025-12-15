@@ -239,20 +239,44 @@ def is_obviously_not_testable(code: str, language: str) -> tuple[bool, str]:
     """Pre-filter obviously non-testable examples to avoid LLM calls."""
     code_lower = code.lower().strip()
 
-    # Installation commands
     if language in ["bash", "sh"]:
+        # Installation commands
         if code_lower.startswith(("pip install", "npm install", "yarn add", "uv pip install", "cargo install")):
             return True, "Package installation command"
         if code_lower.startswith(("curl ", "wget ")) and ("install" in code_lower or "get-" in code_lower):
             return True, "Installation script"
-        if "docker " in code_lower and any(x in code_lower for x in ["run", "compose", "build"]):
+
+        # Docker/container commands
+        if "docker " in code_lower or "docker-compose" in code_lower:
             return True, "Docker command"
         if code_lower.startswith("helm "):
             return True, "Helm command"
+
+        # Build/test commands
         if code_lower.startswith(("cargo build", "cargo test")):
             return True, "Cargo build/test command"
         if "pytest" in code_lower or "uv run pytest" in code_lower:
             return True, "Test suite command"
+
+        # Git commands
+        if code_lower.startswith("git clone"):
+            return True, "Git clone command"
+
+        # Development scripts that won't exist in CI
+        if "./scripts/" in code_lower:
+            return True, "Development script"
+
+        # npm/yarn dev commands (not install)
+        if any(x in code_lower for x in ["npm run dev", "npm run start", "npm run build", "yarn dev", "yarn start"]):
+            return True, "Development server command"
+        if "npm run deploy" in code_lower or "npm deploy" in code_lower:
+            return True, "Deployment command"
+
+        # cd to relative project directories (won't work from temp)
+        if code_lower.startswith("cd ") and not code_lower.startswith("cd /"):
+            # Allow cd to temp directories
+            if not any(x in code_lower for x in ["/tmp", "$tmp", "${tmp"]):
+                return True, "Relative directory change"
 
     # Environment setup
     if code_lower.startswith("export ") and "=" in code_lower:
