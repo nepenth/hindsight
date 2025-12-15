@@ -547,70 +547,73 @@ def write_github_summary(report: TestReport, output_path: str, openai_client: Op
     lines.append(f"| ⏭️ Skipped | {report.skipped} |")
     lines.append("")
 
-    # If there are failures, use LLM to generate a concise analysis
+    # If there are failures, use LLM to summarize the raw logs
     if report.failed > 0 and openai_client:
-        # Collect failure data for LLM
-        failures_data = []
+        # Collect raw failure logs
+        failure_logs = []
         for result in report.results:
             if not result.success and result.error and "SKIPPED" not in result.error:
                 file_path = result.example.file_path
                 if "/hindsight/" in file_path:
                     file_path = file_path.split("/hindsight/", 1)[-1]
-                failures_data.append({
-                    "file": file_path,
-                    "line": result.example.line_number,
-                    "language": result.example.language,
-                    "error": result.error[:500] if result.error else "Unknown"
-                })
+                failure_logs.append(f"""
+--- FAILURE ---
+File: {file_path}
+Line: {result.example.line_number}
+Language: {result.example.language}
+Code:
+{result.example.code[:500]}
+Error:
+{result.error[:1000] if result.error else 'Unknown'}
+""")
 
-        # Ask LLM to categorize and summarize
-        prompt = f"""Analyze these {len(failures_data)} documentation test failures and provide a concise summary.
+        # Truncate if too long (keep under ~100k tokens)
+        all_logs = "\n".join(failure_logs)
+        if len(all_logs) > 80000:
+            all_logs = all_logs[:80000] + "\n\n... (truncated)"
 
-Failures:
-{json.dumps(failures_data, indent=2)}
+        prompt = f"""Analyze these {report.failed} documentation test failures and create a markdown summary.
+
+{all_logs}
 
 Create a markdown summary with:
-1. **Categories of failures** - Group similar failures together (e.g., "CLI commands don't exist", "Wrong attribute names", "Missing npm packages", etc.)
-2. **For each category**: List count and 1-2 example files affected
-3. **Recommended fixes** - Brief actionable items
+1. **Failed Tests** - List EVERY failure grouped by file, showing:
+   - File path and line number
+   - Brief description of what went wrong (e.g., "AttributeError: no .success attribute", "command not found: hindsight", "module not found")
 
-Keep it concise - no more than 30 lines total. Use bullet points. Don't repeat error messages verbatim."""
+2. **Categories** - At the end, group the failures into categories like:
+   - CLI commands don't exist (count)
+   - Wrong attribute names in Python (count)
+   - TypeScript package not found (count)
+   - etc.
+
+Format each failure like:
+### `filename.md`
+- **Line X** (language): brief error description
+
+Output raw markdown directly. Do NOT wrap in code blocks."""
 
         try:
             response = openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=1500
+                max_tokens=8000
             )
             llm_summary = response.choices[0].message.content
-            lines.append("## Failure Analysis")
-            lines.append("")
             lines.append(llm_summary)
-            lines.append("")
         except Exception as e:
-            # Fallback to simple list if LLM fails
-            lines.append("## Failures")
+            # Fallback to simple list
+            lines.append("## Failed Tests")
             lines.append("")
             lines.append(f"*LLM summary failed: {e}*")
             lines.append("")
-            for f in failures_data[:20]:  # Limit to 20
-                lines.append(f"- `{f['file']}:{f['line']}` ({f['language']})")
-            if len(failures_data) > 20:
-                lines.append(f"- ... and {len(failures_data) - 20} more")
-            lines.append("")
-
-    elif report.failed > 0:
-        # No OpenAI client, just list failures
-        lines.append("## Failures")
-        lines.append("")
-        for result in report.results:
-            if not result.success and result.error and "SKIPPED" not in result.error:
-                file_path = result.example.file_path
-                if "/hindsight/" in file_path:
-                    file_path = file_path.split("/hindsight/", 1)[-1]
-                lines.append(f"- `{file_path}:{result.example.line_number}` ({result.example.language})")
-        lines.append("")
+            for result in report.results:
+                if not result.success and result.error and "SKIPPED" not in result.error:
+                    file_path = result.example.file_path
+                    if "/hindsight/" in file_path:
+                        file_path = file_path.split("/hindsight/", 1)[-1]
+                    lines.append(f"- `{file_path}:{result.example.line_number}` ({result.example.language})")
 
     # Write to file
     with open(output_path, "w") as f:
