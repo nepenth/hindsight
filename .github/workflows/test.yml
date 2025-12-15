@@ -483,6 +483,7 @@ jobs:
       HINDSIGHT_API_URL: http://localhost:8888
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
       UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
@@ -510,15 +511,17 @@ jobs:
       working-directory: ./hindsight-api
       run: uv build
 
-    - name: Install API dependencies
-      working-directory: ./hindsight-api
-      run: uv sync --no-install-project --index-strategy unsafe-best-match
+    - name: Build Python client
+      working-directory: ./hindsight-clients/python
+      run: uv build
 
     - name: Install Python client
       working-directory: ./hindsight-clients/python
-      run: |
-        uv build
-        uv pip install $(ls dist/*.whl)
+      run: uv sync --index-strategy unsafe-best-match
+
+    - name: Install API dependencies
+      working-directory: ./hindsight-api
+      run: uv sync --no-install-project --index-strategy unsafe-best-match
 
     - name: Install TypeScript client dependencies
       run: npm ci
