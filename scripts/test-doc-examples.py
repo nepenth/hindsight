@@ -16,6 +16,7 @@ Environment variables:
 import os
 import re
 import sys
+import site
 import json
 import glob
 import subprocess
@@ -23,7 +24,6 @@ import tempfile
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 import threading
 
@@ -34,48 +34,15 @@ print_lock = threading.Lock()
 
 
 def discover_and_install_dependencies(repo_root: str) -> dict:
-    """Scan documentation for dependencies and install them."""
-    print("\n=== Discovering and installing dependencies ===")
+    """Install required dependencies for doc testing."""
+    print("\n=== Installing dependencies ===")
 
     results = {
-        "python_packages": set(),
-        "npm_packages": set(),
         "local_packages": [],
         "cli_available": False
     }
 
-    # Find all markdown files
-    md_files = []
-    for pattern in ["**/*.md"]:
-        md_files.extend(glob.glob(os.path.join(repo_root, pattern), recursive=True))
-
-    # Patterns to find installation commands
-    pip_pattern = re.compile(r'pip install\s+([^\s`\n]+)')
-    npm_pattern = re.compile(r'npm install\s+([^\s`\n]+)')
-
-    for md_file in md_files:
-        # Skip symlinks to avoid circular references
-        if os.path.islink(md_file):
-            continue
-        try:
-            with open(md_file, 'r') as f:
-                content = f.read()
-
-            # Find pip install commands
-            for match in pip_pattern.finditer(content):
-                pkg = match.group(1).strip()
-                if pkg and not pkg.startswith('-') and not pkg.startswith('.'):
-                    results["python_packages"].add(pkg)
-
-            # Find npm install commands
-            for match in npm_pattern.finditer(content):
-                pkg = match.group(1).strip()
-                if pkg and not pkg.startswith('-') and not pkg.startswith('.'):
-                    results["npm_packages"].add(pkg)
-        except Exception:
-            pass
-
-    # Always include core local packages (order matters - dependencies first)
+    # Core local packages (order matters - dependencies first)
     local_python_packages = [
         ("hindsight-clients/python", "hindsight_client"),
         ("hindsight-integrations/litellm", "hindsight_litellm"),
@@ -122,23 +89,6 @@ def discover_and_install_dependencies(repo_root: str) -> dict:
                     print(f"  Failed to install {pkg_name}: {e}")
     else:
         print("  All packages already installed")
-
-    # Install discovered Python packages (filter out local ones and known problematic ones)
-    skip_packages = {"hindsight-client", "hindsight_client", "hindsight-litellm", "hindsight-openai",
-                     "hindsight", ".", "..", "-e", "-r", "--upgrade"}
-    external_packages = results["python_packages"] - skip_packages
-
-    if external_packages:
-        print(f"\nInstalling external Python packages: {external_packages}")
-        for pkg in external_packages:
-            try:
-                subprocess.run(
-                    ["uv", "pip", "install", pkg],
-                    capture_output=True,
-                    timeout=60
-                )
-            except Exception:
-                pass
 
     # Build TypeScript client and set up symlink
     ts_client_path = os.path.join(repo_root, "hindsight-clients/typescript")
@@ -285,6 +235,40 @@ def find_markdown_files(repo_root: str) -> list[str]:
     return sorted(set(md_files))
 
 
+def is_obviously_not_testable(code: str, language: str) -> tuple[bool, str]:
+    """Pre-filter obviously non-testable examples to avoid LLM calls."""
+    code_lower = code.lower().strip()
+
+    # Installation commands
+    if language in ["bash", "sh"]:
+        if code_lower.startswith(("pip install", "npm install", "yarn add", "uv pip install", "cargo install")):
+            return True, "Package installation command"
+        if code_lower.startswith(("curl ", "wget ")) and ("install" in code_lower or "get-" in code_lower):
+            return True, "Installation script"
+        if "docker " in code_lower and any(x in code_lower for x in ["run", "compose", "build"]):
+            return True, "Docker command"
+        if code_lower.startswith("helm "):
+            return True, "Helm command"
+        if code_lower.startswith(("cargo build", "cargo test")):
+            return True, "Cargo build/test command"
+        if "pytest" in code_lower or "uv run pytest" in code_lower:
+            return True, "Test suite command"
+
+    # Environment setup
+    if code_lower.startswith("export ") and "=" in code_lower:
+        return True, "Environment variable export"
+
+    # Config file contents (YAML, TOML, JSON without code)
+    if language in ["yaml", "toml", "json", "env"]:
+        return True, "Configuration file content"
+
+    # Very short snippets (likely fragments)
+    if len(code.strip()) < 20:
+        return True, "Code fragment too short"
+
+    return False, ""
+
+
 def extract_code_blocks(file_path: str) -> list[CodeExample]:
     """Extract code blocks from a markdown file."""
     with open(file_path, "r") as f:
@@ -298,23 +282,25 @@ def extract_code_blocks(file_path: str) -> list[CodeExample]:
         language = match.group(1).lower()
         code = match.group(2).strip()
 
-        # Get surrounding context (100 chars before and after)
-        start = max(0, match.start() - 200)
-        end = min(len(content), match.end() + 200)
-        context = content[start:end]
-
         # Calculate line number
         line_number = content[:match.start()].count('\n') + 1
 
         # Only include testable languages
-        if language in ["python", "typescript", "javascript", "bash", "sh"]:
-            examples.append(CodeExample(
-                file_path=file_path,
-                language=language,
-                code=code,
-                context=context,
-                line_number=line_number
-            ))
+        if language not in ["python", "typescript", "javascript", "bash", "sh"]:
+            continue
+
+        # Get surrounding context (reduced from 200 to 150 chars for efficiency)
+        start = max(0, match.start() - 150)
+        end = min(len(content), match.end() + 150)
+        context = content[start:end]
+
+        examples.append(CodeExample(
+            file_path=file_path,
+            language=language,
+            code=code,
+            context=context,
+            line_number=line_number
+        ))
 
     return examples
 
@@ -322,259 +308,75 @@ def extract_code_blocks(file_path: str) -> list[CodeExample]:
 def analyze_example_with_llm(client: OpenAI, example: CodeExample, hindsight_url: str, repo_root: str, cli_available: bool = True, model: str = "gpt-4o") -> dict:
     """Use LLM to analyze a code example and determine how to test it."""
 
-    cli_status = "AVAILABLE" if cli_available else "NOT INSTALLED - mark CLI examples as NOT testable"
+    # Build language-specific rules (only include relevant ones)
+    lang_rules = ""
+    if example.language == "python":
+        lang_rules = f"""
+PYTHON RULES:
+- Import: `from hindsight_client import Hindsight`
+- Client is SYNCHRONOUS - NO async/await, NO asyncio.run()
+- Initialize: `client = Hindsight(base_url="{hindsight_url}")`
+- retain(bank_id, content, context=None, document_id=None)
+- retain_batch(bank_id, items=[{{"content": "..."}}, ...]) - NOTE: 'items' not 'contents'
+- recall(bank_id, query, budget="mid") → .results[].text
+- reflect(bank_id, query) → .text
+- create_bank(bank_id, name=None, background=None) - EXISTS in SDK
+- client.close() for cleanup
+- NO delete_bank() method - use: requests.delete(f"{hindsight_url}/v1/default/banks/{{bank_id}}")
+- Wrap in try/finally, print "TEST PASSED" on success
+- Add ALL necessary imports (uuid, requests, os, etc.)"""
 
-    prompt = f"""Analyze this code example from documentation and determine how to test it.
+    elif example.language in ["typescript", "javascript"]:
+        lang_rules = f"""
+JAVASCRIPT RULES (CRITICAL - generate PURE JS, not TypeScript):
+- NO type annotations (: string, : Promise<void>, etc.) - causes SyntaxError
+- Import: `import {{ HindsightClient }} from '@vectorize-io/hindsight-client';`
+- Initialize: `const client = new HindsightClient({{ baseUrl: '{hindsight_url}' }});`
+- retain(bankId, content) - positional args
+- retainBatch(bankId, items, options) - positional, NOT {{bankId, contents}}
+- recall(bankId, query) → response.results[].text
+- reflect(bankId, query) → response.text
+- createBank(bankId, options) - EXISTS in SDK
+- NO client.close() method
+- Cleanup: `await fetch(`{hindsight_url}/v1/default/banks/${{bankId}}`, {{ method: 'DELETE' }});`
+- Use crypto.randomUUID() for UUIDs, native fetch() for HTTP
+- NO external packages (node-fetch, uuid, axios)"""
 
-File: {example.file_path}
+    elif example.language in ["bash", "sh"]:
+        cli_status = "AVAILABLE" if cli_available else "NOT INSTALLED - mark as NOT testable"
+        lang_rules = f"""
+CLI RULES (status: {cli_status}):
+- Memory ops: `hindsight memory retain|recall|reflect <bank_id> "content"`
+- Bank ops: `hindsight bank list|disposition|stats|name|background|delete`
+- NO 'hindsight bank create' - banks auto-create on first use
+- NO 'hindsight bank profile' - use 'disposition'
+- NO 'hindsight retain/recall' - must include 'memory' subcommand
+- For file tests: create temp file first with `echo "content" > /tmp/test.txt`"""
+
+    prompt = f"""Analyze and test this documentation code example.
+
+File: {example.file_path}:{example.line_number}
 Language: {example.language}
-Line: {example.line_number}
-Repository root: {repo_root}
-Hindsight CLI status: {cli_status}
+Hindsight API: {hindsight_url} (already running)
+Repo: {repo_root}
 
-Context around the code:
-{example.context}
+Context: {example.context}
 
 Code:
 ```{example.language}
 {example.code}
 ```
 
-Your task:
-1. Determine if this code example is testable (some are just fragments or pseudo-code)
-2. If testable, generate a complete, runnable test script
-3. The test should verify the example works correctly
+SKIP if: Docker/server setup, class/function definition without execution, helm commands.
 
-IMPORTANT RULES:
-- Hindsight API is ALREADY running at: {hindsight_url} - do NOT start Docker containers or servers
-- Mark Docker/server setup examples as NOT testable (reason: "Server setup example - server already running")
-- Mark pip/npm install commands as NOT testable (reason: "Package installation command")
-- Mark code fragments that define classes/functions without calling them as NOT testable (reason: "Code fragment - defines but doesn't execute")
-- Mark helm commands as NOT testable (reason: "Helm chart testing not supported")
-- Use unique bank_id names like "doc-test-<random-uuid>" to avoid conflicts
-- For cleanup, use requests.delete("{hindsight_url}/v1/default/banks/<bank_id>") - there is NO delete_bank() method
-- For Python, wrap in try/finally to ensure cleanup runs, print "TEST PASSED" on success
+PLACEHOLDERS - Replace with real values:
+- <bank_id>/my-bank → unique ID like "doc-test-<uuid>"
+- <query>/<content> → realistic test strings
+- api_key="sk-..." → os.environ["OPENAI_API_KEY"]
+- File paths → create temp files first
+{lang_rules}
 
-PLACEHOLDER SUBSTITUTION (applies to ALL languages):
-- Documentation often uses placeholders like `<bank_id>`, `<query>`, `my-bank`, etc.
-- You MUST replace these with actual working values in your test script:
-  - `<bank_id>` or `my-bank` → generate a unique ID like f"doc-test-{{uuid.uuid4()}}"
-  - `<query>` → use a realistic query like "What do you know?"
-  - `<content>` → use sample content like "Alice works at Google as a software engineer"
-  - `<document_id>` → use a unique ID like f"doc-{{uuid.uuid4()}}"
-  - `api_key="sk-..."` or similar API key placeholders → use `os.environ["OPENAI_API_KEY"]` or `os.environ.get("OPENAI_API_KEY")`
-  - `api_key=os.environ["OPENAI_API_KEY"]` → keep as-is (already correct)
-  - File paths like `notes.txt`, `document.txt`, `*.md` → create a temporary test file first with sample content
-- The test MUST use real values, not literal placeholder strings like "<bank_id>" or "sk-..."
-- For OpenAI/Anthropic API calls: ALWAYS use environment variables for API keys, never literal placeholder strings
-- For file-based commands (retain-files, --file): Create a temp file with sample content before running the command. Example:
-  ```bash
-  echo "Sample test content for documentation" > /tmp/test-doc.txt
-  hindsight memory retain-files doc-test-xxx /tmp/test-doc.txt
-  ```
-
-WORKING DIRECTORY RULES:
-- The test script will run from a temp directory, NOT from the repository
-- Repository root is: {repo_root}
-- If an example uses 'cd <dir>' or requires a specific working directory, convert to absolute paths
-- For example: 'cd hindsight-api && uv run pytest' becomes 'cd {repo_root}/hindsight-api && uv run pytest'
-- For cargo commands: run them from the correct absolute path (e.g., 'cd {repo_root}/hindsight-clients/rust && cargo test')
-- Always use absolute paths based on the repository root when the example implies a specific directory
-
-EXACT HINDSIGHT PYTHON CLIENT API (use EXACTLY these signatures):
-```python
-from hindsight_client import Hindsight
-
-# Initialize client
-client = Hindsight(base_url="{hindsight_url}")
-
-# Store a single memory - use 'content' parameter, NOT 'items' or 'text'
-response = client.retain(
-    bank_id="my-bank",      # Required: string
-    content="Memory text",   # Required: string - the memory content
-    timestamp=None,          # Optional: datetime
-    context=None,            # Optional: string
-    document_id=None,        # Optional: string
-    metadata=None,           # Optional: dict
-)
-# Returns RetainResponse with: success (bool), bank_id (str), items_count (int)
-
-# Store multiple memories - NOTE: parameter is 'items', NOT 'contents'
-# Some docs incorrectly show 'contents=' but the correct parameter is 'items='
-response = client.retain_batch(
-    bank_id="my-bank",
-    items=[{{"content": "Memory 1"}}, {{"content": "Memory 2"}}],  # List of dicts with 'content' key
-    document_id=None,
-    retain_async=False,
-)
-
-# Recall memories
-response = client.recall(
-    bank_id="my-bank",
-    query="search query",    # Required: string
-    types=None,              # Optional: list of strings
-    max_tokens=4096,
-    budget="mid",            # "low", "mid", or "high"
-)
-# Returns RecallResponse with: results (list of RecallResult, each has .text attribute)
-
-# Generate answer using memories
-response = client.reflect(
-    bank_id="my-bank",
-    query="question",        # Required: string
-    budget="low",            # "low", "mid", or "high"
-    context=None,            # Optional: string
-)
-# Returns ReflectResponse with: text (str)
-
-# Create a bank with profile
-response = client.create_bank(
-    bank_id="my-bank",
-    name=None,               # Optional: string
-    background=None,         # Optional: string
-    disposition=None,        # Optional: dict
-)
-
-# Close client (important for cleanup)
-client.close()
-```
-
-IMPORTANT: There is NO delete_bank() method. To delete a bank, use raw HTTP:
-```python
-import requests
-requests.delete(f"{hindsight_url}/v1/default/banks/{{bank_id}}")
-```
-
-TYPESCRIPT/JAVASCRIPT RULES:
-- ALWAYS use ES module syntax (import), NEVER use require()
-- The package is '@vectorize-io/hindsight-client'
-- NEVER import external packages like 'node-fetch', 'uuid', 'axios', etc. - use native APIs only
-- Use native fetch() for HTTP requests (available in Node 18+)
-- Use crypto.randomUUID() for generating UUIDs
-- HindsightClient has NO close() method - do NOT call client.close()
-- For cleanup, use native fetch() to DELETE banks
-- NOTE: Some docs incorrectly show `retainBatch({{ bankId, contents }})` - the correct API uses positional args
-```typescript
-import {{ HindsightClient }} from '@vectorize-io/hindsight-client';
-
-const client = new HindsightClient({{ baseUrl: '{hindsight_url}' }});
-
-// Retain single
-await client.retain('bank-id', 'content text');
-
-// Retain batch - uses positional args, NOT object with 'contents' key
-await client.retainBatch('bank-id', [
-    {{ content: 'Memory 1' }},
-    {{ content: 'Memory 2' }}
-], {{ documentId: 'doc-123' }});  // Optional options
-
-// Recall
-const response = await client.recall('bank-id', 'query');
-for (const r of response.results) {{
-    console.log(r.text);
-}}
-
-// Reflect
-const answer = await client.reflect('bank-id', 'question');
-console.log(answer.text);
-
-// Create bank
-await client.createBank('bank-id', {{ name: 'Name', background: 'Background' }});
-
-// Cleanup - use native fetch, NOT client.close()
-await fetch(`{hindsight_url}/v1/default/banks/${{bankId}}`, {{ method: 'DELETE' }});
-```
-
-BASH/CLI RULES:
-- The CLI command is 'hindsight'
-- Check the "Hindsight CLI status" above - if it says "NOT INSTALLED", mark ALL examples that use the 'hindsight' CLI command as NOT testable (reason: "CLI not installed")
-- Mark 'cargo build' and 'cargo test' as NOT testable (reason: "Build command - too slow for CI")
-- Mark any 'pytest' or 'uv run pytest' commands as NOT testable (reason: "Test suite already covered by dedicated CI job")
-- PLACEHOLDER SUBSTITUTION: If the code contains placeholders like `<bank_id>`, `<query>`, `<content>`, etc., replace them with realistic test values. For example:
-  - `<bank_id>` → use a unique test bank ID like "doc-test-$(uuidgen | tr '[:upper:]' '[:lower:]')"
-  - `<query>` → use a sample query like "What do you know?"
-  - `<content>` → use sample content like "Test memory content"
-
-BANK AUTO-CREATION (CRITICAL):
-- For CLI/bash: There is NO 'hindsight bank create' command - banks auto-create on first use
-- The CLI bank subcommands are ONLY: list, disposition, stats, name, background, delete
-- NOTE: There is NO 'hindsight bank profile' command - use 'hindsight bank disposition' instead
-- For CLI tests, just use retain/recall/reflect directly - the bank auto-creates
-- Example: `hindsight memory retain my-new-bank "content"` will auto-create "my-new-bank"
-- For Python SDK: `client.create_bank()` DOES exist and is valid - use it when the docs show it
-- For Node.js SDK: `client.createBank()` DOES exist and is valid - use it when the docs show it
-
-EXACT CLI COMMAND STRUCTURE (use EXACTLY these formats):
-- Memory operations: `hindsight memory <subcommand> <bank_id> ...`
-  - `hindsight memory retain <bank_id> "<content>"` - store a memory
-  - `hindsight memory recall <bank_id> "<query>"` - search memories
-  - `hindsight memory reflect <bank_id> "<query>"` - generate answer
-  - `hindsight memory retain-files <bank_id> <path>` - bulk import from files
-- Bank operations: `hindsight bank <subcommand> ...`
-  - `hindsight bank list` - list all banks
-  - `hindsight bank disposition <bank_id>` - get bank profile/disposition
-  - `hindsight bank stats <bank_id>` - get statistics
-- Document operations: `hindsight document <subcommand> ...`
-- Entity operations: `hindsight entity <subcommand> ...`
-- WRONG: `hindsight retain ...` (missing 'memory' subcommand)
-- WRONG: `hindsight recall ...` (missing 'memory' subcommand)
-- WRONG: `hindsight bank profile ...` (use 'disposition' not 'profile')
-- WRONG: `hindsight bank create ...` (banks auto-create, no such command)
-
-PYTHON IMPORT RULES:
-- ALWAYS include ALL necessary imports at the top of your test script, even if the code snippet doesn't show them
-- The code snippet may be a fragment - add any imports needed to make it runnable
-- Common imports to add:
-  - `from hindsight_client import Hindsight` for Hindsight client usage
-  - `import hindsight_litellm` or `from hindsight_litellm import ...` for litellm integration
-  - `from hindsight_openai import configure, OpenAI` for OpenAI integration
-  - `import requests` for HTTP cleanup calls
-  - `import asyncio` for async code
-  - `import uuid` for generating unique IDs
-- If the code uses a variable like `hindsight_litellm.completion()`, you MUST import hindsight_litellm first
-
-ASYNCIO RULES (CRITICAL - READ CAREFULLY):
-- The Hindsight Python client (`from hindsight_client import Hindsight`) is a SYNCHRONOUS client
-- Do NOT wrap Hindsight client calls in asyncio.run() or use `await` with them
-- Do NOT use `async def` for test functions that only use the Hindsight client
-- Just call the client methods directly in regular synchronous Python code:
-  ```python
-  client = Hindsight(base_url="...")
-  client.retain(bank_id="...", content="...")  # NO await, NO asyncio.run()
-  response = client.recall(bank_id="...", query="...")  # Direct sync call
-  client.close()
-  ```
-- ONLY use asyncio.run() if the ORIGINAL code example explicitly shows async/await patterns
-- If you see "RuntimeError: This event loop is already running" - you're incorrectly using asyncio
-- Example of CORRECT sync test (what you should use for Hindsight client):
-```python
-from hindsight_client import Hindsight
-import requests
-import uuid
-
-bank_id = f"doc-test-{{uuid.uuid4()}}"
-client = Hindsight(base_url="{hindsight_url}")
-
-try:
-    # Direct sync calls - NO asyncio.run(), NO await
-    client.retain(bank_id=bank_id, content="Test content")
-    response = client.recall(bank_id=bank_id, query="test")
-    print("TEST PASSED")
-finally:
-    client.close()
-    requests.delete(f"{hindsight_url}/v1/default/banks/{{bank_id}}")
-```
-
-Respond with JSON:
-{{
-    "testable": true/false,
-    "reason": "Why it is or isn't testable",
-    "language": "python|typescript|bash",
-    "test_script": "Complete runnable test script that will exit 0 on success, non-zero on failure",
-    "cleanup_script": "Optional cleanup script to run after test"
-}}
-
-If not testable, set test_script to null."""
+Respond JSON: {{"testable": bool, "reason": "...", "language": "python|typescript|bash", "test_script": "..." or null, "cleanup_script": "..." or null}}"""
 
     # Reasoning models (o1, o3, etc.) don't support temperature parameter
     is_reasoning_model = model.startswith(("o1", "o3"))
@@ -601,12 +403,17 @@ def run_python_test(script: str, timeout: int = 60) -> tuple[bool, str, Optional
         f.flush()
 
         try:
+            # Ensure the subprocess can find installed packages by adding site-packages to PYTHONPATH
+            site_packages = site.getsitepackages()
+            current_pythonpath = os.environ.get("PYTHONPATH", "")
+            new_pythonpath = ":".join(site_packages + ([current_pythonpath] if current_pythonpath else []))
+
             result = subprocess.run(
                 [sys.executable, f.name],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": new_pythonpath}
             )
             output = result.stdout + result.stderr
             # Check for "TEST PASSED" in output as primary success indicator
@@ -626,16 +433,23 @@ def run_python_test(script: str, timeout: int = 60) -> tuple[bool, str, Optional
 
 def run_typescript_test(script: str, timeout: int = 60) -> tuple[bool, str, Optional[str]]:
     """Run a TypeScript/JavaScript test script."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.mjs', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.mjs', delete=False, dir='/tmp') as f:
         f.write(script)
         f.flush()
 
         try:
+            # Set NODE_PATH to find packages in /tmp/node_modules (created by CI)
+            env = {**os.environ}
+            node_path = env.get("NODE_PATH", "")
+            env["NODE_PATH"] = f"/tmp/node_modules:{node_path}" if node_path else "/tmp/node_modules"
+
             result = subprocess.run(
                 ["node", f.name],
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                env=env,
+                cwd="/tmp"  # Run from /tmp so relative imports work
             )
             success = result.returncode == 0
             output = result.stdout + result.stderr
@@ -687,6 +501,27 @@ def safe_print(*args, **kwargs):
 def test_example(openai_client: OpenAI, example: CodeExample, hindsight_url: str, repo_root: str, cli_available: bool = True, debug: bool = False, model: str = "gpt-4o") -> TestResult:
     """Test a single code example."""
     safe_print(f"  Testing {example.file_path}:{example.line_number} ({example.language})")
+
+    # Pre-filter obviously non-testable examples (saves LLM calls)
+    skip, reason = is_obviously_not_testable(example.code, example.language)
+    if skip:
+        safe_print(f"    SKIPPED (pre-filter): {reason}")
+        return TestResult(
+            example=example,
+            success=True,
+            output="",
+            error=f"SKIPPED: {reason}"
+        )
+
+    # CLI not available - skip bash examples
+    if not cli_available and example.language in ["bash", "sh"] and "hindsight" in example.code.lower():
+        safe_print(f"    SKIPPED: CLI not installed")
+        return TestResult(
+            example=example,
+            success=True,
+            output="",
+            error="SKIPPED: CLI not installed"
+        )
 
     try:
         # Analyze with LLM
