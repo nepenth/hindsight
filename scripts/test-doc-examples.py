@@ -576,12 +576,20 @@ Respond with JSON:
 
 If not testable, set test_script to null."""
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0
-    )
+    # Reasoning models (o1, o3, etc.) don't support temperature parameter
+    is_reasoning_model = model.startswith(("o1", "o3"))
+
+    kwargs = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "response_format": {"type": "json_object"},
+    }
+    if is_reasoning_model:
+        kwargs["max_completion_tokens"] = 16000
+    else:
+        kwargs["temperature"] = 0
+
+    response = client.chat.completions.create(**kwargs)
 
     return json.loads(response.choices[0].message.content)
 
@@ -886,12 +894,20 @@ etc.
 Just output the categories section, nothing else. Be brief."""
 
             try:
-                response = openai_client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0,
-                    max_tokens=1000
-                )
+                # Reasoning models (o1, o3, etc.) don't support temperature/max_tokens
+                is_reasoning_model = model.startswith(("o1", "o3"))
+
+                kwargs = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+                if is_reasoning_model:
+                    kwargs["max_completion_tokens"] = 1000
+                else:
+                    kwargs["temperature"] = 0
+                    kwargs["max_tokens"] = 1000
+
+                response = openai_client.chat.completions.create(**kwargs)
                 categories = response.choices[0].message.content
                 lines.append(categories)
             except Exception as e:
