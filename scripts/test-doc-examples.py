@@ -21,11 +21,16 @@ import glob
 import subprocess
 import tempfile
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+import threading
 
 from openai import OpenAI
+
+# Thread-safe print lock
+print_lock = threading.Lock()
 
 
 @dataclass
@@ -74,12 +79,22 @@ class TestReport:
 
 
 def find_markdown_files(repo_root: str) -> list[str]:
-    """Find all markdown files in the repository, excluding node_modules."""
+    """Find all markdown files in the repository, excluding auto-generated docs."""
     md_files = []
+    # Directories to skip (auto-generated docs, dependencies, etc.)
+    skip_patterns = [
+        "node_modules",
+        ".git",
+        "venv",
+        "__pycache__",
+        "hindsight_client_api/docs",  # Auto-generated OpenAPI docs
+        "hindsight-clients/typescript/docs",  # Auto-generated TS docs
+        "target/",  # Rust build artifacts
+        "dist/",  # Build outputs
+    ]
     for pattern in ["*.md", "**/*.md"]:
         for f in glob.glob(os.path.join(repo_root, pattern), recursive=True):
-            # Skip node_modules and other common exclusions
-            if any(skip in f for skip in ["node_modules", ".git", "venv", "__pycache__"]):
+            if any(skip in f for skip in skip_patterns):
                 continue
             md_files.append(f)
     return sorted(set(md_files))
@@ -145,22 +160,73 @@ IMPORTANT RULES:
 - Hindsight API is ALREADY running at: {hindsight_url} - do NOT start Docker containers or servers
 - Mark Docker/server setup examples as NOT testable (reason: "Server setup example - server already running")
 - Mark pip/npm install commands as NOT testable (reason: "Package installation command")
-- For Python examples, use: `from hindsight_client import Hindsight; client = Hindsight(base_url="{hindsight_url}")`
-- For TypeScript/JavaScript, the server is at {hindsight_url}
+- Mark code fragments that define classes/functions without calling them as NOT testable (reason: "Code fragment - defines but doesn't execute")
 - Use unique bank_id names like "doc-test-<random-uuid>" to avoid conflicts
-- Add cleanup using: requests.delete("{hindsight_url}/v1/default/banks/<bank_id>")
-- For Python, wrap in try/except and use sys.exit(0) for success, sys.exit(1) for actual failures
-- Test script should print "TEST PASSED" on success before exiting with 0
+- For cleanup, use requests.delete("{hindsight_url}/v1/default/banks/<bank_id>") - there is NO delete_bank() method
+- For Python, wrap in try/finally to ensure cleanup runs, print "TEST PASSED" on success
 
-HINDSIGHT CLIENT RESPONSE TYPES (Python):
-- retain() returns RetainResponse with: success (bool), bank_id (str), items_count (int)
-- recall() returns RecallResponse with: results (list of RecallResult objects, each has .text attribute)
-- reflect() returns ReflectResponse with: text (str)
+EXACT HINDSIGHT PYTHON CLIENT API (use EXACTLY these signatures):
+```python
+from hindsight_client import Hindsight
 
-To verify responses:
-- For retain: check response.success == True
-- For recall: check len(response.results) > 0 or any keyword in str(response.results)
-- For reflect: check response.text is not None and len(response.text) > 0
+# Initialize client
+client = Hindsight(base_url="{hindsight_url}")
+
+# Store a single memory - use 'content' parameter, NOT 'items' or 'text'
+response = client.retain(
+    bank_id="my-bank",      # Required: string
+    content="Memory text",   # Required: string - the memory content
+    timestamp=None,          # Optional: datetime
+    context=None,            # Optional: string
+    document_id=None,        # Optional: string
+    metadata=None,           # Optional: dict
+)
+# Returns RetainResponse with: success (bool), bank_id (str), items_count (int)
+
+# Store multiple memories
+response = client.retain_batch(
+    bank_id="my-bank",
+    items=[{{"content": "Memory 1"}}, {{"content": "Memory 2"}}],  # List of dicts with 'content' key
+    document_id=None,
+    retain_async=False,
+)
+
+# Recall memories
+response = client.recall(
+    bank_id="my-bank",
+    query="search query",    # Required: string
+    types=None,              # Optional: list of strings
+    max_tokens=4096,
+    budget="mid",            # "low", "mid", or "high"
+)
+# Returns RecallResponse with: results (list of RecallResult, each has .text attribute)
+
+# Generate answer using memories
+response = client.reflect(
+    bank_id="my-bank",
+    query="question",        # Required: string
+    budget="low",            # "low", "mid", or "high"
+    context=None,            # Optional: string
+)
+# Returns ReflectResponse with: text (str)
+
+# Create a bank with profile
+response = client.create_bank(
+    bank_id="my-bank",
+    name=None,               # Optional: string
+    background=None,         # Optional: string
+    disposition=None,        # Optional: dict
+)
+
+# Close client (important for cleanup)
+client.close()
+```
+
+IMPORTANT: There is NO delete_bank() method. To delete a bank, use raw HTTP:
+```python
+import requests
+requests.delete(f"{hindsight_url}/v1/default/banks/{{bank_id}}")
+```
 
 Respond with JSON:
 {{
@@ -266,19 +332,26 @@ def run_bash_test(script: str, timeout: int = 60) -> tuple[bool, str, Optional[s
             os.unlink(f.name)
 
 
-def test_example(client: OpenAI, example: CodeExample, hindsight_url: str, debug: bool = False) -> TestResult:
+def safe_print(*args, **kwargs):
+    """Thread-safe print."""
+    with print_lock:
+        print(*args, **kwargs)
+        sys.stdout.flush()
+
+
+def test_example(openai_client: OpenAI, example: CodeExample, hindsight_url: str, debug: bool = False) -> TestResult:
     """Test a single code example."""
-    print(f"\n  Testing {example.file_path}:{example.line_number} ({example.language})")
+    safe_print(f"  Testing {example.file_path}:{example.line_number} ({example.language})")
 
     try:
         # Analyze with LLM
-        analysis = analyze_example_with_llm(client, example, hindsight_url)
+        analysis = analyze_example_with_llm(openai_client, example, hindsight_url)
 
         if debug and analysis.get("test_script"):
-            print(f"    [DEBUG] Generated script:\n{analysis.get('test_script')}")
+            safe_print(f"    [DEBUG] Generated script:\n{analysis.get('test_script')}")
 
         if not analysis.get("testable", False):
-            print(f"    SKIPPED: {analysis.get('reason', 'Not testable')}")
+            safe_print(f"    SKIPPED: {analysis.get('reason', 'Not testable')}")
             return TestResult(
                 example=example,
                 success=True,
@@ -288,7 +361,7 @@ def test_example(client: OpenAI, example: CodeExample, hindsight_url: str, debug
 
         test_script = analysis.get("test_script")
         if not test_script:
-            print(f"    SKIPPED: No test script generated")
+            safe_print(f"    SKIPPED: No test script generated")
             return TestResult(
                 example=example,
                 success=True,
@@ -305,7 +378,7 @@ def test_example(client: OpenAI, example: CodeExample, hindsight_url: str, debug
         elif lang in ["bash", "sh"]:
             success, output, error = run_bash_test(test_script)
         else:
-            print(f"    SKIPPED: Unsupported language {lang}")
+            safe_print(f"    SKIPPED: Unsupported language {lang}")
             return TestResult(
                 example=example,
                 success=True,
@@ -319,9 +392,9 @@ def test_example(client: OpenAI, example: CodeExample, hindsight_url: str, debug
             run_python_test(cleanup, timeout=30)
 
         if success:
-            print(f"    PASSED")
+            safe_print(f"    PASSED")
         else:
-            print(f"    FAILED: {error}")
+            safe_print(f"    FAILED: {error[:200] if error else 'Unknown error'}")
 
         return TestResult(
             example=example,
@@ -332,7 +405,7 @@ def test_example(client: OpenAI, example: CodeExample, hindsight_url: str, debug
 
     except Exception as e:
         error_msg = f"Exception: {str(e)}\n{traceback.format_exc()}"
-        print(f"    ERROR: {error_msg}")
+        safe_print(f"    ERROR: {error_msg[:200]}")
         return TestResult(
             example=example,
             success=False,
@@ -452,14 +525,26 @@ def main():
 
     print(f"\nTotal code examples to test: {len(all_examples)}")
 
-    # Test each example
+    # Test examples in parallel
     report = TestReport()
     debug = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
+    max_workers = int(os.environ.get("MAX_WORKERS", "8"))  # Default 8 parallel workers
 
-    for i, example in enumerate(all_examples, 1):
-        print(f"\n[{i}/{len(all_examples)}] Testing example...")
-        result = test_example(client, example, hindsight_url, debug=debug)
-        report.add_result(result)
+    print(f"Running tests with {max_workers} parallel workers...")
+
+    def run_test(args):
+        idx, example = args
+        safe_print(f"\n[{idx}/{len(all_examples)}] Testing example...")
+        return test_example(client, example, hindsight_url, debug=debug)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        futures = {executor.submit(run_test, (i, ex)): i for i, ex in enumerate(all_examples, 1)}
+
+        # Collect results as they complete
+        for future in as_completed(futures):
+            result = future.result()
+            report.add_result(result)
 
     # Clean up any test banks (runs even if tests failed)
     cleanup_test_banks(hindsight_url, report)

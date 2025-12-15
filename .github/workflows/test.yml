@@ -523,6 +523,10 @@ jobs:
       working-directory: ./hindsight-api
       run: uv sync --no-install-project --index-strategy unsafe-best-match
 
+    - name: Install test dependencies in API venv
+      working-directory: ./hindsight-api
+      run: uv pip install ../hindsight-clients/python requests
+
     - name: Install TypeScript client dependencies
       run: npm ci
 
