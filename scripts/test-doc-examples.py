@@ -241,6 +241,11 @@ requests.delete(f"{hindsight_url}/v1/default/banks/{{bank_id}}")
 TYPESCRIPT/JAVASCRIPT RULES:
 - ALWAYS use ES module syntax (import), NEVER use require()
 - The package is '@vectorize-io/hindsight-client'
+- NEVER import external packages like 'node-fetch', 'uuid', 'axios', etc. - use native APIs only
+- Use native fetch() for HTTP requests (available in Node 18+)
+- Use crypto.randomUUID() for generating UUIDs
+- HindsightClient has NO close() method - do NOT call client.close()
+- For cleanup, use native fetch() to DELETE banks
 ```typescript
 import {{ HindsightClient }} from '@vectorize-io/hindsight-client';
 
@@ -261,11 +266,15 @@ console.log(answer.text);
 
 // Create bank
 await client.createBank('bank-id', {{ name: 'Name', background: 'Background' }});
+
+// Cleanup - use native fetch, NOT client.close()
+await fetch(`{hindsight_url}/v1/default/banks/${{bankId}}`, {{ method: 'DELETE' }});
 ```
 
 BASH/CLI RULES:
 - The CLI command is 'hindsight'
 - Make sure the hindsight CLI is available before testing CLI examples
+- Mark 'cargo build' and 'cargo test' as NOT testable (reason: "Build command - too slow for CI")
 
 Respond with JSON:
 {{
@@ -518,16 +527,13 @@ def print_report(report: TestReport):
     print("=" * 70)
 
 
-def write_github_summary(report: TestReport, output_path: str):
+def write_github_summary(report: TestReport, output_path: str, openai_client: OpenAI = None):
     """Write a GitHub Actions compatible markdown summary."""
     lines = []
 
-    # Header with status
-    if report.failed > 0:
-        lines.append("# Documentation Examples Test Report")
-    else:
-        lines.append("# Documentation Examples Test Report")
-
+    # Header
+    status_emoji = "❌" if report.failed > 0 else "✅"
+    lines.append(f"# {status_emoji} Documentation Examples Test Report")
     lines.append("")
 
     # Summary stats
@@ -536,45 +542,75 @@ def write_github_summary(report: TestReport, output_path: str):
     lines.append(f"| Metric | Count |")
     lines.append(f"|--------|-------|")
     lines.append(f"| Total | {report.total} |")
-    lines.append(f"| Passed | {report.passed} |")
-    lines.append(f"| Failed | {report.failed} |")
-    lines.append(f"| Skipped | {report.skipped} |")
+    lines.append(f"| ✅ Passed | {report.passed} |")
+    lines.append(f"| ❌ Failed | {report.failed} |")
+    lines.append(f"| ⏭️ Skipped | {report.skipped} |")
     lines.append("")
 
-    # Failures section (detailed)
-    if report.failed > 0:
-        lines.append("## Failures")
-        lines.append("")
-
+    # If there are failures, use LLM to generate a concise analysis
+    if report.failed > 0 and openai_client:
+        # Collect failure data for LLM
+        failures_data = []
         for result in report.results:
             if not result.success and result.error and "SKIPPED" not in result.error:
-                # Extract relative path for cleaner display
                 file_path = result.example.file_path
                 if "/hindsight/" in file_path:
                     file_path = file_path.split("/hindsight/", 1)[-1]
+                failures_data.append({
+                    "file": file_path,
+                    "line": result.example.line_number,
+                    "language": result.example.language,
+                    "error": result.error[:500] if result.error else "Unknown"
+                })
 
-                lines.append(f"### `{file_path}:{result.example.line_number}`")
-                lines.append("")
-                lines.append(f"**Language:** {result.example.language}")
-                lines.append("")
-                lines.append("<details>")
-                lines.append("<summary>Code snippet</summary>")
-                lines.append("")
-                lines.append(f"```{result.example.language}")
-                lines.append(result.example.code[:500])
-                lines.append("```")
-                lines.append("")
-                lines.append("</details>")
-                lines.append("")
-                lines.append("**Error:**")
-                lines.append("```")
-                # Truncate long errors
-                error_text = result.error[:1000] if result.error else "Unknown error"
-                lines.append(error_text)
-                lines.append("```")
-                lines.append("")
-                lines.append("---")
-                lines.append("")
+        # Ask LLM to categorize and summarize
+        prompt = f"""Analyze these {len(failures_data)} documentation test failures and provide a concise summary.
+
+Failures:
+{json.dumps(failures_data, indent=2)}
+
+Create a markdown summary with:
+1. **Categories of failures** - Group similar failures together (e.g., "CLI commands don't exist", "Wrong attribute names", "Missing npm packages", etc.)
+2. **For each category**: List count and 1-2 example files affected
+3. **Recommended fixes** - Brief actionable items
+
+Keep it concise - no more than 30 lines total. Use bullet points. Don't repeat error messages verbatim."""
+
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=1500
+            )
+            llm_summary = response.choices[0].message.content
+            lines.append("## Failure Analysis")
+            lines.append("")
+            lines.append(llm_summary)
+            lines.append("")
+        except Exception as e:
+            # Fallback to simple list if LLM fails
+            lines.append("## Failures")
+            lines.append("")
+            lines.append(f"*LLM summary failed: {e}*")
+            lines.append("")
+            for f in failures_data[:20]:  # Limit to 20
+                lines.append(f"- `{f['file']}:{f['line']}` ({f['language']})")
+            if len(failures_data) > 20:
+                lines.append(f"- ... and {len(failures_data) - 20} more")
+            lines.append("")
+
+    elif report.failed > 0:
+        # No OpenAI client, just list failures
+        lines.append("## Failures")
+        lines.append("")
+        for result in report.results:
+            if not result.success and result.error and "SKIPPED" not in result.error:
+                file_path = result.example.file_path
+                if "/hindsight/" in file_path:
+                    file_path = file_path.split("/hindsight/", 1)[-1]
+                lines.append(f"- `{file_path}:{result.example.line_number}` ({result.example.language})")
+        lines.append("")
 
     # Write to file
     with open(output_path, "w") as f:
@@ -654,9 +690,9 @@ def main():
     # Print report
     print_report(report)
 
-    # Write summary to file for CI
+    # Write summary to file for CI (pass OpenAI client for LLM-powered summary)
     summary_path = "/tmp/doc-test-summary.md"
-    write_github_summary(report, summary_path)
+    write_github_summary(report, summary_path, openai_client=client)
     print(f"Summary written to {summary_path}")
 
     # Exit with appropriate code
