@@ -399,7 +399,8 @@ response = client.retain(
 )
 # Returns RetainResponse with: success (bool), bank_id (str), items_count (int)
 
-# Store multiple memories
+# Store multiple memories - NOTE: parameter is 'items', NOT 'contents'
+# Some docs incorrectly show 'contents=' but the correct parameter is 'items='
 response = client.retain_batch(
     bank_id="my-bank",
     items=[{{"content": "Memory 1"}}, {{"content": "Memory 2"}}],  # List of dicts with 'content' key
@@ -452,13 +453,20 @@ TYPESCRIPT/JAVASCRIPT RULES:
 - Use crypto.randomUUID() for generating UUIDs
 - HindsightClient has NO close() method - do NOT call client.close()
 - For cleanup, use native fetch() to DELETE banks
+- NOTE: Some docs incorrectly show `retainBatch({{ bankId, contents }})` - the correct API uses positional args
 ```typescript
 import {{ HindsightClient }} from '@vectorize-io/hindsight-client';
 
 const client = new HindsightClient({{ baseUrl: '{hindsight_url}' }});
 
-// Retain
+// Retain single
 await client.retain('bank-id', 'content text');
+
+// Retain batch - uses positional args, NOT object with 'contents' key
+await client.retainBatch('bank-id', [
+    {{ content: 'Memory 1' }},
+    {{ content: 'Memory 2' }}
+], {{ documentId: 'doc-123' }});  // Optional options
 
 // Recall
 const response = await client.recall('bank-id', 'query');
@@ -487,6 +495,32 @@ BASH/CLI RULES:
   - `<query>` → use a sample query like "What do you know?"
   - `<content>` → use sample content like "Test memory content"
 
+BANK AUTO-CREATION (CRITICAL):
+- For CLI/bash: There is NO 'hindsight bank create' command - banks auto-create on first use
+- The CLI bank subcommands are ONLY: list, disposition, stats, name, background, delete
+- NOTE: There is NO 'hindsight bank profile' command - use 'hindsight bank disposition' instead
+- For CLI tests, just use retain/recall/reflect directly - the bank auto-creates
+- Example: `hindsight memory retain my-new-bank "content"` will auto-create "my-new-bank"
+- For Python SDK: `client.create_bank()` DOES exist and is valid - use it when the docs show it
+- For Node.js SDK: `client.createBank()` DOES exist and is valid - use it when the docs show it
+
+EXACT CLI COMMAND STRUCTURE (use EXACTLY these formats):
+- Memory operations: `hindsight memory <subcommand> <bank_id> ...`
+  - `hindsight memory retain <bank_id> "<content>"` - store a memory
+  - `hindsight memory recall <bank_id> "<query>"` - search memories
+  - `hindsight memory reflect <bank_id> "<query>"` - generate answer
+  - `hindsight memory retain-files <bank_id> <path>` - bulk import from files
+- Bank operations: `hindsight bank <subcommand> ...`
+  - `hindsight bank list` - list all banks
+  - `hindsight bank disposition <bank_id>` - get bank profile/disposition
+  - `hindsight bank stats <bank_id>` - get statistics
+- Document operations: `hindsight document <subcommand> ...`
+- Entity operations: `hindsight entity <subcommand> ...`
+- WRONG: `hindsight retain ...` (missing 'memory' subcommand)
+- WRONG: `hindsight recall ...` (missing 'memory' subcommand)
+- WRONG: `hindsight bank profile ...` (use 'disposition' not 'profile')
+- WRONG: `hindsight bank create ...` (banks auto-create, no such command)
+
 PYTHON IMPORT RULES:
 - ALWAYS include ALL necessary imports at the top of your test script, even if the code snippet doesn't show them
 - The code snippet may be a fragment - add any imports needed to make it runnable
@@ -499,24 +533,36 @@ PYTHON IMPORT RULES:
   - `import uuid` for generating unique IDs
 - If the code uses a variable like `hindsight_litellm.completion()`, you MUST import hindsight_litellm first
 
-ASYNCIO RULES:
-- For SYNC code examples: Do NOT wrap in asyncio.run() - just run the sync code directly
-- For ASYNC code examples (with `async def` or `await`):
-  - Use `asyncio.run(main())` pattern where `main()` is your async test function
-  - NEVER call asyncio.run() inside another async context
-  - If the code snippet shows async usage, create a proper async wrapper
-- If the client has BOTH sync and async methods, prefer testing sync methods to avoid event loop issues
-- The Hindsight Python client uses sync methods by default - do NOT make them async
-- Example of CORRECT async test:
+ASYNCIO RULES (CRITICAL - READ CAREFULLY):
+- The Hindsight Python client (`from hindsight_client import Hindsight`) is a SYNCHRONOUS client
+- Do NOT wrap Hindsight client calls in asyncio.run() or use `await` with them
+- Do NOT use `async def` for test functions that only use the Hindsight client
+- Just call the client methods directly in regular synchronous Python code:
+  ```python
+  client = Hindsight(base_url="...")
+  client.retain(bank_id="...", content="...")  # NO await, NO asyncio.run()
+  response = client.recall(bank_id="...", query="...")  # Direct sync call
+  client.close()
+  ```
+- ONLY use asyncio.run() if the ORIGINAL code example explicitly shows async/await patterns
+- If you see "RuntimeError: This event loop is already running" - you're incorrectly using asyncio
+- Example of CORRECT sync test (what you should use for Hindsight client):
 ```python
-import asyncio
+from hindsight_client import Hindsight
+import requests
+import uuid
 
-async def test_async_example():
-    # async code here
-    pass
+bank_id = f"doc-test-{{uuid.uuid4()}}"
+client = Hindsight(base_url="{hindsight_url}")
 
-if __name__ == "__main__":
-    asyncio.run(test_async_example())
+try:
+    # Direct sync calls - NO asyncio.run(), NO await
+    client.retain(bank_id=bank_id, content="Test content")
+    response = client.recall(bank_id=bank_id, query="test")
+    print("TEST PASSED")
+finally:
+    client.close()
+    requests.delete(f"{hindsight_url}/v1/default/banks/{{bank_id}}")
 ```
 
 Respond with JSON:
