@@ -75,28 +75,53 @@ def discover_and_install_dependencies(repo_root: str) -> dict:
         except Exception:
             pass
 
-    # Always include core local packages
+    # Always include core local packages (order matters - dependencies first)
     local_python_packages = [
         ("hindsight-clients/python", "hindsight_client"),
         ("hindsight-integrations/litellm", "hindsight_litellm"),
         ("hindsight-integrations/openai", "hindsight_openai"),
     ]
 
-    # Install local Python packages
-    print("\nInstalling local Python packages...")
+    # Check which packages are already installed
+    print("\nChecking installed Python packages...")
+    installed_packages = set()
     for pkg_path, pkg_name in local_python_packages:
-        full_path = os.path.join(repo_root, pkg_path)
-        if os.path.exists(full_path):
-            try:
-                subprocess.run(
-                    ["uv", "pip", "install", "-e", full_path],
-                    capture_output=True,
-                    timeout=120
-                )
-                print(f"  Installed {pkg_name}")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", f"import {pkg_name}"],
+                capture_output=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                print(f"  {pkg_name}: already installed")
+                installed_packages.add(pkg_name)
                 results["local_packages"].append(pkg_name)
-            except Exception as e:
-                print(f"  Failed to install {pkg_name}: {e}")
+        except Exception:
+            pass
+
+    # Install missing local Python packages
+    packages_to_install = [(p, n) for p, n in local_python_packages if n not in installed_packages]
+    if packages_to_install:
+        print("\nInstalling missing Python packages...")
+        for pkg_path, pkg_name in packages_to_install:
+            full_path = os.path.join(repo_root, pkg_path)
+            if os.path.exists(full_path):
+                try:
+                    result = subprocess.run(
+                        ["uv", "pip", "install", full_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+                    if result.returncode == 0:
+                        print(f"  Installed {pkg_name}")
+                        results["local_packages"].append(pkg_name)
+                    else:
+                        print(f"  Failed to install {pkg_name}: {result.stderr[:200]}")
+                except Exception as e:
+                    print(f"  Failed to install {pkg_name}: {e}")
+    else:
+        print("  All packages already installed")
 
     # Install discovered Python packages (filter out local ones and known problematic ones)
     skip_packages = {"hindsight-client", "hindsight_client", "hindsight-litellm", "hindsight-openai",
@@ -438,6 +463,40 @@ BASH/CLI RULES:
 - The CLI command is 'hindsight'
 - Check the "Hindsight CLI status" above - if it says "NOT INSTALLED", mark ALL examples that use the 'hindsight' CLI command as NOT testable (reason: "CLI not installed")
 - Mark 'cargo build' and 'cargo test' as NOT testable (reason: "Build command - too slow for CI")
+- For pytest commands: Use absolute paths like 'cd {repo_root}/hindsight-api && uv run pytest tests/ -v'
+- Mark any 'pytest' command that doesn't specify a real directory as NOT testable (reason: "Test command requires specific setup")
+
+PYTHON IMPORT RULES:
+- ALWAYS include ALL necessary imports at the top of your test script, even if the code snippet doesn't show them
+- The code snippet may be a fragment - add any imports needed to make it runnable
+- Common imports to add:
+  - `from hindsight_client import Hindsight` for Hindsight client usage
+  - `import hindsight_litellm` or `from hindsight_litellm import ...` for litellm integration
+  - `from hindsight_openai import configure, OpenAI` for OpenAI integration
+  - `import requests` for HTTP cleanup calls
+  - `import asyncio` for async code
+  - `import uuid` for generating unique IDs
+- If the code uses a variable like `hindsight_litellm.completion()`, you MUST import hindsight_litellm first
+
+ASYNCIO RULES:
+- For SYNC code examples: Do NOT wrap in asyncio.run() - just run the sync code directly
+- For ASYNC code examples (with `async def` or `await`):
+  - Use `asyncio.run(main())` pattern where `main()` is your async test function
+  - NEVER call asyncio.run() inside another async context
+  - If the code snippet shows async usage, create a proper async wrapper
+- If the client has BOTH sync and async methods, prefer testing sync methods to avoid event loop issues
+- The Hindsight Python client uses sync methods by default - do NOT make them async
+- Example of CORRECT async test:
+```python
+import asyncio
+
+async def test_async_example():
+    # async code here
+    pass
+
+if __name__ == "__main__":
+    asyncio.run(test_async_example())
+```
 
 Respond with JSON:
 {{
