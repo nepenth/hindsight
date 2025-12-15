@@ -362,7 +362,16 @@ PLACEHOLDER SUBSTITUTION (applies to ALL languages):
   - `<query>` → use a realistic query like "What do you know?"
   - `<content>` → use sample content like "Alice works at Google as a software engineer"
   - `<document_id>` → use a unique ID like f"doc-{{uuid.uuid4()}}"
-- The test MUST use real values, not literal placeholder strings like "<bank_id>"
+  - `api_key="sk-..."` or similar API key placeholders → use `os.environ["OPENAI_API_KEY"]` or `os.environ.get("OPENAI_API_KEY")`
+  - `api_key=os.environ["OPENAI_API_KEY"]` → keep as-is (already correct)
+  - File paths like `notes.txt`, `document.txt`, `*.md` → create a temporary test file first with sample content
+- The test MUST use real values, not literal placeholder strings like "<bank_id>" or "sk-..."
+- For OpenAI/Anthropic API calls: ALWAYS use environment variables for API keys, never literal placeholder strings
+- For file-based commands (retain-files, --file): Create a temp file with sample content before running the command. Example:
+  ```bash
+  echo "Sample test content for documentation" > /tmp/test-doc.txt
+  hindsight memory retain-files doc-test-xxx /tmp/test-doc.txt
+  ```
 
 WORKING DIRECTORY RULES:
 - The test script will run from a temp directory, NOT from the repository
