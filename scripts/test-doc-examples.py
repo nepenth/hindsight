@@ -508,6 +508,69 @@ def print_report(report: TestReport):
     print("=" * 70)
 
 
+def write_github_summary(report: TestReport, output_path: str):
+    """Write a GitHub Actions compatible markdown summary."""
+    lines = []
+
+    # Header with status
+    if report.failed > 0:
+        lines.append("# Documentation Examples Test Report")
+    else:
+        lines.append("# Documentation Examples Test Report")
+
+    lines.append("")
+
+    # Summary stats
+    lines.append("## Summary")
+    lines.append("")
+    lines.append(f"| Metric | Count |")
+    lines.append(f"|--------|-------|")
+    lines.append(f"| Total | {report.total} |")
+    lines.append(f"| Passed | {report.passed} |")
+    lines.append(f"| Failed | {report.failed} |")
+    lines.append(f"| Skipped | {report.skipped} |")
+    lines.append("")
+
+    # Failures section (detailed)
+    if report.failed > 0:
+        lines.append("## Failures")
+        lines.append("")
+
+        for result in report.results:
+            if not result.success and result.error and "SKIPPED" not in result.error:
+                # Extract relative path for cleaner display
+                file_path = result.example.file_path
+                if "/hindsight/" in file_path:
+                    file_path = file_path.split("/hindsight/", 1)[-1]
+
+                lines.append(f"### `{file_path}:{result.example.line_number}`")
+                lines.append("")
+                lines.append(f"**Language:** {result.example.language}")
+                lines.append("")
+                lines.append("<details>")
+                lines.append("<summary>Code snippet</summary>")
+                lines.append("")
+                lines.append(f"```{result.example.language}")
+                lines.append(result.example.code[:500])
+                lines.append("```")
+                lines.append("")
+                lines.append("</details>")
+                lines.append("")
+                lines.append("**Error:**")
+                lines.append("```")
+                # Truncate long errors
+                error_text = result.error[:1000] if result.error else "Unknown error"
+                lines.append(error_text)
+                lines.append("```")
+                lines.append("")
+                lines.append("---")
+                lines.append("")
+
+    # Write to file
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines))
+
+
 def main():
     # Ensure unbuffered output
     sys.stdout.reconfigure(line_buffering=True)
@@ -580,6 +643,12 @@ def main():
 
     # Print report
     print_report(report)
+
+    # Write GitHub Actions summary if running in CI
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        write_github_summary(report, summary_path)
+        print(f"GitHub summary written to {summary_path}")
 
     # Exit with appropriate code
     sys.exit(1 if report.failed > 0 else 0)
