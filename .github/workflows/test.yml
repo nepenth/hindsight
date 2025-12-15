@@ -516,7 +516,9 @@ jobs:
 
     - name: Install Python client
       working-directory: ./hindsight-clients/python
-      run: uv build && uv pip install dist/*.whl
+      run: |
+        uv build
+        uv pip install $(ls dist/*.whl)
 
     - name: Install TypeScript client dependencies
       run: npm ci
