@@ -77,14 +77,14 @@ async def test_llm_provider_memory_operations(provider: str, model: str):
     print(f"\n{provider}/{model} - Fact extraction:")
     print(f"  Extracted {len(facts)} facts from {len(chunks)} chunks")
     for fact in facts:
-        print(f"  - {fact.text}")
+        print(f"  - {fact.fact}")
 
     assert facts is not None, f"{provider}/{model} fact extraction returned None"
     assert len(facts) > 0, f"{provider}/{model} should extract at least one fact"
 
     # Verify facts have required fields
     for fact in facts:
-        assert fact.text, f"{provider}/{model} fact missing text"
+        assert fact.fact, f"{provider}/{model} fact missing text"
         assert fact.fact_type in ["world", "experience", "opinion"], f"{provider}/{model} invalid fact_type: {fact.fact_type}"
 
     # Test 2: Reflect (actual reflect function)
