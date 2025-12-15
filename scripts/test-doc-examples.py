@@ -228,6 +228,35 @@ import requests
 requests.delete(f"{hindsight_url}/v1/default/banks/{{bank_id}}")
 ```
 
+TYPESCRIPT/JAVASCRIPT RULES:
+- ALWAYS use ES module syntax (import), NEVER use require()
+- The package is '@vectorize-io/hindsight-client'
+```typescript
+import {{ HindsightClient }} from '@vectorize-io/hindsight-client';
+
+const client = new HindsightClient({{ baseUrl: '{hindsight_url}' }});
+
+// Retain
+await client.retain('bank-id', 'content text');
+
+// Recall
+const response = await client.recall('bank-id', 'query');
+for (const r of response.results) {{
+    console.log(r.text);
+}}
+
+// Reflect
+const answer = await client.reflect('bank-id', 'question');
+console.log(answer.text);
+
+// Create bank
+await client.createBank('bank-id', {{ name: 'Name', background: 'Background' }});
+```
+
+BASH/CLI RULES:
+- The CLI command is 'hindsight'
+- Make sure the hindsight CLI is available before testing CLI examples
+
 Respond with JSON:
 {{
     "testable": true/false,
