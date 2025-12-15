@@ -529,9 +529,6 @@ jobs:
     - name: Build TypeScript client
       run: npm run build --workspace=hindsight-clients/typescript
 
-    - name: Install test script dependencies
-      run: uv pip install openai
-
     - name: Create .env file
       run: |
         cat > .env << EOF
@@ -558,7 +555,8 @@ jobs:
         done
 
     - name: Test documentation examples
-      run: python scripts/test-doc-examples.py
+      working-directory: ./hindsight-api
+      run: uv run python ../scripts/test-doc-examples.py
 
     - name: Show API server logs
       if: always()
