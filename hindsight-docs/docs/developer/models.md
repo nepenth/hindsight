@@ -33,12 +33,11 @@ The following models have been tested and verified to work correctly with Hindsi
 | **OpenAI** | `gpt-4.1-mini` |
 | **OpenAI** | `gpt-4.1-nano` |
 | **OpenAI** | `gpt-4o-mini` |
-| **Gemini** | `gemini-3.0-pro` |
+| **Gemini** | `gemini-3-pro-preview` |
 | **Gemini** | `gemini-2.5-flash` |
 | **Gemini** | `gemini-2.5-flash-lite` |
 | **Groq** | `openai/gpt-oss-120b` |
 | **Groq** | `openai/gpt-oss-20b` |
-| **Groq** | `llama-3.3-70b-versatile` |
 
 ### Using Other Models
 

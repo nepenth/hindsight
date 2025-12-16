@@ -20,13 +20,12 @@ MODEL_MATRIX = [
     ("openai", "gpt-5"),
     ("openai", "gpt-5.2"),
     # Groq models
-    ("groq", "llama-3.3-70b-versatile"),
     ("groq", "openai/gpt-oss-120b"),
     ("groq", "openai/gpt-oss-20b"),
     # Gemini models
     ("gemini", "gemini-2.5-flash"),
     ("gemini", "gemini-2.5-flash-lite"),
-    ("gemini", "gemini-3.0-pro"),
+    ("gemini", "gemini-3-pro-preview"),
 ]
 
 
