@@ -172,152 +172,11 @@ def should_skip(code: str, language: str) -> Optional[str]:
 
 
 # =============================================================================
-# STEP 3: Transform code (deterministic templates)
+# STEP 3: Transform code (LLM adds setup/cleanup around sacred doc code)
 # =============================================================================
 
-def replace_placeholders(code: str, hindsight_url: str, bank_id: str) -> str:
-    """Replace placeholder values in code."""
-    result = code
-
-    # Replace URLs
-    result = re.sub(r'https?://localhost:\d+', hindsight_url, result)
-    result = re.sub(r'http://127\.0\.0\.1:\d+', hindsight_url, result)
-
-    # Replace bank IDs - common patterns
-    result = re.sub(r'["\']my-bank["\']', f'"{bank_id}"', result)
-    result = re.sub(r'["\']demo["\']', f'"{bank_id}"', result)
-    result = re.sub(r'<bank_id>', bank_id, result)
-    result = re.sub(r'<bank-id>', bank_id, result)
-    result = re.sub(r'\{bank_id\}', bank_id, result)
-
-    return result
-
-
-def remove_typescript_annotations(code: str) -> str:
-    """Remove TypeScript type annotations from code."""
-    # Remove type annotations after colons (: Type)
-    result = re.sub(r':\s*\w+(\[\])?(\s*\|\s*\w+)*(?=\s*[=,\)\}])', '', code)
-    # Remove generic type parameters (<Type>)
-    result = re.sub(r'<[^>]+>', '', result)
-    # Remove 'as Type' casts
-    result = re.sub(r'\s+as\s+\w+', '', result)
-    # Remove interface/type declarations
-    result = re.sub(r'^(interface|type)\s+\w+\s*\{[^}]*\}\s*;?\s*$', '', result, flags=re.MULTILINE)
-    return result
-
-
-def transform_python(code: str, hindsight_url: str, bank_id: str) -> str:
-    """Transform Python doc code into runnable test."""
-    code = replace_placeholders(code, hindsight_url, bank_id)
-
-    # Extract imports (lines starting with 'from' or 'import')
-    lines = code.split('\n')
-    imports = []
-    body = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith(('from ', 'import ')) and not stripped.startswith('# '):
-            imports.append(line)
-        else:
-            body.append(line)
-
-    # Build the test script
-    script = '''import requests
-
-{imports}
-
-BANK_ID = "{bank_id}"
-HINDSIGHT_URL = "{hindsight_url}"
-
-try:
-{body}
-    print("TEST PASSED")
-finally:
-    requests.delete(f"{{HINDSIGHT_URL}}/v1/default/banks/{{BANK_ID}}")
-'''
-
-    # Indent body
-    indented_body = '\n'.join('    ' + line if line.strip() else '' for line in body)
-
-    return script.format(
-        imports='\n'.join(imports),
-        bank_id=bank_id,
-        hindsight_url=hindsight_url,
-        body=indented_body
-    )
-
-
-def transform_javascript(code: str, hindsight_url: str, bank_id: str) -> str:
-    """Transform JavaScript/TypeScript doc code into runnable test."""
-    code = replace_placeholders(code, hindsight_url, bank_id)
-    code = remove_typescript_annotations(code)
-
-    # Extract imports
-    lines = code.split('\n')
-    imports = []
-    body = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith('import '):
-            imports.append(line)
-        else:
-            body.append(line)
-
-    script = '''{imports}
-
-const BANK_ID = "{bank_id}";
-const HINDSIGHT_URL = "{hindsight_url}";
-
-(async () => {{
-    try {{
-{body}
-        console.log("TEST PASSED");
-    }} finally {{
-        await fetch(`${{HINDSIGHT_URL}}/v1/default/banks/${{BANK_ID}}`, {{ method: "DELETE" }});
-    }}
-}})();
-'''
-
-    # Indent body
-    indented_body = '\n'.join('        ' + line if line.strip() else '' for line in body)
-
-    return script.format(
-        imports='\n'.join(imports),
-        bank_id=bank_id,
-        hindsight_url=hindsight_url,
-        body=indented_body
-    )
-
-
-def transform_bash(code: str, hindsight_url: str, bank_id: str) -> str:
-    """Transform Bash doc code into runnable test."""
-    code = replace_placeholders(code, hindsight_url, bank_id)
-
-    script = '''#!/bin/bash
-set -e
-
-export HINDSIGHT_API_URL="{hindsight_url}"
-BANK_ID="{bank_id}"
-
-cleanup() {{
-    curl -s -X DELETE "{hindsight_url}/v1/default/banks/$BANK_ID" || true
-}}
-trap cleanup EXIT
-
-{code}
-
-echo "TEST PASSED"
-'''
-
-    return script.format(
-        hindsight_url=hindsight_url,
-        bank_id=bank_id,
-        code=code
-    )
-
-
 def transform_code(client: OpenAI, example: CodeExample, hindsight_url: str, cli_available: bool, model: str) -> tuple[str, Optional[str]]:
-    """Transform doc code into runnable test using deterministic templates."""
+    """Use LLM to add setup/cleanup around doc code. The doc code itself is not modified."""
 
     bank_id = f"doc-test-{uuid.uuid4()}"
 
@@ -325,15 +184,73 @@ def transform_code(client: OpenAI, example: CodeExample, hindsight_url: str, cli
     if not cli_available and example.language in ["bash", "sh"] and "hindsight " in example.code.lower():
         return "", "CLI not available"
 
+    if example.language == "python":
+        output_format = f"""Output a Python script (.py):
+- The doc code goes inside a try block
+- Add cleanup in finally: requests.delete("{hindsight_url}/v1/default/banks/{bank_id}")
+- End with: print("TEST PASSED")
+- Do NOT use async/await - the Hindsight client is synchronous"""
+
+    elif example.language in ["typescript", "javascript"]:
+        output_format = f"""Output a JavaScript ES module (.mjs):
+- Remove TypeScript type annotations
+- Wrap in async IIFE: (async () => {{ try {{ ... }} finally {{ ... }} }})();
+- Add cleanup in finally: await fetch("{hindsight_url}/v1/default/banks/{bank_id}", {{ method: "DELETE" }})
+- End with: console.log("TEST PASSED")"""
+
+    elif example.language in ["bash", "sh"]:
+        output_format = f"""Output a Bash script:
+- Start with #!/bin/bash and set -e
+- Use trap for cleanup: curl -s -X DELETE "{hindsight_url}/v1/default/banks/{bank_id}"
+- End with: echo "TEST PASSED" """
+
+    else:
+        return "", f"Unsupported language: {example.language}"
+
+    prompt = f"""The documentation code below is the TEST CASE. Your job is to make it runnable.
+
+DOCUMENTATION CODE ({example.language}):
+```
+{example.code}
+```
+
+RULES:
+1. The doc code is SACRED - do not modify its logic, method calls, or parameters
+2. You MAY add setup BEFORE it:
+   - Import statements the code assumes exist
+   - Object instantiation (e.g., if code uses 'client.foo()', create the client first)
+   - Variable definitions
+3. You MAY add cleanup AFTER it
+4. Replace placeholder values:
+   - URLs like localhost:8888 → {hindsight_url}
+   - Bank IDs like "my-bank", "demo", <bank_id> → "{bank_id}"
+   - Placeholder IDs like <entity_id>, <document_id> → "test-id"
+
+{output_format}
+
+Output ONLY the complete runnable code, no explanation."""
+
+    is_reasoning = model.startswith(("o1", "o3"))
+    kwargs = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if is_reasoning:
+        kwargs["max_completion_tokens"] = 4000
+    else:
+        kwargs["temperature"] = 0
+        kwargs["max_tokens"] = 4000
+
     try:
-        if example.language == "python":
-            return transform_python(example.code, hindsight_url, bank_id), None
-        elif example.language in ["typescript", "javascript"]:
-            return transform_javascript(example.code, hindsight_url, bank_id), None
-        elif example.language in ["bash", "sh"]:
-            return transform_bash(example.code, hindsight_url, bank_id), None
-        else:
-            return "", f"Unsupported language: {example.language}"
+        response = client.chat.completions.create(**kwargs)
+        script = response.choices[0].message.content
+
+        # Clean up markdown code blocks if present
+        script = re.sub(r'^```\w*\n', '', script)
+        script = re.sub(r'\n```$', '', script)
+        script = script.strip()
+
+        return script, None
     except Exception as e:
         return "", f"Transform failed: {e}"
 
