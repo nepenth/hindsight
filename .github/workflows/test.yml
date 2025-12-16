@@ -532,6 +532,39 @@ jobs:
         uv pip install ../hindsight-integrations/litellm
         uv pip install ../hindsight-integrations/openai
 
+    - name: Verify Python dependencies
+      working-directory: ./hindsight-api
+      run: |
+        echo "=== Verifying Python dependencies ==="
+        uv run python -c "
+        import sys
+        print(f'Python: {sys.executable}')
+        print(f'Prefix: {sys.prefix}')
+
+        # Check required packages
+        packages = [
+            'hindsight_client',
+            'hindsight_litellm',
+            'hindsight_openai',
+            'anthropic',
+            'openai',
+        ]
+
+        missing = []
+        for pkg in packages:
+            try:
+                __import__(pkg)
+                print(f'  ✓ {pkg}')
+            except ImportError as e:
+                print(f'  ✗ {pkg}: {e}')
+                missing.append(pkg)
+
+        if missing:
+            print(f'\nERROR: Missing packages: {missing}')
+            sys.exit(1)
+        print('\nAll Python dependencies verified!')
+        "
+
     - name: Install TypeScript client dependencies
       run: npm ci
 

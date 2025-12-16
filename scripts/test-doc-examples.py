@@ -268,14 +268,40 @@ Output ONLY the transformed code, no explanation."""
 # STEP 4: Run tests
 # =============================================================================
 
+def get_python_path() -> str:
+    """Get PYTHONPATH that includes all installed packages."""
+    paths = []
+
+    # Add virtual environment site-packages if in a venv
+    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+        # We're in a virtual environment
+        venv_site = os.path.join(sys.prefix, 'lib', f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages')
+        if os.path.exists(venv_site):
+            paths.append(venv_site)
+
+    # Add system site-packages
+    paths.extend(site.getsitepackages())
+
+    # Add user site-packages
+    user_site = site.getusersitepackages()
+    if user_site and os.path.exists(user_site):
+        paths.append(user_site)
+
+    # Add existing PYTHONPATH
+    existing = os.environ.get("PYTHONPATH", "")
+    if existing:
+        paths.append(existing)
+
+    return ":".join(paths)
+
+
 def run_python(script: str, timeout: int = 60) -> tuple[bool, str, Optional[str]]:
     """Run Python script."""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
         f.write(script)
         f.flush()
         try:
-            site_packages = site.getsitepackages()
-            pythonpath = ":".join(site_packages + [os.environ.get("PYTHONPATH", "")])
+            pythonpath = get_python_path()
 
             result = subprocess.run(
                 [sys.executable, f.name],
@@ -530,6 +556,44 @@ def check_cli_available() -> bool:
         return False
 
 
+def check_dependencies() -> dict[str, bool]:
+    """Check which dependencies are available for doc tests."""
+    deps = {}
+
+    # Check Python packages
+    python_packages = [
+        ("hindsight_client", "Hindsight Python client"),
+        ("hindsight_litellm", "Hindsight LiteLLM integration"),
+        ("hindsight_openai", "Hindsight OpenAI integration"),
+        ("anthropic", "Anthropic SDK"),
+        ("openai", "OpenAI SDK"),
+    ]
+
+    for module, name in python_packages:
+        try:
+            __import__(module)
+            deps[module] = True
+        except ImportError:
+            deps[module] = False
+
+    return deps
+
+
+def print_dependency_status(deps: dict[str, bool]):
+    """Print dependency availability status."""
+    print("\n=== Dependencies ===")
+    for name, available in deps.items():
+        status = "✓" if available else "✗"
+        print(f"  {status} {name}")
+
+    # Print PYTHONPATH for debugging
+    pythonpath = get_python_path()
+    print(f"\nPYTHONPATH: {pythonpath[:100]}..." if len(pythonpath) > 100 else f"\nPYTHONPATH: {pythonpath}")
+    print(f"Python: {sys.executable}")
+    print(f"Prefix: {sys.prefix}")
+    print()
+
+
 def main():
     sys.stdout.reconfigure(line_buffering=True)
 
@@ -560,6 +624,15 @@ def main():
     # Check CLI
     cli_available = check_cli_available()
     print(f"CLI: {'available' if cli_available else 'not available'}")
+
+    # Check and print dependencies
+    deps = check_dependencies()
+    print_dependency_status(deps)
+
+    # Warn if critical dependencies are missing
+    if not deps.get("hindsight_client"):
+        print("WARNING: hindsight_client not available - Python examples will fail")
+        print("  Install with: pip install hindsight-client or uv pip install <path-to-client>")
 
     # Check API health
     try:
