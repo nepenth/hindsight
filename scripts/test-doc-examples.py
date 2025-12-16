@@ -541,10 +541,16 @@ def main():
     hindsight_url = os.environ.get("HINDSIGHT_API_URL", "http://localhost:8888")
     model = os.environ.get("DOC_TEST_MODEL", "gpt-4o")
 
-    # Find repo root
-    if '__file__' in dir():
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    else:
+    # Find repo root - go up from script location
+    script_path = os.path.abspath(__file__)
+    repo_root = os.path.dirname(os.path.dirname(script_path))
+
+    # If running from a subdirectory (like hindsight-api), detect and fix
+    if not os.path.exists(os.path.join(repo_root, "hindsight-docs")):
+        # Try going up one more level
+        repo_root = os.path.dirname(repo_root)
+    if not os.path.exists(os.path.join(repo_root, "hindsight-docs")):
+        # Fall back to REPO_ROOT env var or cwd
         repo_root = os.environ.get("REPO_ROOT", os.getcwd())
 
     print(f"Repo: {repo_root}")
