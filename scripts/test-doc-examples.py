@@ -188,9 +188,10 @@ def transform_code(client: OpenAI, example: CodeExample, hindsight_url: str, cli
     if example.language == "python":
         lang_instructions = f"""
 OUTPUT FORMAT: Python script (.py)
-- Add ALL necessary imports at the top (hindsight_client, requests, uuid, os, datetime, etc.)
+- KEEP the exact imports from the documentation - do not substitute or invent module names
+- Only add standard library imports (os, uuid, datetime) and 'requests' for cleanup
 - The Hindsight client is SYNCHRONOUS - do NOT use async/await
-- Initialize client with: Hindsight(base_url="{hindsight_url}")
+- If the doc creates a client, pass base_url="{hindsight_url}"
 - Use bank_id = "{bank_id}" for all bank operations
 - Wrap in try/finally for cleanup
 - Cleanup: requests.delete("{hindsight_url}/v1/default/banks/{bank_id}")
@@ -200,9 +201,9 @@ OUTPUT FORMAT: Python script (.py)
         lang_instructions = f"""
 OUTPUT FORMAT: JavaScript ES module (.mjs) - NOT TypeScript
 - REMOVE all TypeScript type annotations (: string, : Promise<void>, : {{ key: type }}, etc.)
-- Use ES module import: import {{ HindsightClient }} from '@vectorize-io/hindsight-client';
+- KEEP the exact imports from the documentation - do not substitute or invent module names
 - Do NOT use require()
-- Initialize: new HindsightClient({{ baseUrl: '{hindsight_url}' }})
+- If the doc creates a client, pass baseUrl: '{hindsight_url}'
 - Use bankId = '{bank_id}' for all bank operations
 - Wrap in async IIFE: (async () => {{ ... }})();
 - Use try/finally for cleanup
@@ -231,6 +232,7 @@ DOCUMENTATION CODE ({example.language}):
 {lang_instructions}
 
 RULES:
+- CRITICAL: Preserve the original imports from the documentation - do NOT substitute different module names
 - Keep the original code logic intact
 - Add whatever setup is needed to make it run standalone
 - Replace placeholder values (my-bank, <bank_id>, localhost URLs) with real values
