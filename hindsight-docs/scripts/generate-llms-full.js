@@ -39,8 +39,10 @@ const DOC_ORDER = [
   'sdks/cli.md',
   'sdks/mcp.md',
   'cookbook/index.md',
-  'cookbook/per-user-memory.md',
-  'cookbook/support-agent-with-shared-knowledge.md',
+  'cookbook/recipes/quickstart.md',
+  'cookbook/recipes/per-user-memory.md',
+  'cookbook/recipes/support-agent-shared-knowledge.md',
+  'cookbook/applications/openai-fitness-coach.md',
 ];
 
 function getAllMarkdownFiles(dir, baseDir = dir) {

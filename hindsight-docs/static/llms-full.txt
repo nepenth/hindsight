@@ -3,7 +3,7 @@
 > Agent Memory that Works Like Human Memory
 
 This file contains the complete Hindsight documentation for LLM consumption.
-Generated: 2025-12-16T11:10:00.615Z
+Generated: 2025-12-16T11:21:44.700Z
 
 ---
 
@@ -3607,29 +3607,213 @@ hindsight bank profile demo
 
 # Cookbook
 
-Practical patterns and recipes for building with Hindsight.
+Practical patterns, recipes, and complete applications for building with Hindsight.
 
-## Use Cases
+## Recipes
 
-### [Per-User Memory](/cookbook/per-user-memory)
+Step-by-step tutorials and use cases as interactive Jupyter notebooks.
 
-The simplest pattern: give your agent persistent memory for each user. The agent remembers past conversations, preferences, and context across sessions.
+### [Hindsight Quickstart](/cookbook/recipes/quickstart)
 
-**Use when:** Building chatbots, personal assistants, or any 1:1 user-to-agent interaction.
+This notebook covers the basics of using Hindsight: - **Retain**: Store information in memory - **Recall**: Retrieve memories matching a query - **Reflect**: Generate insights from memories Make sure 
 
-### [Support Agent with Shared Knowledge](/cookbook/support-agent-with-shared-knowledge)
+### [Per-User Memory](/cookbook/recipes/per-user-memory)
 
-Build a support agent that combines per-user memory with shared product documentation. Users get personalized support while you index docs only once.
+The simplest pattern: give your agent persistent memory for each user. The agent remembers past conversations, user preferences, and context across sessions.
 
-**Use when:** Building multi-tenant support agents, RAG + memory applications, or any scenario needing user isolation with shared reference data.
+### [Support Agent with Shared Knowledge](/cookbook/recipes/support-agent-shared-knowledge)
+
+This pattern shows how to build a support agent that combines **per-user memory** with **shared product knowledge** (RAG), giving users personalized support while leveraging a single source of truth f
+
+
+## Applications
+
+Complete, production-ready applications you can run and learn from.
+
+### [OpenAI Agent + Hindsight Memory Integration](/cookbook/applications/openai-fitness-coach)
+
+A complete, runnable application demonstrating Hindsight integration.
+
 
 
 ---
 
 
-## File: cookbook/per-user-memory.md
+## File: cookbook/recipes/quickstart.md
+
+# Hindsight Quickstart
+
+
+:::tip Run this notebook
+This recipe is available as an interactive Jupyter notebook.
+[**Open in GitHub →**](https://github.com/vectorize-io/hindsight-cookbook/blob/main/notebooks/01-quickstart.ipynb)
+:::
+
+
+This notebook covers the basics of using Hindsight:
+- **Retain**: Store information in memory
+- **Recall**: Retrieve memories matching a query
+- **Reflect**: Generate insights from memories
+
+## Prerequisites
+
+Make sure you have Hindsight running. The easiest way is via Docker:
+
+```bash
+export OPENAI_API_KEY=your-key
+
+docker run --rm -it --pull always -p 8888:8888 -p 9999:9999 \
+  -e HINDSIGHT_API_LLM_API_KEY=$OPENAI_API_KEY \
+  -e HINDSIGHT_API_LLM_MODEL=o3-mini \
+  -v $HOME/.hindsight-docker:/home/hindsight/.pg0 \
+  ghcr.io/vectorize-io/hindsight:latest
+```
+
+- API: http://localhost:8888
+- UI: http://localhost:9999
+
+## Installation
+
+Install the Hindsight Python client:
+
+
+```python
+!pip install hindsight-client nest_asyncio python-dotenv -U
+```
+
+## Connect to Hindsight
+
+
+```python
+# Jupyter notebooks already run an asyncio event loop. The hindsight client 
+# uses loop.run_until_complete() internally, but Python doesn't allow nested 
+# event loops by default. nest_asyncio patches this to allow nesting.
+
+nest_asyncio.apply()
+
+
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+# Copy .env.example to .env and fill in your values
+load_dotenv()
+
+# Configuration (override with env vars if set)
+HINDSIGHT_API_URL = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
+HINDSIGHT_UI_URL = os.getenv("HINDSIGHT_UI_URL", "http://localhost:9999")
+
+from hindsight_client import Hindsight
+
+client = Hindsight(base_url=HINDSIGHT_API_URL)
+```
+
+## Retain: Store Information
+
+The `retain` operation is used to push new memories into Hindsight. It tells Hindsight to _retain_ the information you pass in.
+
+Behind the scenes, the retain operation uses an LLM to extract key facts, temporal data, entities, and relationships.
+
+
+```python
+# Simple retain
+client.retain(
+    bank_id="my-bank",
+    content="Alice works at Google as a software engineer"
+)
+
+# View the stored document in the UI:
+print(f"View documents: {HINDSIGHT_UI_URL}/banks/my-bank?view=documents")
+```
+
+
+```python
+# Retain with context and timestamp
+client.retain(
+    bank_id="my-bank",
+    content="Alice got promoted to senior engineer",
+    context="career update",
+    timestamp="2025-06-15T10:00:00Z"
+)
+```
+
+## Recall: Retrieve Memories
+
+The `recall` operation retrieves memories matching a query. It performs 4 retrieval strategies in parallel:
+- **Semantic**: Vector similarity
+- **Keyword**: BM25 exact matching
+- **Graph**: Entity/temporal/causal links
+- **Temporal**: Time range filtering
+
+
+```python
+# Simple recall
+results = client.recall(bank_id="my-bank", query="What does Alice do?")
+
+print("Memories:")
+for r in results.results:
+    print(f"  - {r.text}")
+```
+
+
+```python
+# Temporal recall
+results = client.recall(bank_id="my-bank", query="What happened in June?")
+
+print("Memories:")
+for r in results.results:
+    print(f"  - {r.text}")
+```
+
+## Reflect: Generate Insights
+
+The `reflect` operation performs a more thorough analysis of existing memories. This allows the agent to form new connections between memories which are then persisted as opinions and/or observations.
+
+Example use cases:
+- An AI Project Manager reflecting on what risks need to be mitigated
+- A Sales Agent reflecting on why certain outreach messages have gotten responses
+- A Support Agent reflecting on opportunities where customers have unanswered questions
+
+
+```python
+response = client.reflect(bank_id="my-bank", query="What should I know about Alice?")
+print(response)
+```
+
+## Memory Types
+
+Hindsight organizes memory into four networks to mimic human memory:
+
+- **World**: Facts about the world ("The stove gets hot")
+- **Experiences**: Agent's own experiences ("I touched the stove and it really hurt")
+- **Opinion**: Beliefs with confidence scores ("I shouldn't touch the stove again" - .99 confidence)
+- **Observation**: Complex mental models derived by reflecting on facts and experiences
+
+## Cleanup
+
+Delete the bank created during this notebook:
+
+
+```python
+
+
+response = requests.delete(f"{HINDSIGHT_API_URL}/v1/default/banks/my-bank")
+print(f"Deleted my-bank: {response.json()}")
+```
+
+
+---
+
+
+## File: cookbook/recipes/per-user-memory.md
 
 # Per-User Memory
+
+
+:::tip Run this notebook
+This recipe is available as an interactive Jupyter notebook.
+[**Open in GitHub →**](https://github.com/vectorize-io/hindsight-cookbook/blob/main/notebooks/02-per-user-memory.ipynb)
+:::
+
 
 The simplest pattern: give your agent persistent memory for each user. The agent remembers past conversations, user preferences, and context across sessions.
 
@@ -3658,27 +3842,53 @@ Session 2: "What's my preferred language?" → Agent doesn't know
 
 Each user gets their own memory bank. Complete isolation, simple mental model.
 
-## Implementation
-
-### 1. Create a Bank When User Signs Up
 
 ```python
-from hindsight import HindsightClient
+!pip install hindsight-client nest_asyncio openai python-dotenv -U
+```
 
-client = HindsightClient()
+## 1. Create a Bank When User Signs Up
+
+
+```python
+# Jupyter notebooks already run an asyncio event loop. The hindsight client 
+# uses loop.run_until_complete() internally, but Python doesn't allow nested 
+# event loops by default. nest_asyncio patches this to allow nesting.
+
+nest_asyncio.apply()
+
+
+from dotenv import load_dotenv
+from openai import OpenAI as OpenAIClient
+
+# Load environment variables from .env file
+# Copy .env.example to .env and fill in your values
+load_dotenv()
+
+# Configuration (override with env vars if set)
+HINDSIGHT_API_URL = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
+HINDSIGHT_UI_URL = os.getenv("HINDSIGHT_UI_URL", "http://localhost:9999")
+
+from hindsight_client import Hindsight
+
+client = Hindsight(base_url=HINDSIGHT_API_URL)
+llm = OpenAIClient()  # Uses OPENAI_API_KEY from .env
 
 def on_user_signup(user_id: str):
     client.create_bank(
         bank_id=f"user-{user_id}",
         name=f"Memory for {user_id}"
     )
+    print(f"View bank: {HINDSIGHT_UI_URL}/banks/user-{user_id}?view=documents")
 ```
 
-### 2. Manage Conversation Sessions
+## 2. Manage Conversation Sessions
 
 Use `document_id` to group messages belonging to the same conversation. When you retain with the same `document_id`, Hindsight replaces the previous version (upsert behavior), keeping the memory up-to-date as the conversation evolves.
 
+
 ```python
+
 
 
 class ConversationSession:
@@ -3690,74 +3900,101 @@ class ConversationSession:
     def add_message(self, role: str, content: str):
         self.messages.append({"role": role, "content": content})
 
-    async def save(self, client: HindsightClient):
+    def save(self, client: Hindsight):
         """Save the entire conversation. Replaces previous version if session_id exists."""
-        await client.retain(
+        # Convert messages to string format for retain
+        content = "\n".join([f"{m['role']}: {m['content']}" for m in self.messages])
+        client.retain(
             bank_id=f"user-{self.user_id}",
-            content=self.messages,
+            content=content,
             document_id=self.session_id  # Same ID = upsert (replace old version)
         )
 ```
 
-### 3. Recall Context Before Responding
+## 3. Recall Context Before Responding
+
 
 ```python
-async def get_context(user_id: str, query: str):
-    result = await client.recall(
+def get_context(user_id: str, query: str):
+    result = client.recall(
         bank_id=f"user-{user_id}",
         query=query
     )
     return result.results
 ```
 
-### 4. Complete Agent Loop
+## 4. Complete Agent Loop
+
 
 ```python
-async def handle_message(session: ConversationSession, user_message: str):
+def format_results(results):
+    """Format recall results for the prompt."""
+    if not results:
+        return "No relevant memories found."
+    return "\n".join([f"- {r.text}" for r in results])
+
+def format_messages(messages):
+    """Format conversation messages for the prompt."""
+    return "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+
+def handle_message(session: ConversationSession, user_message: str):
     # 1. Add user message to session
     session.add_message("user", user_message)
 
     # 2. Recall relevant context from past conversations
-    context = await client.recall(
+    context = client.recall(
         bank_id=f"user-{session.user_id}",
         query=user_message
     )
 
-    # 3. Build prompt with memory
-    prompt = f"""You are a helpful assistant with memory of past conversations.
+    # 3. Build system prompt with memory
+    system_prompt = f"""You are a helpful assistant with memory of past conversations.
 
 ## What you remember about this user
 {format_results(context.results)}
 
-## Current conversation
-{format_messages(session.messages)}
-"""
+Respond helpfully and reference relevant memories when appropriate."""
 
-    # 4. Generate response
-    response = await llm.complete(prompt)
+    # 4. Generate response using OpenAI
+    response = llm.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            *[{"role": m["role"], "content": m["content"]} for m in session.messages]
+        ]
+    )
+    assistant_response = response.choices[0].message.content
 
     # 5. Add assistant response to session
-    session.add_message("assistant", response)
+    session.add_message("assistant", assistant_response)
 
     # 6. Save the updated conversation (upserts based on session_id)
-    await session.save(client)
+    session.save(client)
 
-    return response
+    print(f"User: {user_message}")
+    print(f"Assistant: {assistant_response}\n")
+    
+    return assistant_response
 ```
 
-### 5. Starting a New Conversation
+## 5. Starting a New Conversation
+
 
 ```python
+# Create the user's bank
+on_user_signup("alice")
+
 # Each new conversation gets a new session with a unique ID
 session = ConversationSession(user_id="alice")
 
 # Multiple exchanges in the same conversation
-await handle_message(session, "Hi! I'm working on a Python project")
-await handle_message(session, "Can you help me with async/await?")
+handle_message(session, "Hi! I'm working on a Python project")
+handle_message(session, "Can you help me with async/await?")
 
-# Start a new conversation later (new session_id)
-new_session = ConversationSession(user_id="alice")
-await handle_message(new_session, "Different topic today...")
+# View the stored conversation in the UI.
+# Each message updates the same document (via document_id), so you'll see
+# the full conversation history in a single document rather than separate entries.
+print(f"\nView documents: {HINDSIGHT_UI_URL}/banks/user-alice?view=documents")
 ```
 
 ## How Document ID Works
@@ -3798,15 +4035,35 @@ You don't need to manually extract or structure this - just retain the conversat
 **Consider adding shared knowledge if:**
 - You have product docs or FAQs to reference
 - Multiple users need access to the same information
-- See [Support Agent with Shared Knowledge](./support-agent-with-shared-knowledge)
+- See the Support Agent with Shared Knowledge notebook
+
+## Cleanup
+
+Delete the banks created during this notebook:
+
+
+```python
+
+
+# Delete the user-alice bank
+response = requests.delete(f"{HINDSIGHT_API_URL}/v1/default/banks/user-alice")
+print(f"Deleted user-alice: {response.json()}")
+```
 
 
 ---
 
 
-## File: cookbook/support-agent-with-shared-knowledge.md
+## File: cookbook/recipes/support-agent-shared-knowledge.md
 
 # Support Agent with Shared Knowledge
+
+
+:::tip Run this notebook
+This recipe is available as an interactive Jupyter notebook.
+[**Open in GitHub →**](https://github.com/vectorize-io/hindsight-cookbook/blob/main/notebooks/03-support-agent-shared-knowledge.ipynb)
+:::
+
 
 This pattern shows how to build a support agent that combines **per-user memory** with **shared product knowledge** (RAG), giving users personalized support while leveraging a single source of truth for documentation.
 
@@ -3820,8 +4077,6 @@ You're building a support agent that needs to:
 A naive approach would index product docs into each user's memory bank, but this is expensive and wasteful (N copies for N users).
 
 ## The Solution: Multi-Bank Architecture
-
-Create separate memory banks for different concerns:
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -3844,16 +4099,39 @@ Create separate memory banks for different concerns:
 - User memory is 100% isolated
 - Simple mental model, no complex filtering
 
-## Implementation
 
-### 1. Set Up Memory Banks
+```python
+!pip install hindsight-client nest_asyncio openai python-dotenv -U
+```
+
+## 1. Set Up Memory Banks
 
 Create three types of banks:
 
-```python
-from hindsight import HindsightClient
 
-client = HindsightClient()
+```python
+# Jupyter notebooks already run an asyncio event loop. The hindsight client 
+# uses loop.run_until_complete() internally, but Python doesn't allow nested 
+# event loops by default. nest_asyncio patches this to allow nesting.
+
+nest_asyncio.apply()
+
+
+from dotenv import load_dotenv
+from openai import OpenAI as OpenAIClient
+
+# Load environment variables from .env file
+# Copy .env.example to .env and fill in your values
+load_dotenv()
+
+# Configuration (override with env vars if set)
+HINDSIGHT_API_URL = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
+HINDSIGHT_UI_URL = os.getenv("HINDSIGHT_UI_URL", "http://localhost:9999")
+
+from hindsight_client import Hindsight
+
+client = Hindsight(base_url=HINDSIGHT_API_URL)
+llm = OpenAIClient()  # Uses OPENAI_API_KEY from .env
 
 # Shared knowledge bank (created once)
 shared_bank = client.create_bank(
@@ -3869,55 +4147,57 @@ def create_user_bank(user_id: str):
     )
 ```
 
-### 2. Index Product Documentation
+## 2. Index Product Documentation
 
 Index your product docs into the shared bank (do this once, or on doc updates):
 
+
 ```python
-# Index product documentation
+# Index product documentation - retain each doc separately
 client.retain(
     bank_id="product-docs",
-    content=[
-        {
-            "role": "document",
-            "content": "# Pricing Tiers\n\nBasic: $10/mo...",
-            "metadata": {"source": "pricing.md"}
-        },
-        {
-            "role": "document",
-            "content": "# Getting Started\n\nTo set up...",
-            "metadata": {"source": "quickstart.md"}
-        }
-    ]
+    content="# Pricing Tiers\n\nBasic: $10/mo, Pro: $25/mo, Enterprise: Contact us"
 )
+
+client.retain(
+    bank_id="product-docs",
+    content="# Getting Started\n\nTo set up your account, visit the dashboard and click 'New Project'"
+)
+
+# View the stored documents in the UI:
+print(f"View documents: {HINDSIGHT_UI_URL}/banks/product-docs?view=documents")
 ```
 
-### 3. Store User Conversations
+## 3. Store User Conversations
 
 After each support interaction, retain it in the user's bank:
 
+
 ```python
 def save_conversation(user_id: str, messages: list):
+    # Convert messages to string format
+    content = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
     client.retain(
         bank_id=f"user-{user_id}",
-        content=messages  # [{"role": "user", "content": "..."}, ...]
+        content=content
     )
 ```
 
-### 4. Query Multiple Banks at Support Time
+## 4. Query Multiple Banks at Support Time
 
 When handling a user query, retrieve context from both banks:
 
+
 ```python
-async def get_support_context(user_id: str, query: str):
+def get_support_context(user_id: str, query: str):
     # Get user's personal context
-    user_context = await client.recall(
+    user_context = client.recall(
         bank_id=f"user-{user_id}",
         query=query
     )
 
     # Get relevant product documentation
-    docs_context = await client.recall(
+    docs_context = client.recall(
         bank_id="product-docs",
         query=query
     )
@@ -3928,11 +4208,18 @@ async def get_support_context(user_id: str, query: str):
     }
 ```
 
-### 5. Build the Agent Prompt
+## 5. Build the Agent Prompt
 
 Combine both contexts in your agent's prompt:
 
+
 ```python
+def format_results(results):
+    """Format recall results for the prompt."""
+    if not results:
+        return "No relevant information found."
+    return "\n".join([f"- {r.text}" for r in results])
+
 def build_prompt(query: str, context: dict) -> str:
     return f"""You are a helpful support agent.
 
@@ -3971,6 +4258,7 @@ When the agent discovers a solution that's not in the docs, you can optionally p
                            all three banks
 ```
 
+
 ```python
 # Optional: Create a curated learnings bank
 learnings_bank = client.create_bank(
@@ -3982,71 +4270,77 @@ learnings_bank = client.create_bank(
 def promote_learning(insight: str):
     client.retain(
         bank_id="support-learnings",
-        content=[{
-            "role": "system",
-            "content": insight,
-            "metadata": {"type": "verified_solution"}
-        }]
+        content=insight
     )
 ```
 
-Then query three banks: user + docs + learnings.
-
 ## Complete Example
 
+
 ```python
-from hindsight import HindsightClient
+def format_results(results):
+    if not results:
+        return "No relevant information found."
+    return "\n".join([f"- {r.text}" for r in results])
 
-client = HindsightClient()
-
-async def handle_support_request(user_id: str, query: str):
+def handle_support_request(user_id: str, query: str):
     # 1. Recall from user's memory
-    user_recall = await client.recall(
+    user_recall = client.recall(
         bank_id=f"user-{user_id}",
         query=query
     )
 
     # 2. Recall from shared docs
-    docs_recall = await client.recall(
+    docs_recall = client.recall(
         bank_id="product-docs",
         query=query
     )
 
     # 3. Recall from learnings (optional)
-    learnings_recall = await client.recall(
+    learnings_recall = client.recall(
         bank_id="support-learnings",
         query=query
     )
 
-    # 4. Build context for LLM
-    context = f"""
-User History:
+    # 4. Build system prompt with context
+    system_prompt = f"""You are a helpful support agent. Use the context below to answer the user's question.
+
+## User's History
 {format_results(user_recall.results)}
 
-Product Docs:
+## Product Documentation
 {format_results(docs_recall.results)}
 
-Known Solutions:
+## Known Solutions
 {format_results(learnings_recall.results)}
-"""
 
-    # 5. Generate response with your LLM
-    response = await llm.complete(
-        system="You are a support agent...",
-        context=context,
-        query=query
-    )
+Provide helpful, accurate responses based on the documentation. Reference the user's history when relevant."""
 
-    # 6. Save the conversation to user's memory
-    await client.retain(
-        bank_id=f"user-{user_id}",
-        content=[
-            {"role": "user", "content": query},
-            {"role": "assistant", "content": response}
+    # 5. Generate response using OpenAI
+    response = llm.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query}
         ]
     )
+    assistant_response = response.choices[0].message.content
 
-    return response
+    # 6. Save the conversation to user's memory
+    conversation = f"user: {query}\nassistant: {assistant_response}"
+    client.retain(
+        bank_id=f"user-{user_id}",
+        content=conversation
+    )
+
+    return assistant_response
+
+# Test the function
+create_user_bank("bob")
+print("User: How do I get started?")
+result = handle_support_request("bob", "How do I get started?")
+print(f"Assistant: {result}")
+print(f"\nView user memory: {HINDSIGHT_UI_URL}/banks/user-bob?view=documents")
 ```
 
 ## When to Use This Pattern
@@ -4060,6 +4354,337 @@ Known Solutions:
 - You need cross-user learning (users benefiting from other users' solutions)
 - Entity relationships must span across users and docs
 
+## Cleanup
+
+Delete the banks created during this notebook:
+
+
+```python
+
+
+# Delete all banks created in this notebook
+for bank_id in ["product-docs", "support-learnings", "user-bob"]:
+    response = requests.delete(f"{HINDSIGHT_API_URL}/v1/default/banks/{bank_id}")
+    print(f"Deleted {bank_id}: {response.json()}")
+```
+
+
+---
+
+
+## File: cookbook/applications/openai-fitness-coach.md
+
+# OpenAI Agent + Hindsight Memory Integration
+
+
+:::info Complete Application
+This is a complete, runnable application demonstrating Hindsight integration.
+[**View source on GitHub →**](https://github.com/vectorize-io/hindsight-cookbook/tree/main/openai-fitness-coach)
+:::
+
+
+A fitness coach example demonstrating how to use **OpenAI Agents** with **Hindsight as a memory backend**.
+
+## What This Demonstrates
+
+This example showcases:
+
+- **OpenAI Assistants** handling conversation logic
+- **Hindsight** providing sophisticated memory storage & retrieval
+- **Function calling** to bridge them together
+- **Streaming responses** for real-time interaction (enabled by default)
+- **Bidirectional memory** - both user data AND coach observations stored
+- **System-level post-processing** - automatic opinion storage for reliability
+- **Temporal-semantic memory** queries via function tools
+- **Enhanced preference learning** - coach learns and respects user likes/dislikes
+- **Real-world integration pattern** for adding memory to AI agents
+
+## Architecture
+
+```
+User: "I ran 5K today, don't like tempo runs"
+    |
+OpenAI Assistant
+    |
+Function Call: store_memory(workout + preference)
+    |
+Hindsight API (stores as world/agent)
+    |
+OpenAI Assistant: "What should I focus on?"
+    |
+Function Call: retrieve_memories("workouts and preferences")
+    |
+Hindsight API (returns workouts + preferences)
+    |
+OpenAI Assistant (analyzes, gives advice)
+    |
+Function Call: store_memory(advice as opinion)
+    |
+Hindsight API (stores coach's observation)
+    |
+Personalized Answer
+```
+
+## Key Difference from Standard Demo
+
+| Component | Standard Demo | OpenAI Integration |
+|-----------|---------------|-------------------|
+| **Conversation** | Hindsight `/think` endpoint | OpenAI Assistant API |
+| **Memory** | Hindsight (built-in) | Hindsight (via function calling) |
+| **LLM** | Configured in Hindsight | OpenAI GPT-4 |
+| **Opinion Formation** | Automatic in `/think` | Explicit via `store_memory(type="opinion")` |
+| **Best For** | Hindsight-native apps | Integrating memory into existing OpenAI agents |
+
+## Quick Start
+
+### Prerequisites
+
+1. **OpenAI API Key**
+   ```bash
+   export OPENAI_API_KEY=your_openai_api_key
+   ```
+
+2. **Hindsight API running**
+   ```bash
+   # Follow Hindsight setup instructions to start the API
+   # Default: http://localhost:8888
+   ```
+
+3. **Install dependencies**
+   ```bash
+   pip install openai requests
+   ```
+
+### Run the Conversational Demo
+
+```bash
+cd openai-fitness-coach
+export OPENAI_API_KEY=your_key_here
+python demo_conversational.py
+```
+
+The demo showcases:
+1. **Natural language workout logging** - Tell the coach what you did conversationally
+2. **Preference learning** - Express likes/dislikes and watch the coach adapt
+3. **Goal tracking** - Set goals, track progress, achieve milestones
+4. **Bidirectional memory** - Both your activities AND coach's advice are stored
+5. **Streaming responses** - See responses appear in real-time
+6. **7 interactive phases** - From goal setting to achievement recognition
+
+The demo uses a separate agent (`fitness-coach-demo`) to avoid mixing with real data.
+
+## Usage
+
+### Chat with Your Coach
+
+**Interactive mode:**
+```bash
+python openai_coach.py
+```
+
+**Single question:**
+```bash
+python openai_coach.py "What did I do for training this week?"
+```
+
+## How It Works
+
+### 1. Memory Tools (`memory_tools.py`)
+
+Defines function tools that the OpenAI Agent can call:
+
+```python
+retrieve_memories(query, fact_types, top_k)
+search_workouts(after_date, before_date, workout_type)
+get_nutrition_summary(after_date, before_date)
+get_user_goals()
+get_coach_opinions(about)
+```
+
+Each function makes API calls to Hindsight to fetch relevant memories.
+
+### 2. OpenAI Agent (`openai_coach.py`)
+
+Creates an OpenAI Assistant with:
+- Fitness coaching instructions
+- Access to memory function tools
+- Conversation management
+
+When you ask a question:
+1. User message is sent to OpenAI Assistant
+2. Assistant decides which memory functions to call
+3. Functions fetch data from Hindsight
+4. Assistant generates response using retrieved context
+
+### 3. Function Calling Flow
+
+```python
+# User asks: "What did I run this week?"
+
+# OpenAI Assistant decides to call:
+search_workouts(
+    after_date="2024-11-18",
+    workout_type="running"
+)
+
+# Function retrieves from Hindsight:
+{
+  "results": [
+    {"text": "User completed 45-minute cardio workout: running..."},
+    {"text": "User completed 60-minute cardio workout: running..."}
+  ]
+}
+
+# OpenAI Assistant generates response:
+"This week you've done two runs: a 45-minute run on Monday
+and a longer 60-minute run on Wednesday. Great consistency!"
+```
+
+## Example Questions
+
+Try asking:
+
+```bash
+python openai_coach.py "What does my training look like this week?"
+python openai_coach.py "Based on my workouts, should I rest today?"
+python openai_coach.py "How is my nutrition supporting my goals?"
+python openai_coach.py "What's my progress toward my goal?"
+python openai_coach.py "Compare my training this month to last month"
+```
+
+The agent will automatically:
+1. Identify what memories it needs
+2. Call the appropriate function tools
+3. Retrieve data from Hindsight
+4. Generate a personalized response
+
+## Memory Types Retrieved
+
+The OpenAI Agent can retrieve different memory types from Hindsight:
+
+- **World Facts** (`fact_type: "world"`): Workouts, meals, activities
+- **Agent Facts** (`fact_type: "agent"`): Goals, intentions
+- **Opinions** (`fact_type: "opinion"`): Coach's observations about patterns
+
+## Customization
+
+### Add New Function Tools
+
+Edit `memory_tools.py` to add new capabilities:
+
+```python
+def get_weekly_summary(week_offset: int = 0):
+    """Get a summary of a specific week."""
+    # Implementation
+    pass
+
+# Add to MEMORY_TOOLS list
+MEMORY_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "get_weekly_summary",
+        "description": "Get training summary for a specific week",
+        # ... parameters
+    }
+})
+
+# Add to FUNCTION_MAP
+FUNCTION_MAP["get_weekly_summary"] = get_weekly_summary
+```
+
+### Modify Assistant Instructions
+
+Edit `openai_coach.py` to change the coach's personality or behavior:
+
+```python
+assistant = client.beta.assistants.create(
+    name="Your Custom Coach",
+    instructions="Your custom instructions here...",
+    model="gpt-4o-mini",
+    tools=MEMORY_TOOLS
+)
+```
+
+## Use Cases
+
+This pattern works for any application that needs memory:
+
+1. **Customer Support Agents** - Remember past conversations and issues
+2. **Personal Assistants** - Remember preferences, schedules, past decisions
+3. **Educational Tutors** - Track learning progress over time
+4. **Health Coaches** - Monitor habits, progress, goals (like this example)
+5. **Sales Assistants** - Remember customer interactions and preferences
+
+## Integration Pattern
+
+**To add Hindsight memory to your own OpenAI Agent:**
+
+1. Define function tools that call Hindsight API
+2. Register them with your OpenAI Assistant
+3. Implement function handlers to execute Hindsight queries
+4. Let OpenAI Assistant decide when to retrieve memories
+
+The key benefit: **Separation of concerns**
+- OpenAI = Conversation logic
+- Hindsight = Memory storage, retrieval, temporal queries, entity linking
+
+## When to Use This vs. Standard Hindsight
+
+**Use OpenAI + Hindsight (this example) when:**
+- You want OpenAI's conversation capabilities
+- You're already using OpenAI Agents
+- You want explicit control over when to retrieve memories
+- You want to combine Hindsight with other OpenAI features
+
+**Use Hindsight directly when:**
+- You want a complete memory-first solution
+- You want automatic memory retrieval and opinion formation
+- You want to use different LLM providers (not just OpenAI)
+- You want the `/think` endpoint's integrated approach
+
+## Learning Points
+
+After running this demo, you'll understand:
+
+1. How to add sophisticated memory to any OpenAI Agent
+2. How function calling bridges LLMs and memory systems
+3. How temporal-semantic queries work via function tools
+4. Real-world pattern for LLM + memory integration
+
+## Core Files
+
+- `demo_conversational.py` - Conversational demo showcasing preference learning and goal tracking
+- `openai_coach.py` - OpenAI Assistant wrapper with streaming and memory integration
+- `memory_tools.py` - Function calling tools that bridge to Hindsight API
+- `.openai_assistant_id` - Saved assistant ID (auto-generated, gitignored)
+
+## Common Issues
+
+**"OPENAI_API_KEY not set"**
+```bash
+export OPENAI_API_KEY=your_api_key_here
+```
+
+**"Agent not found"**
+- Make sure the Hindsight fitness-coach agent exists
+
+**"Connection refused"**
+- Make sure Hindsight API is running on localhost:8888
+
+## Next Steps
+
+1. Run the demo to see it in action
+2. Try chatting with the coach: `python openai_coach.py`
+3. Log your own workouts and meals
+4. Experiment with different questions
+5. Add custom function tools for your use case
+
+---
+
+**Built with:**
+- OpenAI Assistants API
+- Hindsight (temporal-semantic memory)
+- Function calling for integration
 
 
 ---

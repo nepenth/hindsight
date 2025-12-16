@@ -178,19 +178,36 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Use Cases',
+      label: 'Recipes',
       collapsible: false,
       items: [
         {
           type: 'doc',
-          id: 'cookbook/per-user-memory',
+          id: 'cookbook/recipes/quickstart',
+          label: 'Hindsight Quickstart',
+        },
+        {
+          type: 'doc',
+          id: 'cookbook/recipes/per-user-memory',
           label: 'Per-User Memory',
         },
         {
           type: 'doc',
-          id: 'cookbook/support-agent-with-shared-knowledge',
-          label: 'Support Agent + Shared Knowledge',
-        },
+          id: 'cookbook/recipes/support-agent-shared-knowledge',
+          label: 'Support Agent with Shared Knowledge',
+        }
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Applications',
+      collapsible: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'cookbook/applications/openai-fitness-coach',
+          label: 'OpenAI Agent + Hindsight Memory Integration',
+        }
       ],
     },
   ],
