@@ -150,7 +150,7 @@ class MCPRouterMiddleware:
         # Strip any mount prefix (root_path) from the path
         root_path = scope.get("root_path", "")
         if root_path and path.startswith(root_path):
-            path = path[len(root_path):] or "/"
+            path = path[len(root_path) :] or "/"
 
         # Path should now be like /{bank_id}/mcp or /{bank_id}
         # Extract bank_id from first path segment
