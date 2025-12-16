@@ -3,7 +3,7 @@
 > Agent Memory that Works Like Human Memory
 
 This file contains the complete Hindsight documentation for LLM consumption.
-Generated: 2025-12-16T09:56:12.435Z
+Generated: 2025-12-16T11:10:00.615Z
 
 ---
 
@@ -154,7 +154,7 @@ export HINDSIGHT_API_LLM_API_KEY=$OPENAI_API_KEY
 hindsight-api
 ```
 
-API available at http://localhost:8888
+API available at [http://localhost:8888](http://localhost:8888/docs)
 
 </TabItem>
 <TabItem value="docker" label="Docker (Full Experience)">
@@ -653,9 +653,9 @@ Hindsight distinguishes between **world** facts (about others) and **experience*
 | **world**       | Facts about people, places, things | "Alice works at Google" |
 | **experience** | Conversations and events         | "I recommended Python to Alice" |
 
-This separation is important for `reflect()` — the bank can reason about what it knows versus what happened in conversations.
 
 **Note:** Opinions aren't created during `retain()` — only during `reflect()` when the bank forms beliefs.
+This separation is important for `reflect()` — the bank can reason about what it knows versus what happened in conversations.
 
 ---
 
@@ -890,6 +890,19 @@ After the four strategies run, results are **fused together**:
 
 ---
 
+## Why Multiple Strategies?
+
+Consider the query: **"What did Alice think about Python last spring?"**
+
+- **Semantic** finds facts about Alice's opinions on programming
+- **Keyword** ensures "Python" is actually mentioned
+- **Graph** connects Alice → opinions → programming languages
+- **Temporal** filters to "last spring" timeframe
+
+The **fusion** of all four gives you exactly what you're looking for, even though no single strategy would suffice.
+
+---
+
 ## Token Budget Management
 
 Hindsight is built for AI agents, not humans. Traditional search systems return "top-k" results, but agents don't think in terms of result counts—they think in tokens. An agent's context window is measured in tokens, and that's exactly how Hindsight measures results.
@@ -901,19 +914,43 @@ Hindsight is built for AI agents, not humans. Traditional search systems return 
 
 **Parameters you control:**
 - `max_tokens`: How much memory content to return (default: 4096 tokens)
-- `budget`: Budget level for graph traversal (low, mid, high)
+- `budget`: Search depth level (low, mid, high)
 - `fact_type`: Filter by world, experience, opinion, or all
 
-### Additional Context: Chunks and Entity Observations
+### Expanding Context: Chunks and Entity Observations
 
-For the most relevant memories, you can optionally retrieve additional context—each with its own token budget:
+Memories are distilled facts—concise but sometimes missing nuance. When your agent needs deeper context, you can optionally retrieve the source material and related knowledge:
 
-| Option | Parameters | Description |
+| Option | Parameters | When to Use |
 |--------|------------|-------------|
-| **Chunks** | `include_chunks`, `max_chunk_tokens` | Raw text chunks that generated the memories |
-| **Entity Observations** | `include_entities`, `max_entity_tokens` | Related observations about entities mentioned in results |
+| **Chunks** | `include_chunks`, `max_chunk_tokens` | Need exact quotes, original phrasing, or surrounding context |
+| **Entity Observations** | `include_entities`, `max_entity_tokens` | Need broader knowledge about people/things mentioned in results |
 
-This gives your agent richer context while maintaining precise control over total token consumption.
+**Chunks** return the raw text that generated each memory—useful when the distilled fact loses important nuance:
+
+```
+Memory: "Alice prefers Python over JavaScript"
+Chunk:  "Alice mentioned she prefers Python over JavaScript, mainly because
+         of its data science ecosystem, though she admits JS is better for
+         frontend work and she's been learning TypeScript lately."
+```
+
+**Entity Observations** pull in related facts about entities mentioned in your results. If a memory mentions "Alice", you automatically get her role, skills, and other relevant context—without needing a separate query:
+
+```
+Query: "What programming languages does Alice like?"
+Memory: "Alice prefers Python over JavaScript"
+Entity Observations (Alice):
+  - "Alice is a senior data scientist at Google"
+  - "Alice specializes in machine learning"
+  - "Alice has been learning TypeScript"
+```
+
+**When to include them:**
+- **Chunks**: When generating responses that need verbatim quotes or when context matters (e.g., "What exactly did Alice say about the project?")
+- **Entity Observations**: When building complete profiles or when the conversation might reference multiple aspects of an entity (e.g., "Tell me about Alice's work")
+
+Each has its own token budget, giving you precise control over total context size.
 
 ---
 
@@ -921,17 +958,17 @@ This gives your agent richer context while maintaining precise control over tota
 
 Different use cases require different trade-offs between **recall quality** and **response speed**. Two parameters control this:
 
-### Budget: Graph Exploration Depth
+### Budget: Search Depth
 
-Controls how many nodes to explore when traversing the knowledge graph:
+Controls how thoroughly Hindsight explores the memory bank—affecting graph traversal depth, candidate pool size, and cross-encoder re-ranking:
 
-| Budget | Nodes Explored | Best For | Trade-off |
-|--------|----------------|----------|-----------|
-| **low** | 100 nodes | Quick lookups, simple queries | Fast, may miss distant connections |
-| **mid** | 300 nodes | Most queries, balanced | Good coverage, reasonable speed |
-| **high** | 600 nodes | Complex multi-hop queries | Thorough, slower |
+| Budget | Best For | Trade-off |
+|--------|----------|-----------|
+| **low** | Quick lookups, simple queries | Fast, may miss indirect connections |
+| **mid** | Most queries, balanced | Good coverage, reasonable speed |
+| **high** | Complex queries requiring deep exploration | Thorough, slower |
 
-**Example:** "What did Alice's manager's team work on?" benefits from high budget to traverse Alice → manager → team → projects.
+**Example:** "What did Alice's manager's team work on?" benefits from high budget to traverse multiple hops (Alice → manager → team → projects) and evaluate more candidates.
 
 ### Max Tokens: Context Window Size
 
@@ -951,7 +988,7 @@ Budget and max_tokens control different aspects of recall:
 
 | Parameter | What it controls | Latency impact | Example |
 |-----------|------------------|----------------|---------|
-| **Budget** | How deep to explore the graph | Search time | High budget finds Alice → manager → team → projects |
+| **Budget** | How thoroughly to explore memories | Search time | High budget finds Alice → manager → team → projects |
 | **Max Tokens** | How much context to return | LLM processing time | High tokens returns more memories to the agent |
 
 **They're independent.** Common combinations:
@@ -971,19 +1008,6 @@ Budget and max_tokens control different aspects of recall:
 | **Document Q&A** | mid | 4096 | Balanced coverage and speed |
 | **Research queries** | high | 8192 | Comprehensive, multi-hop reasoning |
 | **Real-time search** | low | 2048 | Minimize latency |
-
----
-
-## Why Multiple Strategies?
-
-Consider the query: **"What did Alice think about Python last spring?"**
-
-- **Semantic** finds facts about Alice's opinions on programming
-- **Keyword** ensures "Python" is actually mentioned
-- **Graph** connects Alice → opinions → programming languages
-- **Temporal** filters to "last spring" timeframe
-
-The **fusion** of all four gives you exactly what you're looking for, even though no single strategy would suffice.
 
 ---
 
@@ -2525,7 +2549,6 @@ hindsight-api
 hindsight-api --port 9000          # Custom port (default: 8888)
 hindsight-api --host 127.0.0.1     # Bind to localhost only
 hindsight-api --workers 4          # Multiple worker processes
-hindsight-api --mcp                # Enable MCP server
 hindsight-api --log-level debug    # Verbose logging
 ```
 
@@ -2545,128 +2568,82 @@ hindsight-api --log-level debug    # Verbose logging
 
 # Configuration
 
-Complete reference for configuring Hindsight server through environment variables and configuration files.
+Complete reference for configuring Hindsight services through environment variables.
 
-## Environment Variables
+Hindsight has two services, each with its own configuration prefix:
 
-Hindsight is configured entirely through environment variables, making it easy to deploy across different environments and container orchestration platforms.
+| Service | Prefix | Description |
+|---------|--------|-------------|
+| **API Service** | `HINDSIGHT_API_*` | Core memory engine |
+| **Control Plane** | `HINDSIGHT_CP_*` | Web UI |
 
-All environment variable names and defaults are defined in `hindsight_api.config`. You can use `MemoryEngine.from_env()` to create a MemoryEngine instance configured from environment variables:
+---
 
-```python
-from hindsight_api import MemoryEngine
+## API Service
 
-# Create from environment variables
-memory = MemoryEngine.from_env()
-await memory.initialize()
-```
+The API service handles all memory operations (retain, recall, reflect).
 
-### LLM Provider Configuration
+### Database
 
-Configure the LLM provider used for fact extraction, entity resolution, and reasoning operations.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HINDSIGHT_API_DATABASE_URL` | PostgreSQL connection string | `pg0` (embedded) |
 
-#### Common LLM Settings
+If not provided, the server uses embedded `pg0` — convenient for development but not recommended for production.
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `HINDSIGHT_API_LLM_PROVIDER` | LLM provider: `groq`, `openai`, `gemini`, `ollama` | `groq` | Yes |
-| `HINDSIGHT_API_LLM_API_KEY` | API key for LLM provider | - | Yes (except ollama) |
-| `HINDSIGHT_API_LLM_MODEL` | Model name | Provider-specific | No |
-| `HINDSIGHT_API_LLM_BASE_URL` | Custom LLM endpoint | Provider default | No |
+### LLM Provider
 
-#### Provider-Specific Examples
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HINDSIGHT_API_LLM_PROVIDER` | Provider: `groq`, `openai`, `gemini`, `ollama` | `openai` |
+| `HINDSIGHT_API_LLM_API_KEY` | API key for LLM provider | - |
+| `HINDSIGHT_API_LLM_MODEL` | Model name | `gpt-5-mini` |
+| `HINDSIGHT_API_LLM_BASE_URL` | Custom LLM endpoint | Provider default |
 
-**Groq (Recommended for Fast Inference)**
+**Provider Examples**
 
 ```bash
+# Groq (recommended for fast inference)
 export HINDSIGHT_API_LLM_PROVIDER=groq
 export HINDSIGHT_API_LLM_API_KEY=gsk_xxxxxxxxxxxx
 export HINDSIGHT_API_LLM_MODEL=openai/gpt-oss-20b
-```
 
-**OpenAI**
-
-```bash
+# OpenAI
 export HINDSIGHT_API_LLM_PROVIDER=openai
 export HINDSIGHT_API_LLM_API_KEY=sk-xxxxxxxxxxxx
 export HINDSIGHT_API_LLM_MODEL=gpt-4o
-```
 
-**Gemini**
-
-```bash
+# Gemini
 export HINDSIGHT_API_LLM_PROVIDER=gemini
 export HINDSIGHT_API_LLM_API_KEY=xxxxxxxxxxxx
 export HINDSIGHT_API_LLM_MODEL=gemini-2.0-flash
-```
 
-**Ollama (Local, No API Key)**
-
-```bash
+# Ollama (local, no API key)
 export HINDSIGHT_API_LLM_PROVIDER=ollama
 export HINDSIGHT_API_LLM_BASE_URL=http://localhost:11434/v1
 export HINDSIGHT_API_LLM_MODEL=llama3.1
-```
 
-**OpenAI-Compatible Endpoints**
-
-```bash
+# OpenAI-compatible endpoint
 export HINDSIGHT_API_LLM_PROVIDER=openai
 export HINDSIGHT_API_LLM_BASE_URL=https://your-endpoint.com/v1
 export HINDSIGHT_API_LLM_API_KEY=your-api-key
 export HINDSIGHT_API_LLM_MODEL=your-model-name
 ```
 
-### Database Configuration
+### Embeddings
 
-Configure the PostgreSQL database connection and behavior.
-
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `HINDSIGHT_API_DATABASE_URL` | PostgreSQL connection string | - | Yes* |
-
-**\*Note**: If `DATABASE_URL` is not provided, the server will use embedded `pg0` (embedded PostGRE).
-
-### MCP Server Configuration
-
-Configure the Model Context Protocol (MCP) server for AI assistant integrations.
-
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `HINDSIGHT_API_MCP_ENABLED` | Enable MCP server | `true` | No |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HINDSIGHT_API_EMBEDDINGS_PROVIDER` | Provider: `local` or `tei` | `local` |
+| `HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL` | Model for local provider | `BAAI/bge-small-en-v1.5` |
+| `HINDSIGHT_API_EMBEDDINGS_TEI_URL` | TEI server URL | - |
 
 ```bash
-# Enable MCP server (default)
-export HINDSIGHT_API_MCP_ENABLED=true
-
-# Disable MCP server
-export HINDSIGHT_API_MCP_ENABLED=false
-```
-
-### Embeddings Configuration
-
-Configure the embeddings provider for semantic search. By default, uses local SentenceTransformers models.
-
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `HINDSIGHT_API_EMBEDDINGS_PROVIDER` | Provider: `local` or `tei` | `local` | No |
-| `HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL` | Model name for local provider | `BAAI/bge-small-en-v1.5` | No |
-| `HINDSIGHT_API_EMBEDDINGS_TEI_URL` | TEI server URL | - | Yes (if provider is `tei`) |
-
-**Local Provider (Default)**
-
-Uses SentenceTransformers to run embedding models locally. Good for development and smaller deployments.
-
-```bash
+# Local (default) - uses SentenceTransformers
 export HINDSIGHT_API_EMBEDDINGS_PROVIDER=local
 export HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL=BAAI/bge-small-en-v1.5
-```
 
-**TEI Provider (HuggingFace Text Embeddings Inference)**
-
-Uses a remote [TEI server](https://github.com/huggingface/text-embeddings-inference) for high-performance inference. Recommended for production deployments.
-
-```bash
+# TEI - HuggingFace Text Embeddings Inference (recommended for production)
 export HINDSIGHT_API_EMBEDDINGS_PROVIDER=tei
 export HINDSIGHT_API_EMBEDDINGS_TEI_URL=http://localhost:8080
 ```
@@ -2675,66 +2652,76 @@ export HINDSIGHT_API_EMBEDDINGS_TEI_URL=http://localhost:8080
 All embedding models must produce 384-dimensional vectors to match the database schema.
 :::
 
-### Reranker Configuration
+### Reranker
 
-Configure the cross-encoder reranker for improving search result relevance. By default, uses local SentenceTransformers models.
-
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `HINDSIGHT_API_RERANKER_PROVIDER` | Provider: `local` or `tei` | `local` | No |
-| `HINDSIGHT_API_RERANKER_LOCAL_MODEL` | Model name for local provider | `cross-encoder/ms-marco-MiniLM-L-6-v2` | No |
-| `HINDSIGHT_API_RERANKER_TEI_URL` | TEI server URL | - | Yes (if provider is `tei`) |
-
-**Local Provider (Default)**
-
-Uses SentenceTransformers CrossEncoder to run reranking locally.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HINDSIGHT_API_RERANKER_PROVIDER` | Provider: `local` or `tei` | `local` |
+| `HINDSIGHT_API_RERANKER_LOCAL_MODEL` | Model for local provider | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| `HINDSIGHT_API_RERANKER_TEI_URL` | TEI server URL | - |
 
 ```bash
+# Local (default) - uses SentenceTransformers CrossEncoder
 export HINDSIGHT_API_RERANKER_PROVIDER=local
 export HINDSIGHT_API_RERANKER_LOCAL_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
-```
 
-**TEI Provider (HuggingFace Text Embeddings Inference)**
-
-Uses a remote [TEI server](https://github.com/huggingface/text-embeddings-inference) with a reranker model.
-
-```bash
+# TEI - for high-performance inference
 export HINDSIGHT_API_RERANKER_PROVIDER=tei
 export HINDSIGHT_API_RERANKER_TEI_URL=http://localhost:8081
 ```
 
-:::tip
-When using TEI, you can run separate servers for embeddings and reranking, or use a single server if it supports both operations with your chosen model.
-:::
+### Server
 
-## Configuration Files
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HINDSIGHT_API_HOST` | Bind address | `0.0.0.0` |
+| `HINDSIGHT_API_PORT` | Server port | `8888` |
+| `HINDSIGHT_API_LOG_LEVEL` | Log level: `debug`, `info`, `warning`, `error` | `info` |
+| `HINDSIGHT_API_MCP_ENABLED` | Enable MCP server | `true` |
 
-### .env File
+### Programmatic Configuration
 
-The Hindsight API will look for a `.env` file:
+You can also configure the API programmatically using `MemoryEngine.from_env()`:
 
-```bash
-# .env
+```python
+from hindsight_api import MemoryEngine
 
-# Database
-HINDSIGHT_API_DATABASE_URL=postgresql://hindsight:hindsight_dev@localhost:5432/hindsight
-
-# LLM
-HINDSIGHT_API_LLM_PROVIDER=groq
-HINDSIGHT_API_LLM_API_KEY=gsk_xxxxxxxxxxxx
-
-# Embeddings (optional, defaults to local)
-# HINDSIGHT_API_EMBEDDINGS_PROVIDER=local
-# HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL=BAAI/bge-small-en-v1.5
-
-# Reranker (optional, defaults to local)
-# HINDSIGHT_API_RERANKER_PROVIDER=local
-# HINDSIGHT_API_RERANKER_LOCAL_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+memory = MemoryEngine.from_env()
+await memory.initialize()
 ```
 
 ---
 
-For configuration issues not covered here, please [open an issue](https://github.com/your-repo/hindsight/issues) on GitHub.
+## Control Plane
+
+The Control Plane is the web UI for managing memory banks.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HINDSIGHT_CP_DATAPLANE_API_URL` | URL of the API service | `http://localhost:8888` |
+
+```bash
+# Point Control Plane to a remote API service
+export HINDSIGHT_CP_DATAPLANE_API_URL=http://api.example.com:8888
+```
+
+---
+
+## Example .env File
+
+```bash
+# API Service
+HINDSIGHT_API_DATABASE_URL=postgresql://hindsight:hindsight_dev@localhost:5432/hindsight
+HINDSIGHT_API_LLM_PROVIDER=groq
+HINDSIGHT_API_LLM_API_KEY=gsk_xxxxxxxxxxxx
+
+# Control Plane
+HINDSIGHT_CP_DATAPLANE_API_URL=http://localhost:8888
+```
+
+---
+
+For configuration issues not covered here, please [open an issue](https://github.com/vectorize-io/hindsight/issues) on GitHub.
 
 
 ---
@@ -4657,10 +4644,10 @@ This means **Recall (search) operations are blazingly fast** because all the hea
 
 ### Performance Comparison
 
-| Operation | Typical Latency | Primary Bottleneck | Optimization Strategy |
-|-----------|----------------|-------------------|----------------------|
-| **Recall** | 100-600ms | Vector search, graph traversal | ✅ Already optimized |
-| **Reflect** | 800-3000ms | LLM generation + search | Reduce search budget, use faster LLM |
+| Operation | Typical Latency | Primary Bottleneck | Optimization Strategy            |
+|-----------|----------------|-------------------|----------------------------------|
+| **Recall** | 100-600ms | Re-ranker (on CPU) | Use GPU for re-ranking, or reduce budget |
+| **Reflect** | 800-3000ms | LLM generation | Use faster LLM                   |
 | **Retain** | 500ms-2000ms per batch | **LLM fact extraction** | Use high-throughput LLM provider |
 
 Hindsight is designed to ensure your **application's read path (recall/reflect) is always fast**, even if it means spending more time upfront during writes. This is the right trade-off for memory systems where:
@@ -4682,8 +4669,8 @@ The fact extraction process is structured and well-defined, so smaller, faster m
 To maximize retention throughput:
 
 1. **Use high-throughput LLM providers**: Choose providers with high requests-per-minute (RPM) limits and low latency
-   - ✅ **Fast**: [Groq](https://groq.com) with `gpt-oss-20b` or other openai-oss models, self-hosted models on GPU clusters (vLLM, TGI)
-   - ⚠️ **Slower**: Standard cloud LLM providers with rate limits
+   - **Fast**: [Groq](https://groq.com) with `gpt-oss-20b` or other openai-oss models, self-hosted models on GPU clusters (vLLM, TGI)
+   - **Slow**: Standard cloud LLM providers with rate limits
 
 2. **Batch your operations**: Group related content into batch requests. The only limit is the HTTP payload size — Hindsight automatically splits large batches into smaller, optimized chunks under the hood, so you don't have to worry about it.
 
@@ -4693,15 +4680,7 @@ To maximize retention throughput:
 
 ### Throughput
 
-Typical ingestion performance:
-
-| Mode | Items/second | Use Case |
-|------|--------------|----------|
-| Synchronous | ~50-100 | Real-time updates, small batches |
-| Async (batched) | ~500-1000 | Bulk imports, background processing |
-| Parallel async | ~2000-5000 | Large-scale data migration |
-
-**Factors affecting throughput:**
+Factors affecting throughput:
 - Document size and complexity
 - LLM provider rate limits (for fact extraction)
 - Database write performance
@@ -4715,13 +4694,13 @@ Typical ingestion performance:
 
 The `budget` parameter controls the search depth and quality. Choose based on query complexity — comprehensive questions that need thorough analysis benefit from higher budgets:
 
-| Budget | Latency | Memory Activation | Use Case |
-|--------|---------|-------------------|----------|
-| `low` | 100-300ms | ~10-50 facts | Quick lookups, real-time chat |
-| `mid` | 300-600ms | ~50-200 facts | Standard queries, balanced performance |
-| `high` | 500-1500ms | ~200-500 facts | Comprehensive questions, thorough analysis |
+| Budget | Use Case |
+|--------|----------|
+| `low` | Quick lookups, real-time chat |
+| `mid` | Standard queries, balanced performance |
+| `high` | Comprehensive questions, thorough analysis |
 
-### Search Optimization
+### Optimization
 
 1. **Appropriate budgets**: Use lower budgets for simple queries, higher for comprehensive reasoning
 2. **Limit result tokens**: Set `max_tokens` to control response size (default: 4096)
@@ -4739,18 +4718,16 @@ Hindsight uses PostgreSQL with pgvector for efficient vector search:
 
 ### Performance Characteristics
 
-| Component | Latency | Description |
-|-----------|---------|-------------|
-| Memory search | 300-1000ms | Based on budget (low/mid/high) |
-| LLM generation | 500-2000ms | Depends on provider and response length |
-| **Total** | **800-3000ms** | Typical end-to-end latency |
+| Component | Latency        | Description |
+|-----------|----------------|-------------|
+| Memory search | 100-600ms      | Based on budget (low/mid/high) |
+| LLM generation | 500-2000ms     | Depends on provider and response length |
+| **Total** | **600-2600ms** | Typical end-to-end latency |
 
 ### Optimization Strategies
 
 1. **Budget selection**: Use lower budgets when context is sufficient
-2. **Context provision**: Provide relevant `context` to reduce search requirements
-3. **Streaming responses**: Use streaming APIs (when available) for faster time-to-first-token
-4. **Caching**: Cache frequent queries at the application level
+2. **Context provision**: Provide relevant `context` to reduce recall requirements and steer towards more focused answers
 
 ## Best Practices
 
@@ -4773,6 +4750,55 @@ Hindsight uses PostgreSQL with pgvector for efficient vector search:
 ### Monitoring
 - **Prometheus metrics**: Available at `/metrics` — track latency percentiles, throughput, and error rates
 - **Key metrics**: `hindsight_recall_duration_seconds`, `hindsight_reflect_duration_seconds`, `hindsight_retain_items_total`
+
+
+---
+
+
+## File: developer/services.md
+
+# Services
+
+Hindsight consists of two services that can run together or separately depending on your deployment needs.
+
+## API Service
+
+The core memory engine. Handles all memory operations:
+
+- **Retain**: Ingests content, extracts facts, builds knowledge graph
+- **Recall**: Semantic search across memories
+- **Reflect**: Disposition-aware answer generation
+
+```
+hindsight-api        # Default port: 8888
+```
+
+The API service is stateless and can be horizontally scaled behind a load balancer. All state is stored in PostgreSQL.
+
+## Control Plane
+
+Web UI for managing and exploring your memory banks:
+
+- Browse agents and memory banks
+- Explore entities and relationships
+- View ingestion history and operations
+- Test recall queries interactively
+
+```
+hindsight-control-plane    # Default port: 9999
+```
+
+The Control Plane connects to the API service and provides a visual interface for development and debugging.
+
+## Deployment Options
+
+| Deployment | Services | Use Case |
+|------------|----------|----------|
+| **Docker (single container)** | Both bundled | Development, quick start |
+| **Helm / Kubernetes** | Separate pods | Production, scaling |
+| **Bare metal** | Run independently | Custom deployments |
+
+In the Docker quickstart, both services run in a single container. For production Kubernetes deployments, they run as separate pods with independent scaling.
 
 
 ---
@@ -4834,10 +4860,9 @@ pg0 is a single binary containing:
 ### Behavior
 
 When no `DATABASE_URL` is configured, Hindsight:
-1. Downloads the pg0 binary for the current platform (macOS ARM, Linux x86_64/ARM64, Windows)
-2. Starts an embedded PostgreSQL instance on port 5555
-3. Initializes the schema
-4. Stores data in `~/.hindsight/pg0/`
+1. Starts an embedded PostgreSQL instance on port 5555
+2. Initializes the schema
+3. Stores data in `~/.hindsight/pg0/`
 
 ### Environments
 
