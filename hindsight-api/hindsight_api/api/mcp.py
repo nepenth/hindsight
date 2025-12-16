@@ -115,66 +115,72 @@ def create_mcp_server(memory: MemoryEngine) -> FastMCP:
     return mcp
 
 
-class MCPMiddleware:
-    """ASGI middleware that extracts bank_id from path and sets context."""
+class MCPRouterMiddleware:
+    """ASGI middleware that extracts bank_id from path and routes to MCP server.
 
-    def __init__(self, app, memory: MemoryEngine):
-        self.app = app
-        self.memory = memory
-        self.mcp_server = create_mcp_server(memory)
-        self.mcp_app = self.mcp_server.http_app()
+    This middleware wraps the FastMCP http_app and:
+    1. Extracts bank_id from the URL path (pattern: /{bank_id}/mcp)
+    2. Sets the bank_id in a context variable for tools to access
+    3. Forwards requests to the underlying MCP app with the correct path (/mcp)
+
+    The middleware also handles lifespan events to ensure the MCP server's
+    session manager is properly initialized.
+    """
+
+    def __init__(self, mcp_http_app):
+        self.mcp_http_app = mcp_http_app
+        self._lifespan_started = False
 
     async def __call__(self, scope, receive, send):
+        logger.debug(f"MCPRouterMiddleware: type={scope['type']}, path={scope.get('path', 'N/A')}")
+
+        # Handle lifespan events - forward to MCP app
+        if scope["type"] == "lifespan":
+            logger.debug("MCPRouterMiddleware: handling lifespan")
+            await self.mcp_http_app(scope, receive, send)
+            return
+
+        # Only handle HTTP requests
         if scope["type"] != "http":
-            await self.mcp_app(scope, receive, send)
+            await self.mcp_http_app(scope, receive, send)
             return
 
         path = scope.get("path", "")
 
-        # Strip any mount prefix (e.g., /mcp) that FastAPI might not have stripped
+        # Strip any mount prefix (root_path) from the path
         root_path = scope.get("root_path", "")
         if root_path and path.startswith(root_path):
-            path = path[len(root_path) :] or "/"
+            path = path[len(root_path):] or "/"
 
-        # Also handle case where mount path wasn't stripped (e.g., /mcp/...)
-        if path.startswith("/mcp/"):
-            path = path[4:]  # Remove /mcp prefix
-
-        # Extract bank_id from path: /{bank_id}/ or /{bank_id}
-        # http_app expects requests at /
+        # Path should now be like /{bank_id}/mcp or /{bank_id}
+        # Extract bank_id from first path segment
         if not path.startswith("/") or len(path) <= 1:
-            # No bank_id in path - return error
-            await self._send_error(send, 400, "bank_id required in path: /mcp/{bank_id}/")
+            await self._send_error(send, 400, "bank_id required in path: /{bank_id}/mcp")
             return
 
-        # Extract bank_id from first path segment
         parts = path[1:].split("/", 1)
         if not parts[0]:
-            await self._send_error(send, 400, "bank_id required in path: /mcp/{bank_id}/")
+            await self._send_error(send, 400, "bank_id required in path: /{bank_id}/mcp")
             return
 
         bank_id = parts[0]
-        new_path = "/" + parts[1] if len(parts) > 1 else "/"
+        # The remainder of the path after bank_id, or /mcp if nothing follows
+        remaining_path = "/" + parts[1] if len(parts) > 1 else "/mcp"
 
-        # Set bank_id context
+        logger.debug(f"MCPRouterMiddleware: bank_id={bank_id}, remaining_path={remaining_path}")
+
+        # Set bank_id context for this request
         token = _current_bank_id.set(bank_id)
         try:
+            # Create new scope with the path that FastMCP expects (/mcp)
             new_scope = scope.copy()
-            new_scope["path"] = new_path
+            new_scope["path"] = remaining_path
+            new_scope["raw_path"] = remaining_path.encode()
+            # Clear root_path since we've already handled the routing
+            new_scope["root_path"] = ""
 
-            # Wrap send to rewrite the SSE endpoint URL to include bank_id
-            # The SSE app sends "event: endpoint\ndata: /messages\n" but we need
-            # the client to POST to /{bank_id}/messages instead
-            async def send_wrapper(message):
-                if message["type"] == "http.response.body":
-                    body = message.get("body", b"")
-                    if body and b"/messages" in body:
-                        # Rewrite /messages to /{bank_id}/messages in SSE endpoint event
-                        body = body.replace(b"data: /messages", f"data: /{bank_id}/messages".encode())
-                        message = {**message, "body": body}
-                await send(message)
-
-            await self.mcp_app(new_scope, receive, send_wrapper)
+            logger.debug(f"MCPRouterMiddleware: forwarding to MCP app with path={remaining_path}")
+            await self.mcp_http_app(new_scope, receive, send)
         finally:
             _current_bank_id.reset(token)
 
@@ -198,16 +204,29 @@ class MCPMiddleware:
 
 def create_mcp_app(memory: MemoryEngine):
     """
-    Create an ASGI app that handles MCP requests.
+    Create an ASGI app that handles MCP requests using Streamable HTTP transport.
 
-    URL pattern: /mcp/{bank_id}/
+    URL pattern: {mount_path}/{bank_id}/mcp
 
     The bank_id is extracted from the URL path and made available to tools.
+    Uses Streamable HTTP transport (recommended by MCP spec).
 
     Args:
         memory: MemoryEngine instance
 
     Returns:
-        ASGI application
+        Tuple of (ASGI application, lifespan context manager).
+        The lifespan MUST be passed to the parent FastAPI app for Streamable HTTP to work.
+        This is required because Starlette's Mount doesn't forward lifespan events.
     """
-    return MCPMiddleware(None, memory)
+    mcp_server = create_mcp_server(memory)
+    # Use Streamable HTTP transport (recommended)
+    mcp_http_app = mcp_server.http_app(transport="streamable-http")
+
+    # Wrap with router middleware for bank_id extraction
+    router_app = MCPRouterMiddleware(mcp_http_app)
+
+    # Return both the app and the lifespan
+    # The lifespan must be passed to the parent FastAPI app because
+    # Starlette's Mount doesn't forward lifespan events to mounted apps
+    return router_app, mcp_http_app.lifespan

@@ -5,7 +5,7 @@ Provides both HTTP REST API and MCP (Model Context Protocol) server.
 """
 
 import logging
-from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -45,32 +45,45 @@ def create_app(
         # Both HTTP and MCP
         app = create_app(memory, mcp_api_enabled=True)
     """
+    mcp_app = None
+    mcp_lifespan = None
 
-    # Import and create HTTP API if enabled
-    if http_api_enabled:
-        from .http import create_app as create_http_app
-
-        app = create_http_app(memory=memory, initialize_memory=initialize_memory)
-        logger.info("HTTP REST API enabled")
-    else:
-        # Create minimal FastAPI app
-        app = FastAPI(title="Hindsight API", version="0.0.7")
-        logger.info("HTTP REST API disabled")
-
-    # Mount MCP server if enabled
+    # Create MCP app if enabled
     if mcp_api_enabled:
         try:
             from .mcp import create_mcp_app
 
             # Create MCP app with dynamic bank_id support
-            # Supports: /mcp/{bank_id}/sse (bank-specific SSE endpoint)
-            mcp_app = create_mcp_app(memory=memory)
-            app.mount(mcp_mount_path, mcp_app)
-            logger.info(f"MCP server enabled at {mcp_mount_path}/{{bank_id}}/sse")
+            # Returns (app, lifespan) - lifespan must be passed to parent FastAPI
+            # because Starlette's Mount doesn't forward lifespan events
+            mcp_app, mcp_lifespan = create_mcp_app(memory=memory)
         except ImportError as e:
             logger.error(f"MCP server requested but dependencies not available: {e}")
             logger.error("Install with: pip install hindsight-api[mcp]")
             raise
+
+    # Import and create HTTP API if enabled
+    if http_api_enabled:
+        from .http import create_app as create_http_app
+
+        app = create_http_app(
+            memory=memory,
+            initialize_memory=initialize_memory,
+            mcp_lifespan=mcp_lifespan,
+        )
+        logger.info("HTTP REST API enabled")
+    else:
+        # Create minimal FastAPI app with MCP lifespan if needed
+        if mcp_lifespan:
+            app = FastAPI(title="Hindsight API", version="0.0.7", lifespan=mcp_lifespan)
+        else:
+            app = FastAPI(title="Hindsight API", version="0.0.7")
+        logger.info("HTTP REST API disabled")
+
+    # Mount MCP server if enabled
+    if mcp_app:
+        app.mount(mcp_mount_path, mcp_app)
+        logger.info(f"MCP server enabled at {mcp_mount_path}/{{bank_id}}/mcp")
 
     return app
 

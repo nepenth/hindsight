@@ -706,7 +706,7 @@ class DeleteResponse(BaseModel):
     deleted_count: int | None = None
 
 
-def create_app(memory: MemoryEngine, initialize_memory: bool = True) -> FastAPI:
+def create_app(memory: MemoryEngine, initialize_memory: bool = True, mcp_lifespan=None) -> FastAPI:
     """
     Create and configure the FastAPI application.
 
@@ -714,6 +714,7 @@ def create_app(memory: MemoryEngine, initialize_memory: bool = True) -> FastAPI:
         memory: MemoryEngine instance (already initialized with required parameters).
                 Migrations are controlled by the MemoryEngine's run_migrations parameter.
         initialize_memory: Whether to initialize memory system on startup (default: True)
+        mcp_lifespan: Optional MCP lifespan context manager to run (for Streamable HTTP)
 
     Returns:
         Configured FastAPI application
@@ -746,7 +747,14 @@ def create_app(memory: MemoryEngine, initialize_memory: bool = True) -> FastAPI:
             await memory.initialize()
             logging.info("Memory system initialized")
 
-        yield
+        # Run MCP lifespan if provided (required for Streamable HTTP transport)
+        # This must be run on the parent app because Starlette's Mount doesn't
+        # forward lifespan events to mounted apps
+        if mcp_lifespan:
+            async with mcp_lifespan(app):
+                yield
+        else:
+            yield
 
         # Shutdown: Cleanup memory system
         await memory.close()
