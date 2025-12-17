@@ -27,7 +27,7 @@ client.retain(bank_id="my-bank", content="Bob is a data scientist who works with
 # [docs:recall-basic]
 response = client.recall(bank_id="my-bank", query="What does Alice do?")
 for r in response.results:
-    print(f"{r.text} (score: {r.weight:.2f})")
+    print(f"- {r.text}")
 # [/docs:recall-basic]
 
 
@@ -45,12 +45,12 @@ response = client.recall(
 
 # Access results
 for r in response.results:
-    print(f"{r.text} (score: {r.weight:.2f})")
+    print(f"- {r.text}")
 
 # Access entity observations (if include_entities=True)
 if response.entities:
-    for entity in response.entities:
-        print(f"Entity: {entity.name}")
+    for entity_id, entity in response.entities.items():
+        print(f"Entity: {entity.canonical_name}")
 # [/docs:recall-with-options]
 
 
