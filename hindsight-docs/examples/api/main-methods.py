@@ -64,7 +64,7 @@ results = client.recall(
 )
 
 for result in results.results:
-    print(f"[{result.weight:.2f}] {result.text}")
+    print(f"- {result.text}")
 
 # Search with options
 results = client.recall(
@@ -113,7 +113,7 @@ response = client.reflect(
 
 # See which facts influenced the response
 for fact in response.based_on or []:
-    print(f"[{fact.weight:.2f}] {fact.text}")
+    print(f"- {fact.text}")
 # [/docs:main-reflect]
 
 
