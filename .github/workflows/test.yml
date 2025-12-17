@@ -535,11 +535,9 @@ jobs:
         uv sync --no-install-project --index-strategy unsafe-best-match
 
     - name: Build and install Python client
-      working-directory: ./hindsight-clients/python
       run: |
-        uv build
-        WHEEL=$(ls dist/*.whl)
-        uv pip install "$WHEEL"
+        cd hindsight-clients/python && uv build
+        uv pip install dist/hindsight_client-*.whl
 
     - name: Install TypeScript client
       run: |
