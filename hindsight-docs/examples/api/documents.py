@@ -58,23 +58,27 @@ client.retain(
 
 
 # [docs:document-get]
+import asyncio
 from hindsight_client_api import ApiClient, Configuration
 from hindsight_client_api.api import DefaultApi
 
-config = Configuration(host="http://localhost:8888")
-api_client = ApiClient(config)
-api = DefaultApi(api_client)
+async def get_document_example():
+    config = Configuration(host="http://localhost:8888")
+    api_client = ApiClient(config)
+    api = DefaultApi(api_client)
 
-# Get document to expand context from recall results
-doc = api.get_document(
-    bank_id="my-bank",
-    document_id="meeting-2024-03-15"
-)
+    # Get document to expand context from recall results
+    doc = await api.get_document(
+        bank_id="my-bank",
+        document_id="meeting-2024-03-15"
+    )
 
-print(f"Document: {doc.id}")
-print(f"Original text: {doc.original_text}")
-print(f"Memory count: {doc.memory_unit_count}")
-print(f"Created: {doc.created_at}")
+    print(f"Document: {doc.id}")
+    print(f"Original text: {doc.original_text}")
+    print(f"Memory count: {doc.memory_unit_count}")
+    print(f"Created: {doc.created_at}")
+
+asyncio.run(get_document_example())
 # [/docs:document-get]
 
 
