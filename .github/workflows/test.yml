@@ -538,7 +538,8 @@ jobs:
       working-directory: ./hindsight-clients/python
       run: |
         uv build
-        uv pip install dist/*.whl
+        WHEEL=$(ls dist/*.whl)
+        uv pip install "$WHEEL"
 
     - name: Install TypeScript client
       run: |
