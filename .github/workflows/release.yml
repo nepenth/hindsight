@@ -235,50 +235,7 @@ jobs:
     - name: Smoke test - verify container starts
       env:
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      run: |
-        echo "🧪 Running smoke test for ${{ matrix.image_name }}..."
-        IMAGE="${{ matrix.image_name }}:test"
-
-        # Determine health endpoint and env vars based on image type
-        if [ "${{ matrix.target }}" = "cp-only" ]; then
-          HEALTH_PORT=9999
-          # Control plane doesn't need LLM credentials
-          docker run -d --name smoke-test \
-            -p ${HEALTH_PORT}:${HEALTH_PORT} \
-            ${IMAGE}
-        else
-          HEALTH_PORT=8888
-          # API and standalone need LLM credentials for startup verification
-          docker run -d --name smoke-test \
-            -e HINDSIGHT_API_LLM_PROVIDER=groq \
-            -e HINDSIGHT_API_LLM_API_KEY=${GROQ_API_KEY} \
-            -e HINDSIGHT_API_LLM_MODEL=llama-3.3-70b-versatile \
-            -p ${HEALTH_PORT}:${HEALTH_PORT} \
-            ${IMAGE}
-        fi
-
-        # Wait for health endpoint (up to 120s for model downloads etc)
-        echo "Waiting for health endpoint on port ${HEALTH_PORT}..."
-        for i in {1..120}; do
-          if curl -sf http://localhost:${HEALTH_PORT}/health > /dev/null 2>&1; then
-            echo "✅ Container is healthy after ${i}s"
-            docker logs smoke-test
-            docker stop smoke-test
-            docker rm smoke-test
-            exit 0
-          fi
-          if [ $((i % 10)) -eq 0 ]; then
-            echo "Still waiting... (${i}s)"
-          fi
-          sleep 1
-        done
-
-        echo "❌ Container failed to become healthy after 120s"
-        echo "=== Container Logs ==="
-        docker logs smoke-test
-        docker stop smoke-test || true
-        docker rm smoke-test || true
-        exit 1
+      run: ./scripts/docker-smoke-test.sh "${{ matrix.image_name }}:test" "${{ matrix.target }}"
 
     # Step 3: Only if smoke test passed, build multi-platform and push to release tags
     # Build layers are cached, so this is fast - just builds the other platform
