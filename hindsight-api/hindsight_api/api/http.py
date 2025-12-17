@@ -1452,18 +1452,22 @@ def _register_routes(app: FastAPI):
                     bank_id,
                 )
 
+                def parse_metadata(metadata):
+                    """Parse result_metadata which may be a string or dict."""
+                    if metadata is None:
+                        return {}
+                    if isinstance(metadata, str):
+                        return json.loads(metadata)
+                    return metadata
+
                 return {
                     "bank_id": bank_id,
                     "operations": [
                         {
                             "id": str(row["operation_id"]),
                             "task_type": row["operation_type"],
-                            "items_count": row["result_metadata"].get("items_count", 0)
-                            if row["result_metadata"]
-                            else 0,
-                            "document_id": row["result_metadata"].get("document_id")
-                            if row["result_metadata"]
-                            else None,
+                            "items_count": parse_metadata(row["result_metadata"]).get("items_count", 0),
+                            "document_id": parse_metadata(row["result_metadata"]).get("document_id"),
                             "created_at": row["created_at"].isoformat(),
                             "status": row["status"],
                             "error_message": row["error_message"],
@@ -1775,7 +1779,7 @@ def _register_routes(app: FastAPI):
                         operation_id,
                         bank_id,
                         "retain",
-                        {"items_count": len(contents)},
+                        json.dumps({"items_count": len(contents)}),
                     )
 
                 # Submit task to background queue
