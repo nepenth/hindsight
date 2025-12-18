@@ -84,8 +84,8 @@ results = client.recall(
 )
 
 # Check entity details
-for entity in results.entities or []:
-    print(f"Entity: {entity.name}")
+for entity_id, entity in (results.entities or {}).items():
+    print(f"Entity: {entity.canonical_name}")
     print(f"Observations: {entity.observations}")
 # [/docs:main-recall]
 
