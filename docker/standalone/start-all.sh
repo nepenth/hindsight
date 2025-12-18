@@ -23,7 +23,8 @@ PIDS=()
 # Start API if enabled
 if [ "$ENABLE_API" = "true" ]; then
     cd /app/api
-    hindsight-api 2>&1 | awk '{print "[api] " $0; fflush()}' &
+    # Run API directly - Python's PYTHONUNBUFFERED=1 handles output buffering
+    hindsight-api &
     API_PID=$!
     PIDS+=($API_PID)
 
@@ -42,7 +43,7 @@ fi
 if [ "$ENABLE_CP" = "true" ]; then
     echo "🎛️  Starting Control Plane..."
     cd /app/control-plane
-    PORT=9999 node server.js 2>&1 | grep -v -E "^[[:space:]]*(▲|✓|-|$)" | awk '{print "[control-plane] " $0; fflush()}' &
+    PORT=9999 node server.js &
     CP_PID=$!
     PIDS+=($CP_PID)
 else
