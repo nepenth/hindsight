@@ -99,10 +99,12 @@ jobs:
     - name: Build SDK
       run: npm run build --workspace=hindsight-clients/typescript
 
-    # Use npm install (not ci) for control plane to resolve platform-specific native binaries
-    # lightningcss requires platform-specific .node files that may not be in lockfile
+    # Install control plane deps, then rebuild native modules for Linux
+    # lightningcss has platform-specific binaries that may not be in the macOS-generated lockfile
     - name: Install Control Plane dependencies
-      run: npm install --workspace=hindsight-control-plane
+      run: |
+        npm install --workspace=hindsight-control-plane
+        npm rebuild lightningcss
 
     - name: Build Control Plane
       run: npm run build --workspace=hindsight-control-plane
