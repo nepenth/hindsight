@@ -18,6 +18,8 @@ hindsight configure --api-url "$HINDSIGHT_URL"
 hindsight memory retain "$BANK_ID" "Alice works at Google as a software engineer" --doc-id "$DOC_ID"
 hindsight memory retain "$BANK_ID" "Bob is a data scientist who collaborates with Alice" --doc-id "$DOC_ID"
 hindsight memory retain "$BANK_ID" "Alice and Bob work on machine learning projects"
+# Create document for delete test early so it has time to index
+hindsight memory retain "$BANK_ID" "Temporary content for deletion test" --doc-id "temp-doc-to-delete"
 
 # Wait for memories to be indexed (LLM processing takes time)
 sleep 5
@@ -136,17 +138,7 @@ hindsight document get $BANK_ID $DOC_ID
 
 
 # [docs:cli-document-delete]
-# Create a temp document to delete
-hindsight memory retain $BANK_ID "Temporary content for deletion test" --doc-id "temp-doc-to-delete"
-# Wait for document to be indexed (poll until it exists, max 30 seconds)
-for i in {1..30}; do
-    if hindsight document get $BANK_ID temp-doc-to-delete > /dev/null 2>&1; then
-        echo "Document indexed after ${i}s"
-        break
-    fi
-    echo "Waiting for document to be indexed... ($i/30)"
-    sleep 1
-done
+# Delete the temp document created during setup (already indexed by now)
 hindsight document delete $BANK_ID temp-doc-to-delete
 # [/docs:cli-document-delete]
 
