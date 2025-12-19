@@ -19,10 +19,14 @@ hindsight memory retain "$BANK_ID" "Alice works at Google as a software engineer
 hindsight memory retain "$BANK_ID" "Bob is a data scientist who collaborates with Alice" --doc-id "$DOC_ID"
 hindsight memory retain "$BANK_ID" "Alice and Bob work on machine learning projects"
 # Create document for delete test early so it has time to index
-hindsight memory retain "$BANK_ID" "Temporary content for deletion test" --doc-id "temp-doc-to-delete"
+hindsight memory retain "$BANK_ID" "Carol is a project manager who coordinates the engineering team" --doc-id "temp-doc-to-delete"
 
 # Wait for memories to be indexed (LLM processing takes time)
 sleep 5
+
+# Debug: check if temp-doc-to-delete was created
+echo "Documents after setup:"
+hindsight document list "$BANK_ID"
 
 # =============================================================================
 # Configuration (cli.md - Configuration section)
@@ -138,7 +142,14 @@ hindsight document get $BANK_ID $DOC_ID
 
 
 # [docs:cli-document-delete]
-# Delete the temp document created during setup (already indexed by now)
+# Verify the document exists before deleting
+echo "Checking if temp-doc-to-delete exists..."
+if hindsight document list $BANK_ID -o json 2>/dev/null | grep -q "temp-doc-to-delete"; then
+    echo "Document found, deleting..."
+else
+    echo "ERROR: temp-doc-to-delete not found in document list"
+    exit 1
+fi
 hindsight document delete $BANK_ID temp-doc-to-delete
 # [/docs:cli-document-delete]
 
