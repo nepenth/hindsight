@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 DAEMON_PORT = 8889
 DAEMON_URL = f"http://127.0.0.1:{DAEMON_PORT}"
-DAEMON_STARTUP_TIMEOUT = 30  # seconds
+DAEMON_STARTUP_TIMEOUT = 180  # seconds - needs to be long for first run (downloads dependencies)
 DAEMON_IDLE_TIMEOUT = 300  # 5 minutes - auto-exit after idle
 
 # CLI paths - check multiple locations

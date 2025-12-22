@@ -8,8 +8,8 @@ This package provides a simple CLI for storing and recalling memories using Hind
 
 `hindsight-embed` uses a background daemon architecture for optimal performance:
 
-1. **First command**: Automatically starts a local daemon (takes ~10s to load ML models)
-2. **Subsequent commands**: Near-instant responses (~1-2s) since models are already loaded
+1. **First command**: Automatically starts a local daemon (first run downloads dependencies and loads ML models - can take 1-3 minutes)
+2. **Subsequent commands**: Near-instant responses (~1-2s) since daemon is already running
 3. **Auto-shutdown**: Daemon automatically exits after 5 minutes of inactivity
 
 The daemon runs on `localhost:8889` and uses an embedded PostgreSQL database (pg0) - everything stays local on your machine.
@@ -154,7 +154,7 @@ hindsight-embed daemon start
 ```
 
 **Slow first command:**
-This is expected - the first command needs to start the daemon and load ML models (~10s). Subsequent commands will be fast (~1-2s).
+This is expected - the first command needs to download dependencies, start the daemon, and load ML models. First run can take 1-3 minutes depending on network speed. Subsequent commands will be fast (~1-2s).
 
 **Change configuration:**
 ```bash
