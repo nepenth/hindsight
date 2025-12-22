@@ -239,12 +239,14 @@ class LLMProvider:
                                 )
 
                         call_params["response_format"] = {"type": "json_object"}
-                        logger.info(f"calling with {call_params['messages']} ({len(json.dumps(call_params['messages']))} chars")
+                        logger.info(
+                            f"calling with {call_params['messages']} ({len(json.dumps(call_params['messages']))} chars"
+                        )
                         response = await self._client.chat.completions.create(**call_params)
                         logger.info(f"done got {response}")
 
                         content = response.choices[0].message.content
-                        
+
                         # Log raw LLM response for debugging JSON parse issues
                         try:
                             json_data = json.loads(content)
