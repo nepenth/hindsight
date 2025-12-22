@@ -174,6 +174,7 @@ def install_cli() -> bool:
     import sys
 
     print("Installing hindsight CLI...")
+    print(f"  Installer URL: {CLI_INSTALLER_URL}")
 
     try:
         # Download and run installer
@@ -184,7 +185,11 @@ def install_cli() -> bool:
         )
 
         if result.returncode != 0:
-            print(f"CLI installation failed: {result.stderr}", file=sys.stderr)
+            print(f"CLI installation failed (exit code {result.returncode}):", file=sys.stderr)
+            if result.stdout:
+                print(f"  stdout: {result.stdout}", file=sys.stderr)
+            if result.stderr:
+                print(f"  stderr: {result.stderr}", file=sys.stderr)
             return False
 
         cli_binary = find_cli_binary()
@@ -193,6 +198,12 @@ def install_cli() -> bool:
             return True
         else:
             print("CLI installation completed but binary not found", file=sys.stderr)
+            print(f"  stdout: {result.stdout}", file=sys.stderr)
+            print(f"  stderr: {result.stderr}", file=sys.stderr)
+            # Check known locations
+            for install_dir in CLI_INSTALL_DIRS:
+                binary = install_dir / "hindsight"
+                print(f"  Checking {binary}: exists={binary.exists()}", file=sys.stderr)
             return False
 
     except Exception as e:
