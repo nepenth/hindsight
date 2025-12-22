@@ -30,7 +30,7 @@ CONFIG_FILE = CONFIG_DIR / "embed"
 
 def setup_logging(verbose: bool = False):
     """Configure logging."""
-    level_str = os.environ.get("HINDSIGHT_EMBED_LOG_LEVEL", "warning").lower()
+    level_str = os.environ.get("HINDSIGHT_EMBED_LOG_LEVEL", "info").lower()
     if verbose:
         level_str = "debug"
 
@@ -40,7 +40,7 @@ def setup_logging(verbose: bool = False):
         "warning": logging.WARNING,
         "error": logging.ERROR,
     }
-    level = level_map.get(level_str, logging.WARNING)
+    level = level_map.get(level_str, logging.INFO)
 
     logging.basicConfig(
         level=level,
@@ -84,6 +84,16 @@ def do_configure(args):
     """Interactive configuration setup with beautiful TUI."""
     import questionary
     from questionary import Style
+
+    # If stdin is not a terminal (e.g., running via curl | bash),
+    # reopen stdin from /dev/tty for interactive prompts
+    if not sys.stdin.isatty():
+        try:
+            sys.stdin = open('/dev/tty', 'r')
+        except OSError:
+            print("Error: Cannot run interactive configuration without a terminal.", file=sys.stderr)
+            print("Run directly: uvx hindsight-embed configure", file=sys.stderr)
+            return 1
 
     # Custom style for the prompts
     custom_style = Style([
@@ -197,6 +207,25 @@ def do_configure(args):
 
     CONFIG_FILE.chmod(0o600)
 
+    # Stop existing daemon if running (it needs to pick up new config)
+    from . import daemon_client
+
+    if daemon_client._is_daemon_running():
+        print("\n  \033[2mRestarting daemon with new configuration...\033[0m")
+        daemon_client.stop_daemon()
+
+    # Start daemon with new config
+    new_config = {
+        "llm_api_key": api_key,
+        "llm_provider": provider,
+        "llm_model": model,
+        "bank_id": bank_id,
+    }
+    if daemon_client.ensure_daemon_running(new_config):
+        print("  \033[32m✓ Daemon started\033[0m")
+    else:
+        print("  \033[33m⚠ Failed to start daemon (will start on first command)\033[0m")
+
     print()
     print("\033[32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m")
     print("\033[32m  ✓ Configuration saved!\033[0m")
@@ -212,58 +241,107 @@ def do_configure(args):
     return 0
 
 
-async def _create_engine(config: dict, logger):
-    """Create and initialize the memory engine."""
-    logger.debug("Setting up environment variables...")
+def do_daemon(args, config: dict, logger):
+    """Handle daemon subcommands."""
+    from pathlib import Path
+    from . import daemon_client
 
-    # Set hindsight-api environment variables from our config
-    if config["llm_api_key"]:
-        os.environ["HINDSIGHT_API_LLM_API_KEY"] = config["llm_api_key"]
-    if config["llm_provider"]:
-        os.environ["HINDSIGHT_API_LLM_PROVIDER"] = config["llm_provider"]
-    if config["llm_model"]:
-        os.environ["HINDSIGHT_API_LLM_MODEL"] = config["llm_model"]
+    daemon_log_path = Path.home() / ".hindsight" / "daemon.log"
 
-    logger.debug("Importing MemoryEngine...")
+    if args.daemon_command == "start":
+        if daemon_client._is_daemon_running():
+            print("Daemon is already running")
+            return 0
 
-    # Import after setting env vars
-    from hindsight_api import MemoryEngine
-    from hindsight_api.engine.task_backend import SyncTaskBackend
+        print("Starting daemon...")
+        if daemon_client.ensure_daemon_running(config):
+            print("Daemon started successfully")
+            print(f"  Port: {daemon_client.DAEMON_PORT}")
+            print(f"  Logs: {daemon_log_path}")
+            return 0
+        else:
+            print("Failed to start daemon", file=sys.stderr)
+            return 1
 
-    # Use pg0 embedded database
-    db_name = f"hindsight-embed-{config['bank_id']}"
-    logger.debug(f"Creating MemoryEngine with pg0://{db_name}")
+    elif args.daemon_command == "stop":
+        if not daemon_client._is_daemon_running():
+            print("Daemon is not running")
+            return 0
 
-    # Use SyncTaskBackend to avoid background workers that prevent clean exit
-    memory = MemoryEngine(
-        db_url=f"pg0://{db_name}",
-        task_backend=SyncTaskBackend(),
-    )
+        print("Stopping daemon...")
+        if daemon_client.stop_daemon():
+            print("Daemon stopped")
+            return 0
+        else:
+            print("Failed to stop daemon", file=sys.stderr)
+            return 1
 
-    logger.debug("Initializing engine...")
-    await memory.initialize()
+    elif args.daemon_command == "status":
+        if daemon_client._is_daemon_running():
+            # Get PID from lockfile
+            lockfile = Path.home() / ".hindsight" / "daemon.lock"
+            pid = "unknown"
+            if lockfile.exists():
+                try:
+                    pid = lockfile.read_text().strip()
+                except Exception:
+                    pass
+            print(f"Daemon is running (PID: {pid})")
+            print(f"  URL: http://127.0.0.1:{daemon_client.DAEMON_PORT}")
+            print(f"  Logs: {daemon_log_path}")
+            return 0
+        else:
+            print("Daemon is not running")
+            return 1
 
-    logger.debug("Engine initialized")
-    return memory
+    elif args.daemon_command == "logs":
+        if not daemon_log_path.exists():
+            print("No daemon logs found", file=sys.stderr)
+            print(f"  Expected at: {daemon_log_path}")
+            return 1
+
+        if args.follow:
+            # Follow mode - like tail -f
+            import subprocess
+            try:
+                subprocess.run(["tail", "-f", str(daemon_log_path)])
+            except KeyboardInterrupt:
+                pass
+            return 0
+        else:
+            # Show last N lines
+            try:
+                with open(daemon_log_path) as f:
+                    lines = f.readlines()
+                    for line in lines[-args.lines:]:
+                        print(line, end="")
+                return 0
+            except Exception as e:
+                print(f"Error reading logs: {e}", file=sys.stderr)
+                return 1
+
+    else:
+        print("Usage: hindsight-embed daemon {start|stop|status|logs}", file=sys.stderr)
+        return 1
 
 
 async def do_retain(args, config: dict, logger):
-    """Execute retain command."""
-    from hindsight_api.models import RequestContext
+    """Execute retain command via daemon."""
+    from . import daemon_client
 
     logger.info(f"Retaining memory: {args.content[:50]}...")
 
-    memory = await _create_engine(config, logger)
+    # Ensure daemon is running
+    if not daemon_client.ensure_daemon_running(config):
+        print("Error: Failed to start daemon", file=sys.stderr)
+        return 1
 
     try:
-        logger.debug("Calling retain_batch_async...")
-        await memory.retain_batch_async(
+        logger.debug("Calling daemon retain API...")
+        await daemon_client.retain(
             bank_id=config["bank_id"],
-            contents=[{
-                "content": args.content,
-                "context": args.context or "general",
-            }],
-            request_context=RequestContext(),
+            content=args.content,
+            context=args.context or "general",
         )
         msg = f"Stored memory: {args.content[:50]}..." if len(args.content) > 50 else f"Stored memory: {args.content}"
         print(msg, flush=True)
@@ -275,42 +353,47 @@ async def do_retain(args, config: dict, logger):
 
 
 async def do_recall(args, config: dict, logger):
-    """Execute recall command."""
-    from hindsight_api.engine.memory_engine import Budget
-    from hindsight_api.engine.response_models import VALID_RECALL_FACT_TYPES
-    from hindsight_api.models import RequestContext
+    """Execute recall command via daemon."""
+    import json
+    from . import daemon_client
 
     logger.info(f"Recalling with query: {args.query}")
 
-    memory = await _create_engine(config, logger)
+    # Ensure daemon is running
+    if not daemon_client.ensure_daemon_running(config):
+        print("Error: Failed to start daemon", file=sys.stderr)
+        return 1
 
     try:
-        budget_map = {"low": Budget.LOW, "mid": Budget.MID, "high": Budget.HIGH}
-        budget_enum = budget_map.get(args.budget.lower(), Budget.LOW)
-
-        logger.debug(f"Calling recall_async with budget={budget_enum}...")
-        result = await memory.recall_async(
+        logger.debug(f"Calling daemon recall API with budget={args.budget}...")
+        result = await daemon_client.recall(
             bank_id=config["bank_id"],
             query=args.query,
-            fact_type=list(VALID_RECALL_FACT_TYPES),
-            budget=budget_enum,
+            budget=args.budget.lower(),
             max_tokens=args.max_tokens,
-            request_context=RequestContext(),
         )
 
-        logger.debug(f"Recall returned {len(result.results)} results")
+        # The API returns the results directly
+        results = result.get("results", [])
+        logger.debug(f"Recall returned {len(results)} results")
 
-        if result.results:
-            print("Memories found:", flush=True)
-            print("-" * 40, flush=True)
-            for fact in result.results:
-                print(f"- {fact.text}", flush=True)
-                if args.verbose and fact.occurred_start:
-                    print(f"  (Date: {fact.occurred_start})", flush=True)
-            print("-" * 40, flush=True)
-            print(f"Total: {len(result.results)} memories", flush=True)
-        else:
-            print("No relevant memories found.", flush=True)
+        # Output JSON response
+        output = {
+            "query": args.query,
+            "results": [
+                {
+                    "text": fact.get("text"),
+                    "type": fact.get("type"),
+                    "occurred_start": fact.get("occurred_start"),
+                    "occurred_end": fact.get("occurred_end"),
+                    "entities": fact.get("entities", []),
+                    "context": fact.get("context"),
+                }
+                for fact in results
+            ],
+            "total": len(results),
+        }
+        print(json.dumps(output, indent=2), flush=True)
 
         return 0
     except Exception as e:
@@ -331,6 +414,13 @@ Examples:
     hindsight-embed retain "Meeting on Monday" -c work
     hindsight-embed recall "user preferences"
     hindsight-embed recall "meetings" --budget high
+
+Daemon management:
+    hindsight-embed daemon status                          # Check if daemon is running
+    hindsight-embed daemon start                           # Start the daemon
+    hindsight-embed daemon stop                            # Stop the daemon
+    hindsight-embed daemon logs                            # View daemon logs
+    hindsight-embed daemon logs -f                         # Follow daemon logs
         """
     )
 
@@ -344,6 +434,25 @@ Examples:
 
     # Configure command
     subparsers.add_parser("configure", help="Interactive configuration setup")
+
+    # Daemon command with subcommands
+    daemon_parser = subparsers.add_parser("daemon", help="Manage the background daemon")
+    daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_command", help="Daemon commands")
+    daemon_subparsers.add_parser("start", help="Start the daemon")
+    daemon_subparsers.add_parser("stop", help="Stop the daemon")
+    daemon_subparsers.add_parser("status", help="Check daemon status")
+    daemon_logs_parser = daemon_subparsers.add_parser("logs", help="View daemon logs")
+    daemon_logs_parser.add_argument(
+        "--follow", "-f",
+        action="store_true",
+        help="Follow log output (like tail -f)"
+    )
+    daemon_logs_parser.add_argument(
+        "--lines", "-n",
+        type=int,
+        default=50,
+        help="Number of lines to show (default: 50)"
+    )
 
     # Retain command
     retain_parser = subparsers.add_parser("retain", help="Store a memory")
@@ -388,6 +497,12 @@ Examples:
     # Handle configure separately (no config needed)
     if args.command == "configure":
         exit_code = do_configure(args)
+        sys.exit(exit_code)
+
+    # Handle daemon commands (some don't need config)
+    if args.command == "daemon":
+        config = get_config()
+        exit_code = do_daemon(args, config, logger)
         sys.exit(exit_code)
 
     config = get_config()
