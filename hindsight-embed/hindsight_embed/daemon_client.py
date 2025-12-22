@@ -56,6 +56,8 @@ def _start_daemon(config: dict) -> bool:
 
     Returns True if daemon started successfully.
     """
+    import sys
+
     logger.info("Starting daemon...")
 
     # Build environment with LLM config
@@ -77,32 +79,64 @@ def _start_daemon(config: dict) -> bool:
 
     cmd = _find_hindsight_api_command() + ["--daemon", "--idle-timeout", str(DAEMON_IDLE_TIMEOUT)]
 
+    # Create log directory
+    log_dir = Path.home() / ".hindsight"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    daemon_log = log_dir / "daemon.log"
+    daemon_stderr = log_dir / "daemon.stderr"
+
+    print(f"Starting daemon with command: {' '.join(cmd)}", file=sys.stderr)
+    print(f"  Log file: {daemon_log}", file=sys.stderr)
+
     try:
-        # Start daemon in background
-        # On Unix, we don't need to do anything special since --daemon does the fork
-        subprocess.Popen(
-            cmd,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        # Start daemon in background, but capture initial stderr for debugging
+        with open(daemon_stderr, "w") as stderr_file:
+            process = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+                start_new_session=True,
+            )
 
         # Wait for daemon to be ready
+        # Note: With --daemon flag, the parent process forks and exits immediately (code 0).
+        # The child process (actual daemon) continues running. So we can't rely on process.poll()
+        # to detect failures - we must use the health check.
         start_time = time.time()
+        last_check_time = start_time
         while time.time() - start_time < DAEMON_STARTUP_TIMEOUT:
             if _is_daemon_running():
                 logger.info("Daemon started successfully")
                 return True
+
+            # Periodically log progress
+            if time.time() - last_check_time > 5:
+                elapsed = int(time.time() - start_time)
+                print(f"  Still waiting for daemon... ({elapsed}s elapsed)", file=sys.stderr)
+                last_check_time = time.time()
+
             time.sleep(0.5)
 
         logger.error("Daemon failed to start within timeout")
+        # Show logs on timeout
+        if daemon_log.exists():
+            log_content = daemon_log.read_text()
+            if log_content:
+                print(f"Daemon log:\n{log_content[-2000:]}", file=sys.stderr)  # Last 2000 chars
+        if daemon_stderr.exists():
+            stderr_content = daemon_stderr.read_text()
+            if stderr_content:
+                print(f"Daemon stderr:\n{stderr_content}", file=sys.stderr)
         return False
 
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        print(f"Command not found: {cmd[0]}", file=sys.stderr)
+        print(f"  Full command: {' '.join(cmd)}", file=sys.stderr)
         logger.error("hindsight-api command not found. Install with: pip install hindsight-api")
         return False
     except Exception as e:
+        print(f"Failed to start daemon: {e}", file=sys.stderr)
         logger.error(f"Failed to start daemon: {e}")
         return False
 

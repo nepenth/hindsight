@@ -107,10 +107,23 @@ if [ $EXIT_CODE -ne 0 ]; then
     echo ""
     echo "Checking daemon logs..."
     if [ -f ~/.hindsight/daemon.log ]; then
+        echo "=== daemon.log ==="
         tail -50 ~/.hindsight/daemon.log
     else
-        echo "No daemon log found"
+        echo "No daemon.log found"
     fi
+    if [ -f ~/.hindsight/daemon.stderr ]; then
+        echo ""
+        echo "=== daemon.stderr ==="
+        cat ~/.hindsight/daemon.stderr
+    else
+        echo "No daemon.stderr found"
+    fi
+    echo ""
+    echo "Checking for hindsight-api..."
+    which hindsight-api 2>/dev/null || echo "hindsight-api not in PATH"
+    which uvx 2>/dev/null || echo "uvx not in PATH"
+    which uv 2>/dev/null || echo "uv not in PATH"
     exit 1
 fi
 
