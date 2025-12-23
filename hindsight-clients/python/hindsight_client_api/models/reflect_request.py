@@ -31,7 +31,7 @@ class ReflectRequest(BaseModel):
     query: StrictStr
     budget: Optional[Budget] = None
     context: Optional[StrictStr] = None
-    max_tokens: Optional[StrictInt] = Field(default=2048, description="Maximum tokens for the response")
+    max_tokens: Optional[StrictInt] = Field(default=4096, description="Maximum tokens for the response")
     include: Optional[ReflectIncludeOptions] = Field(default=None, description="Options for including additional data (disabled by default)")
     response_schema: Optional[Dict[str, Any]] = None
     __properties: ClassVar[List[str]] = ["query", "budget", "context", "max_tokens", "include", "response_schema"]
@@ -103,7 +103,7 @@ class ReflectRequest(BaseModel):
             "query": obj.get("query"),
             "budget": obj.get("budget"),
             "context": obj.get("context"),
-            "max_tokens": obj.get("max_tokens") if obj.get("max_tokens") is not None else 2048,
+            "max_tokens": obj.get("max_tokens") if obj.get("max_tokens") is not None else 4096,
             "include": ReflectIncludeOptions.from_dict(obj["include"]) if obj.get("include") is not None else None,
             "response_schema": obj.get("response_schema")
         })

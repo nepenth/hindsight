@@ -3273,7 +3273,7 @@
             "type": "integer",
             "title": "Max Tokens",
             "description": "Maximum tokens for the response",
-            "default": 2048
+            "default": 4096
           },
           "include": {
             "$ref": "#/components/schemas/ReflectIncludeOptions",
@@ -3305,7 +3305,7 @@
           "include": {
             "facts": {}
           },
-          "max_tokens": 2048,
+          "max_tokens": 4096,
           "query": "What do you think about artificial intelligence?",
           "response_schema": {
             "properties": {

@@ -207,9 +207,9 @@ enum MemoryCommands {
         #[arg(short = 'c', long)]
         context: Option<String>,
 
-        /// Maximum tokens for the response
-        #[arg(short = 'm', long, default_value = "2048")]
-        max_tokens: i64,
+        /// Maximum tokens for the response (server default: 4096)
+        #[arg(short = 'm', long)]
+        max_tokens: Option<i64>,
 
         /// Path to JSON schema file for structured output
         #[arg(short = 's', long)]
