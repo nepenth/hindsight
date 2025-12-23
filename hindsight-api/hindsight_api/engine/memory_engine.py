@@ -3204,6 +3204,7 @@ Guidelines:
             max_completion_tokens=max_tokens,
             response_format=response_format,
             skip_validation=True if response_format else False,
+            strict_schema=True if response_format else False,
         )
         llm_time = time.time() - llm_start
 

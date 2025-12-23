@@ -215,6 +215,7 @@ class TestReflect:
         result = RecommendationResponse.model_validate(response.structured_output)
         assert result.recommendation
         assert isinstance(result.reasons, list)
+        assert result.confidence  # Strict schema ensures this is always returned
 
 
 class TestListMemories:
