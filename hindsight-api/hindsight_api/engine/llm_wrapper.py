@@ -241,7 +241,7 @@ class LLMProvider:
                                     "name": "response",
                                     "strict": True,
                                     "schema": schema,
-                                }
+                                },
                             }
                         else:
                             # Soft enforcement: add schema to prompt and use json_object mode
