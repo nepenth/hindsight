@@ -385,7 +385,7 @@ class ReflectRequest(BaseModel):
                 "query": "What do you think about artificial intelligence?",
                 "budget": "low",
                 "context": "This is for a research paper on AI ethics",
-                "max_tokens": 2048,
+                "max_tokens": 4096,
                 "include": {"facts": {}},
                 "response_schema": {
                     "type": "object",
@@ -402,7 +402,7 @@ class ReflectRequest(BaseModel):
     query: str
     budget: Budget = Budget.LOW
     context: str | None = None
-    max_tokens: int = Field(default=2048, description="Maximum tokens for the response")
+    max_tokens: int = Field(default=4096, description="Maximum tokens for the response")
     include: ReflectIncludeOptions = Field(
         default_factory=ReflectIncludeOptions, description="Options for including additional data (disabled by default)"
     )

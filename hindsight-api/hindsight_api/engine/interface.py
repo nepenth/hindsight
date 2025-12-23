@@ -110,7 +110,7 @@ class MemoryEngineInterface(ABC):
         *,
         budget: "Budget | None" = None,
         context: str | None = None,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
         response_schema: dict | None = None,
         request_context: "RequestContext",
     ) -> "ReflectResult":
