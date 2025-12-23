@@ -87,6 +87,7 @@ pub fn reflect(
     query: String,
     budget: String,
     context: Option<String>,
+    max_tokens: i64,
     schema_path: Option<PathBuf>,
     verbose: bool,
     output_format: OutputFormat,
@@ -112,6 +113,7 @@ pub fn reflect(
         query,
         budget: Some(parse_budget(&budget)),
         context,
+        max_tokens,
         include: None,
         response_schema,
     };

@@ -3076,6 +3076,7 @@ Guidelines:
         *,
         budget: Budget | None = None,
         context: str | None = None,
+        max_tokens: int = 2048,
         response_schema: dict | None = None,
         request_context: "RequestContext",
     ) -> ReflectResult:
@@ -3183,29 +3184,37 @@ Guidelines:
         system_message = think_utils.get_system_message(disposition)
         messages = [{"role": "system", "content": system_message}, {"role": "user", "content": prompt}]
 
-        llm_start = time.time()
-        structured_output = None
-
+        # Prepare response_format if schema provided
+        response_format = None
         if response_schema is not None:
-            # Single LLM call with structured output
-            structured_output = await self._generate_structured_output(
-                messages=messages,
-                response_schema=response_schema,
-            )
-            # Empty string for text when structured output is used (backward compatibility)
-            answer_text = ""
+            # Wrapper class to provide Pydantic-like interface for raw JSON schemas
+            class JsonSchemaWrapper:
+                def __init__(self, schema: dict):
+                    self._schema = schema
+
+                def model_json_schema(self):
+                    return self._schema
+
+            response_format = JsonSchemaWrapper(response_schema)
+
+        llm_start = time.time()
+        result = await self._llm_config.call(
+            messages=messages,
+            scope="memory_reflect",
+            max_completion_tokens=max_tokens,
+            response_format=response_format,
+            skip_validation=True if response_format else False,
+        )
+        llm_time = time.time() - llm_start
+
+        # Handle response based on whether structured output was requested
+        if response_schema is not None:
+            structured_output = result
+            answer_text = ""  # Empty for backward compatibility
             log_buffer.append(f"[REFLECT {reflect_id}] Structured output generated")
         else:
-            # Regular text generation
-            answer_text = await self._llm_config.call(
-                messages=messages,
-                scope="memory_think",
-                temperature=0.9,
-                max_completion_tokens=1000,
-            )
-            answer_text = answer_text.strip()
-
-        llm_time = time.time() - llm_start
+            structured_output = None
+            answer_text = result.strip()
 
         # Submit form_opinion task for background processing
         await self._task_backend.submit_task(
@@ -3244,43 +3253,6 @@ Guidelines:
                 await self._operation_validator.on_reflect_complete(result_ctx)
             except Exception as e:
                 logger.warning(f"Post-reflect hook error (non-fatal): {e}")
-
-        return result
-
-    async def _generate_structured_output(
-        self,
-        messages: list[dict],
-        response_schema: dict,
-    ) -> dict:
-        """
-        Generate structured output using the provided JSON schema.
-
-        Args:
-            messages: The messages to send to the LLM (system + user prompt)
-            response_schema: JSON Schema defining the expected output structure
-
-        Returns:
-            Parsed structured output as a dict
-        """
-
-        # Wrapper class to provide Pydantic-like interface for raw JSON schemas
-        class JsonSchemaWrapper:
-            def __init__(self, schema: dict):
-                self._schema = schema
-
-            def model_json_schema(self):
-                return self._schema
-
-        schema_wrapper = JsonSchemaWrapper(response_schema)
-
-        # Call LLM with structured output - the wrapper handles schema injection
-        result = await self._llm_config.call(
-            messages=messages,
-            response_format=schema_wrapper,
-            scope="memory_reflect_structured",
-            max_completion_tokens=2000,
-            skip_validation=True,  # Return raw dict since we don't have a Pydantic model
-        )
 
         return result
 

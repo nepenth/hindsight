@@ -3269,6 +3269,12 @@
             ],
             "title": "Context"
           },
+          "max_tokens": {
+            "type": "integer",
+            "title": "Max Tokens",
+            "description": "Maximum tokens for the response",
+            "default": 2048
+          },
           "include": {
             "$ref": "#/components/schemas/ReflectIncludeOptions",
             "description": "Options for including additional data (disabled by default)"
@@ -3299,6 +3305,7 @@
           "include": {
             "facts": {}
           },
+          "max_tokens": 2048,
           "query": "What do you think about artificial intelligence?",
           "response_schema": {
             "properties": {

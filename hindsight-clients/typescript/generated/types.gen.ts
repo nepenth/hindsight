@@ -899,6 +899,12 @@ export type ReflectRequest = {
    */
   context?: string | null;
   /**
+   * Max Tokens
+   *
+   * Maximum tokens for the response
+   */
+  max_tokens?: number;
+  /**
    * Options for including additional data (disabled by default)
    */
   include?: ReflectIncludeOptions;

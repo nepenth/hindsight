@@ -354,6 +354,7 @@ impl App {
                             query: query_text,
                             budget: Some(query_budget),
                             context: None,
+                            max_tokens: 2048,
                             include: None,
                             response_schema: None,
                         };

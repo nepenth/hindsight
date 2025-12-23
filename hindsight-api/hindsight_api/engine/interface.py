@@ -110,6 +110,7 @@ class MemoryEngineInterface(ABC):
         *,
         budget: "Budget | None" = None,
         context: str | None = None,
+        max_tokens: int = 2048,
         response_schema: dict | None = None,
         request_context: "RequestContext",
     ) -> "ReflectResult":
@@ -121,6 +122,7 @@ class MemoryEngineInterface(ABC):
             query: The question to reflect on.
             budget: Search budget for retrieving context.
             context: Additional context for the reflection.
+            max_tokens: Maximum tokens for the response.
             response_schema: Optional JSON Schema for structured output.
             request_context: Request context for authentication.
 

@@ -385,6 +385,7 @@ class ReflectRequest(BaseModel):
                 "query": "What do you think about artificial intelligence?",
                 "budget": "low",
                 "context": "This is for a research paper on AI ethics",
+                "max_tokens": 2048,
                 "include": {"facts": {}},
                 "response_schema": {
                     "type": "object",
@@ -401,6 +402,7 @@ class ReflectRequest(BaseModel):
     query: str
     budget: Budget = Budget.LOW
     context: str | None = None
+    max_tokens: int = Field(default=2048, description="Maximum tokens for the response")
     include: ReflectIncludeOptions = Field(
         default_factory=ReflectIncludeOptions, description="Options for including additional data (disabled by default)"
     )
@@ -1231,6 +1233,7 @@ def _register_routes(app: FastAPI):
                     query=request.query,
                     budget=request.budget,
                     context=request.context,
+                    max_tokens=request.max_tokens,
                     response_schema=request.response_schema,
                     request_context=request_context,
                 )

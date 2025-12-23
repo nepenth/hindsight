@@ -229,6 +229,7 @@ class Hindsight:
         query: str,
         budget: str = "low",
         context: Optional[str] = None,
+        max_tokens: int = 2048,
         response_schema: Optional[Dict[str, Any]] = None,
     ) -> ReflectResponse:
         """
@@ -239,6 +240,7 @@ class Hindsight:
             query: The question or prompt
             budget: Budget level for reflection - "low", "mid", or "high" (default: "low")
             context: Optional additional context
+            max_tokens: Maximum tokens for the response (default: 2048)
             response_schema: Optional JSON Schema for structured output. When provided,
                 the response will include a 'structured_output' field with the LLM
                 response parsed according to this schema.
@@ -251,6 +253,7 @@ class Hindsight:
             query=query,
             budget=budget,
             context=context,
+            max_tokens=max_tokens,
             response_schema=response_schema,
         )
 

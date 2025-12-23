@@ -9,6 +9,7 @@ Name | Type | Description | Notes
 **query** | **str** |  | 
 **budget** | [**Budget**](Budget.md) |  | [optional] 
 **context** | **str** |  | [optional] 
+**max_tokens** | **int** | Maximum tokens for the response | [optional] [default to 2048]
 **include** | [**ReflectIncludeOptions**](ReflectIncludeOptions.md) | Options for including additional data (disabled by default) | [optional] 
 **response_schema** | **Dict[str, object]** |  | [optional] 
 

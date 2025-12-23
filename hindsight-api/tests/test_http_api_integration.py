@@ -734,3 +734,41 @@ async def test_reflect_without_structured_output(api_client):
     assert "text" in result
     assert len(result["text"]) > 0
     assert result.get("structured_output") is None
+
+
+@pytest.mark.asyncio
+async def test_reflect_with_max_tokens(api_client):
+    """Test reflect endpoint with custom max_tokens parameter.
+
+    The max_tokens parameter controls the maximum tokens for the LLM response.
+    """
+    test_bank_id = f"reflect_max_tokens_test_{datetime.now().timestamp()}"
+
+    # Store a memory
+    response = await api_client.post(
+        f"/v1/default/banks/{test_bank_id}/memories",
+        json={
+            "items": [
+                {
+                    "content": "Python is a popular programming language for data science and machine learning.",
+                    "context": "tech"
+                }
+            ]
+        }
+    )
+    assert response.status_code == 200
+
+    # Call reflect with custom max_tokens
+    response = await api_client.post(
+        f"/v1/default/banks/{test_bank_id}/reflect",
+        json={
+            "query": "What is Python used for?",
+            "max_tokens": 500
+        }
+    )
+    assert response.status_code == 200
+    result = response.json()
+
+    # Verify response has text
+    assert "text" in result
+    assert len(result["text"]) > 0

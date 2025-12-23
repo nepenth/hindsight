@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
 from hindsight_client_api.models.budget import Budget
 from hindsight_client_api.models.reflect_include_options import ReflectIncludeOptions
@@ -31,9 +31,10 @@ class ReflectRequest(BaseModel):
     query: StrictStr
     budget: Optional[Budget] = None
     context: Optional[StrictStr] = None
+    max_tokens: Optional[StrictInt] = Field(default=2048, description="Maximum tokens for the response")
     include: Optional[ReflectIncludeOptions] = Field(default=None, description="Options for including additional data (disabled by default)")
     response_schema: Optional[Dict[str, Any]] = None
-    __properties: ClassVar[List[str]] = ["query", "budget", "context", "include", "response_schema"]
+    __properties: ClassVar[List[str]] = ["query", "budget", "context", "max_tokens", "include", "response_schema"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -102,6 +103,7 @@ class ReflectRequest(BaseModel):
             "query": obj.get("query"),
             "budget": obj.get("budget"),
             "context": obj.get("context"),
+            "max_tokens": obj.get("max_tokens") if obj.get("max_tokens") is not None else 2048,
             "include": ReflectIncludeOptions.from_dict(obj["include"]) if obj.get("include") is not None else None,
             "response_schema": obj.get("response_schema")
         })

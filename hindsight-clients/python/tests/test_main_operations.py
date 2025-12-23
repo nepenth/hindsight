@@ -173,6 +173,18 @@ class TestReflect:
         assert response.text is not None
         assert len(response.text) > 0
 
+    def test_reflect_with_max_tokens(self, client, bank_id):
+        """Test reflect with custom max_tokens parameter."""
+        response = client.reflect(
+            bank_id=bank_id,
+            query="What do you think about Python?",
+            max_tokens=500,
+        )
+
+        assert response is not None
+        assert response.text is not None
+        assert len(response.text) > 0
+
     def test_reflect_with_structured_output(self, client, bank_id):
         """Test reflect with structured output via response_schema.
 
