@@ -677,9 +677,9 @@ async def test_reflect_structured_output(api_client):
     assert response.status_code == 200
     result = response.json()
 
-    # Verify natural language response exists
+    # Verify text field exists (empty when using structured output)
     assert "text" in result
-    assert len(result["text"]) > 0
+    assert result["text"] == ""
 
     # Verify structured output exists and has expected structure
     assert "structured_output" in result

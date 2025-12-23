@@ -131,7 +131,7 @@ This enables:
 
 ## Structured Output
 
-For applications that need to process responses programmatically, you can request structured output by providing a JSON Schema via `response_schema`. When provided, the response includes both the natural language text and a parsed `structured_output` field.
+For applications that need to process responses programmatically, you can request structured output by providing a JSON Schema via `response_schema`. When provided, the response includes a `structured_output` field with the LLM response parsed according to the schema. The `text` field will be empty since only a single LLM call is made for efficiency.
 
 The easiest way to define a schema is using **Pydantic models**:
 
@@ -156,11 +156,7 @@ with Hindsight() as client:
         response_schema=HiringRecommendation.model_json_schema(),
     )
 
-    # Natural language response
-    print(response.text)
-    # "Based on Alice's extensive ML expertise at Google..."
-
-    # Structured output - parse back into Pydantic model
+    # Parse structured output into Pydantic model
     result = HiringRecommendation.model_validate(response.structured_output)
     print(f"Recommendation: {result.recommendation}")
     print(f"Confidence: {result.confidence}")
@@ -192,9 +188,6 @@ const response = await client.reflect({
   query: "Should we hire Alice for the ML team lead position?",
   responseSchema: responseSchema,
 });
-
-// Natural language response
-console.log(response.text);
 
 // Structured output
 console.log(response.structuredOutput.recommendation);

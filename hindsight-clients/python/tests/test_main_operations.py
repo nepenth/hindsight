@@ -176,9 +176,9 @@ class TestReflect:
     def test_reflect_with_structured_output(self, client, bank_id):
         """Test reflect with structured output via response_schema.
 
-        When response_schema is provided, the response should include
-        both natural language text and a structured_output field
-        parsed according to the provided JSON schema.
+        When response_schema is provided, the response returns structured_output
+        field parsed according to the provided JSON schema. The text field is empty
+        since only a single LLM call is made for structured output.
         """
         from pydantic import BaseModel
 
@@ -195,8 +195,8 @@ class TestReflect:
         )
 
         assert response is not None
-        assert response.text is not None
-        assert len(response.text) > 0
+        # Text is empty when using structured output (single LLM call)
+        assert response.text == ""
 
         # Verify structured output is present and can be parsed into model
         assert response.structured_output is not None

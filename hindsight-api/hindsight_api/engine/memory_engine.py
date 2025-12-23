@@ -3181,33 +3181,31 @@ Guidelines:
         log_buffer.append(f"[REFLECT {reflect_id}] Prompt: {len(prompt)} chars")
 
         system_message = think_utils.get_system_message(disposition)
+        messages = [{"role": "system", "content": system_message}, {"role": "user", "content": prompt}]
 
         llm_start = time.time()
-        answer_text = await self._llm_config.call(
-            messages=[{"role": "system", "content": system_message}, {"role": "user", "content": prompt}],
-            scope="memory_think",
-            temperature=0.9,
-            max_completion_tokens=1000,
-        )
-        llm_time = time.time() - llm_start
-
-        answer_text = answer_text.strip()
-
-        # Generate structured output if schema provided
         structured_output = None
+
         if response_schema is not None:
-            structured_start = time.time()
-            try:
-                structured_output = await self._generate_structured_output(
-                    answer_text=answer_text,
-                    query=query,
-                    response_schema=response_schema,
-                )
-                structured_time = time.time() - structured_start
-                log_buffer.append(f"[REFLECT {reflect_id}] Structured output generated in {structured_time:.3f}s")
-            except Exception as e:
-                logger.warning(f"[REFLECT {reflect_id}] Failed to generate structured output: {e}")
-                # Continue without structured output - don't fail the whole request
+            # Single LLM call with structured output
+            structured_output = await self._generate_structured_output(
+                messages=messages,
+                response_schema=response_schema,
+            )
+            # Empty string for text when structured output is used (backward compatibility)
+            answer_text = ""
+            log_buffer.append(f"[REFLECT {reflect_id}] Structured output generated")
+        else:
+            # Regular text generation
+            answer_text = await self._llm_config.call(
+                messages=messages,
+                scope="memory_think",
+                temperature=0.9,
+                max_completion_tokens=1000,
+            )
+            answer_text = answer_text.strip()
+
+        llm_time = time.time() - llm_start
 
         # Submit form_opinion task for background processing
         await self._task_backend.submit_task(
@@ -3251,20 +3249,18 @@ Guidelines:
 
     async def _generate_structured_output(
         self,
-        answer_text: str,
-        query: str,
+        messages: list[dict],
         response_schema: dict,
-    ) -> dict | None:
+    ) -> dict:
         """
-        Generate structured output from the answer text using the provided JSON schema.
+        Generate structured output using the provided JSON schema.
 
         Args:
-            answer_text: The generated answer text to structure
-            query: The original query for context
+            messages: The messages to send to the LLM (system + user prompt)
             response_schema: JSON Schema defining the expected output structure
 
         Returns:
-            Parsed structured output as a dict, or None if generation fails
+            Parsed structured output as a dict
         """
 
         # Wrapper class to provide Pydantic-like interface for raw JSON schemas
@@ -3279,12 +3275,7 @@ Guidelines:
 
         # Call LLM with structured output - the wrapper handles schema injection
         result = await self._llm_config.call(
-            messages=[
-                {
-                    "role": "user",
-                    "content": f'Based on the following answer to the query "{query}", extract the relevant information:\n\n{answer_text}',
-                },
-            ],
+            messages=messages,
             response_format=schema_wrapper,
             scope="memory_reflect_structured",
             max_completion_tokens=2000,
