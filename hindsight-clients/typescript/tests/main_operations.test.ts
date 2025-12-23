@@ -217,6 +217,26 @@ describe('TestEndToEndWorkflow', () => {
     });
 });
 
+describe('TestBankProfile', () => {
+    test('get bank profile', async () => {
+        const bankId = randomBankId();
+
+        // Create bank with background
+        await client.createBank(bankId, {
+            name: 'Test Agent',
+            background: 'I am a helpful assistant for testing.',
+        });
+
+        // Get bank profile
+        const profile = await client.getBankProfile(bankId);
+
+        expect(profile).not.toBeNull();
+        expect(profile.bank_id).toBe(bankId);
+        expect(profile.name).toBe('Test Agent');
+        expect(profile.background).toBe('I am a helpful assistant for testing.');
+    });
+});
+
 describe('TestBankStats', () => {
     let bankId: string;
 
@@ -277,9 +297,10 @@ describe('TestDocuments', () => {
         const { sdk, createClient, createConfig } = await import('../src');
 
         // First create a document
-        await client.retain(bankId, 'Test document content for deletion', {
+        const retainResponse = await client.retain(bankId, 'Test document content for deletion', {
             documentId: docId,
         });
+        expect(retainResponse.success).toBe(true);
 
         const apiClient = createClient(createConfig({ baseUrl: HINDSIGHT_API_URL }));
         const { data: response } = await sdk.deleteDocument({
