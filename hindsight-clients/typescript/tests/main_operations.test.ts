@@ -216,3 +216,80 @@ describe('TestEndToEndWorkflow', () => {
         expect(reflectResponse.text!.length).toBeGreaterThan(0);
     });
 });
+
+describe('TestBankStats', () => {
+    let bankId: string;
+
+    beforeAll(async () => {
+        bankId = randomBankId();
+        // Setup: Store some test memories
+        await client.retainBatch(bankId, [
+            { content: 'Alice likes Python programming' },
+            { content: 'Bob enjoys hiking in the mountains' },
+        ]);
+    });
+
+    test('get bank stats', async () => {
+        const { sdk, createClient, createConfig } = await import('../src');
+        const apiClient = createClient(createConfig({ baseUrl: HINDSIGHT_API_URL }));
+
+        const { data: stats } = await sdk.getAgentStats({
+            client: apiClient,
+            path: { bank_id: bankId },
+        });
+
+        expect(stats).not.toBeNull();
+        expect(stats!.bank_id).toBe(bankId);
+        expect(stats!.total_nodes).toBeGreaterThanOrEqual(0);
+        expect(stats!.total_links).toBeGreaterThanOrEqual(0);
+        expect(stats!.total_documents).toBeGreaterThanOrEqual(0);
+        expect(typeof stats!.nodes_by_fact_type).toBe('object');
+        expect(typeof stats!.links_by_link_type).toBe('object');
+    });
+});
+
+describe('TestOperations', () => {
+    test('list operations', async () => {
+        const bankId = randomBankId();
+        const { sdk, createClient, createConfig } = await import('../src');
+
+        // First create an async operation
+        await client.retain(bankId, 'Test content for async operation', {
+            retainAsync: true,
+        });
+
+        const apiClient = createClient(createConfig({ baseUrl: HINDSIGHT_API_URL }));
+        const { data: response } = await sdk.listOperations({
+            client: apiClient,
+            path: { bank_id: bankId },
+        });
+
+        expect(response).not.toBeNull();
+        expect(response!.bank_id).toBe(bankId);
+        expect(Array.isArray(response!.operations)).toBe(true);
+    });
+});
+
+describe('TestDocuments', () => {
+    test('delete document', async () => {
+        const bankId = randomBankId();
+        const docId = `test-doc-${Math.random().toString(36).slice(2, 10)}`;
+        const { sdk, createClient, createConfig } = await import('../src');
+
+        // First create a document
+        await client.retain(bankId, 'Test document content for deletion', {
+            document_id: docId,
+        });
+
+        const apiClient = createClient(createConfig({ baseUrl: HINDSIGHT_API_URL }));
+        const { data: response } = await sdk.deleteDocument({
+            client: apiClient,
+            path: { bank_id: bankId, document_id: docId },
+        });
+
+        expect(response).not.toBeNull();
+        expect(response!.success).toBe(true);
+        expect(response!.document_id).toBe(docId);
+        expect(response!.memory_units_deleted).toBeGreaterThanOrEqual(0);
+    });
+});

@@ -83,7 +83,6 @@ asyncio.run(get_document_example())
 
 
 # [docs:document-delete]
-import asyncio
 from hindsight_client_api import ApiClient, Configuration
 from hindsight_client_api.api import DefaultApi
 
@@ -98,7 +97,7 @@ async def delete_document_example():
         document_id="meeting-2024-03-15"
     )
 
-    print(f"Deleted {result.deleted_count} memories")
+    print(f"Deleted {result.memory_units_deleted} memories")
 
 asyncio.run(delete_document_example())
 # [/docs:document-delete]

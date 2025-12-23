@@ -61,15 +61,13 @@ console.log(`Created: ${doc.created_at}`);
 
 
 // [docs:document-delete]
-const deleteClient = createClient(createConfig({ baseUrl: 'http://localhost:8888' }));
-
 // Delete document and all its memories
-const { data: result } = await sdk.deleteDocument({
-    client: deleteClient,
+const { data: deleteResult } = await sdk.deleteDocument({
+    client: apiClient,
     path: { bank_id: 'my-bank', document_id: 'meeting-2024-03-15' }
 });
 
-console.log(`Deleted ${result.deleted_count} memories`);
+console.log(`Deleted ${deleteResult.memory_units_deleted} memories`);
 // [/docs:document-delete]
 
 
