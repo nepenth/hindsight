@@ -133,6 +133,7 @@ async def retain_batch(
                 else:
                     # Check for per-item document_ids
                     from collections import defaultdict
+
                     contents_by_doc = defaultdict(list)
                     for idx, content_dict in enumerate(contents_dicts):
                         doc_id = content_dict.get("document_id")
