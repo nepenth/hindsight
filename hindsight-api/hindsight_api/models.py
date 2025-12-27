@@ -18,6 +18,7 @@ class RequestContext:
     """
 
     api_key: str | None = None
+    internal: bool = False  # True for background/internal operations (not user-visible)
 
 
 from pgvector.sqlalchemy import Vector

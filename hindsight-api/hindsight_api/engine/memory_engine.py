@@ -2825,13 +2825,16 @@ Guidelines:
         Handler for form opinion tasks.
 
         Args:
-            task_dict: Dict with keys: 'bank_id', 'answer_text', 'query'
+            task_dict: Dict with keys: 'bank_id', 'answer_text', 'query', 'api_key'
         """
         bank_id = task_dict["bank_id"]
         answer_text = task_dict["answer_text"]
         query = task_dict["query"]
+        api_key = task_dict.get("api_key")
 
-        await self._extract_and_store_opinions_async(bank_id=bank_id, answer_text=answer_text, query=query)
+        await self._extract_and_store_opinions_async(
+            bank_id=bank_id, answer_text=answer_text, query=query, api_key=api_key
+        )
 
     async def _handle_reinforce_opinion(self, task_dict: dict[str, Any]):
         """
@@ -3190,8 +3193,15 @@ Guidelines:
         answer_text = answer_text.strip()
 
         # Submit form_opinion task for background processing
+        # Pass API key from request context for authentication in background task
         await self._task_backend.submit_task(
-            {"type": "form_opinion", "bank_id": bank_id, "answer_text": answer_text, "query": query}
+            {
+                "type": "form_opinion",
+                "bank_id": bank_id,
+                "answer_text": answer_text,
+                "query": query,
+                "api_key": request_context.api_key if request_context else None,
+            }
         )
 
         total_time = time.time() - reflect_start
@@ -3228,7 +3238,9 @@ Guidelines:
 
         return result
 
-    async def _extract_and_store_opinions_async(self, bank_id: str, answer_text: str, query: str):
+    async def _extract_and_store_opinions_async(
+        self, bank_id: str, answer_text: str, query: str, api_key: str | None = None
+    ):
         """
         Background task to extract and store opinions from think response.
 
@@ -3238,6 +3250,7 @@ Guidelines:
             bank_id: bank IDentifier
             answer_text: The generated answer text
             query: The original query
+            api_key: API key from original request for authentication
         """
         try:
             # Extract opinions from the answer
@@ -3248,10 +3261,11 @@ Guidelines:
                 from datetime import datetime
 
                 current_time = datetime.now(UTC)
-                # Use internal request context for background tasks
+                # Use request context with API key from original request
+                # Mark as internal so usage metering tracks it separately
                 from hindsight_api.models import RequestContext
 
-                internal_context = RequestContext()
+                internal_context = RequestContext(api_key=api_key, internal=True)
                 for opinion in new_opinions:
                     await self.retain_async(
                         bank_id=bank_id,
