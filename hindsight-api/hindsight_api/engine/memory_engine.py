@@ -17,6 +17,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from ..config import get_config
+
 # Context variable for current schema (async-safe, per-task isolation)
 _current_schema: contextvars.ContextVar[str] = contextvars.ContextVar("current_schema", default="public")
 
@@ -3085,6 +3087,8 @@ Guidelines:
         *,
         budget: Budget | None = None,
         context: str | None = None,
+        max_tokens: int = 4096,
+        response_schema: dict | None = None,
         request_context: "RequestContext",
     ) -> ReflectResult:
         """
@@ -3096,19 +3100,22 @@ Guidelines:
         3. Retrieves existing opinions (bank's formed perspectives)
         4. Uses LLM to formulate an answer
         5. Extracts and stores any new opinions formed during reflection
-        6. Returns plain text answer and the facts used
+        6. Optionally generates structured output based on response_schema
+        7. Returns plain text answer and the facts used
 
         Args:
             bank_id: bank identifier
             query: Question to answer
             budget: Budget level for memory exploration (low=100, mid=300, high=600 units)
             context: Additional context string to include in LLM prompt (not used in recall)
+            response_schema: Optional JSON Schema for structured output
 
         Returns:
             ReflectResult containing:
                 - text: Plain text answer (no markdown)
                 - based_on: Dict with 'world', 'experience', and 'opinion' fact lists (MemoryFact objects)
                 - new_opinions: List of newly formed opinions
+                - structured_output: Optional dict if response_schema was provided
         """
         # Use cached LLM config
         if self._llm_config is None:
@@ -3186,17 +3193,42 @@ Guidelines:
         log_buffer.append(f"[REFLECT {reflect_id}] Prompt: {len(prompt)} chars")
 
         system_message = think_utils.get_system_message(disposition)
+        messages = [{"role": "system", "content": system_message}, {"role": "user", "content": prompt}]
+
+        # Prepare response_format if schema provided
+        response_format = None
+        if response_schema is not None:
+            # Wrapper class to provide Pydantic-like interface for raw JSON schemas
+            class JsonSchemaWrapper:
+                def __init__(self, schema: dict):
+                    self._schema = schema
+
+                def model_json_schema(self):
+                    return self._schema
+
+            response_format = JsonSchemaWrapper(response_schema)
 
         llm_start = time.time()
-        answer_text = await self._llm_config.call(
-            messages=[{"role": "system", "content": system_message}, {"role": "user", "content": prompt}],
-            scope="memory_think",
-            temperature=0.9,
-            max_completion_tokens=1000,
+        result = await self._llm_config.call(
+            messages=messages,
+            scope="memory_reflect",
+            max_completion_tokens=max_tokens,
+            response_format=response_format,
+            skip_validation=True if response_format else False,
+            # Don't enforce strict_schema - not all providers support it and may retry forever
+            # Soft enforcement (schema in prompt + json_object mode) is sufficient
+            strict_schema=False,
         )
         llm_time = time.time() - llm_start
 
-        answer_text = answer_text.strip()
+        # Handle response based on whether structured output was requested
+        if response_schema is not None:
+            structured_output = result
+            answer_text = ""  # Empty for backward compatibility
+            log_buffer.append(f"[REFLECT {reflect_id}] Structured output generated")
+        else:
+            structured_output = None
+            answer_text = result.strip()
 
         # Submit form_opinion task for background processing
         # Pass API key from request context for authentication in background task
@@ -3221,6 +3253,7 @@ Guidelines:
             text=answer_text,
             based_on={"world": world_results, "experience": agent_results, "opinion": opinion_results},
             new_opinions=[],  # Opinions are being extracted asynchronously
+            structured_output=structured_output,
         )
 
         # Call post-operation hook if validator is configured
@@ -3592,7 +3625,7 @@ Guidelines:
         self,
         bank_id: str,
         entity_ids: list[str],
-        min_facts: int = 5,
+        min_facts: int | None = None,
         conn=None,
         request_context: "RequestContext | None" = None,
     ) -> None:
@@ -3604,11 +3637,15 @@ Guidelines:
         Args:
             bank_id: Bank identifier
             entity_ids: List of entity IDs to process
-            min_facts: Minimum facts required to regenerate observations
+            min_facts: Minimum facts required to regenerate observations (uses config default if None)
             conn: Optional database connection (for transactional atomicity)
         """
         if not bank_id or not entity_ids:
             return
+
+        # Use config default if min_facts not specified
+        if min_facts is None:
+            min_facts = get_config().observation_min_facts
 
         # Convert to UUIDs
         entity_uuids = [uuid.UUID(eid) if isinstance(eid, str) else eid for eid in entity_ids]
