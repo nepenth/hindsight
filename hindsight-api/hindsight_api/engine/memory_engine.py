@@ -396,17 +396,13 @@ class MemoryEngine(MemoryEngineInterface):
             _current_schema.set("public")
             return "public"
 
-        from fastapi import HTTPException
-
         from hindsight_api.extensions import AuthenticationError
 
         if request_context is None:
-            raise HTTPException(status_code=401, detail="Authentication failed: API key required")
+            raise AuthenticationError("RequestContext is required when tenant extension is configured")
 
-        try:
-            tenant_context = await self._tenant_extension.authenticate(request_context)
-        except AuthenticationError as e:
-            raise HTTPException(status_code=401, detail=str(e))
+        # Let AuthenticationError propagate - HTTP layer will convert to 401
+        tenant_context = await self._tenant_extension.authenticate(request_context)
 
         _current_schema.set(tenant_context.schema_name)
         return tenant_context.schema_name

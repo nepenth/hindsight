@@ -1206,8 +1206,8 @@ def _register_routes(app: FastAPI):
             raise
         except OperationValidationError as e:
             raise HTTPException(status_code=e.status_code, detail=e.reason)
-        except HTTPException:
-            raise
+        except AuthenticationError as e:
+            raise HTTPException(status_code=401, detail=str(e))
         except Exception as e:
             import traceback
 
@@ -1272,6 +1272,8 @@ def _register_routes(app: FastAPI):
 
         except OperationValidationError as e:
             raise HTTPException(status_code=e.status_code, detail=e.reason)
+        except AuthenticationError as e:
+            raise HTTPException(status_code=401, detail=str(e))
         except HTTPException:
             raise
         except Exception as e:
@@ -2001,6 +2003,8 @@ def _register_routes(app: FastAPI):
                 )
         except OperationValidationError as e:
             raise HTTPException(status_code=e.status_code, detail=e.reason)
+        except AuthenticationError as e:
+            raise HTTPException(status_code=401, detail=str(e))
         except Exception as e:
             import traceback
 
