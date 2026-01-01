@@ -991,6 +991,16 @@ def _register_routes(app: FastAPI):
                 api_key = authorization.strip()
         return RequestContext(api_key=api_key)
 
+    # Global exception handler for authentication errors
+    @app.exception_handler(AuthenticationError)
+    async def authentication_error_handler(request, exc: AuthenticationError):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=401,
+            content={"detail": str(exc)},
+        )
+
     @app.get(
         "/health",
         summary="Health check endpoint",
@@ -1298,6 +1308,8 @@ def _register_routes(app: FastAPI):
             return BankListResponse(banks=banks)
         except HTTPException:
             raise
+        except AuthenticationError as e:
+            raise HTTPException(status_code=401, detail=str(e))
         except Exception as e:
             import traceback
 
