@@ -52,8 +52,22 @@ class RESTResponse(io.IOBase):
 class RESTClientObject:
 
     def __init__(self, configuration) -> None:
+        # Store configuration for deferred initialization
+        # aiohttp.TCPConnector requires a running event loop, so we defer
+        # creation until the first request (which runs in async context)
+        self._configuration = configuration
+        self._pool_manager: Optional[aiohttp.ClientSession] = None
+        self._retry_client: Optional[aiohttp_retry.RetryClient] = None
 
-        # maxsize is number of requests to host that are allowed in parallel
+        self.proxy = configuration.proxy
+        self.proxy_headers = configuration.proxy_headers
+
+    def _ensure_session(self) -> None:
+        """Create aiohttp session lazily (must be called from async context)."""
+        if self._pool_manager is not None:
+            return
+
+        configuration = self._configuration
         maxsize = configuration.connection_pool_maxsize
 
         ssl_context = ssl.create_default_context(
@@ -73,20 +87,15 @@ class RESTClientObject:
             ssl=ssl_context
         )
 
-        self.proxy = configuration.proxy
-        self.proxy_headers = configuration.proxy_headers
-
-        # https pool manager
-        self.pool_manager = aiohttp.ClientSession(
+        self._pool_manager = aiohttp.ClientSession(
             connector=connector,
             trust_env=True
         )
 
         retries = configuration.retries
-        self.retry_client: Optional[aiohttp_retry.RetryClient]
         if retries is not None:
-            self.retry_client = aiohttp_retry.RetryClient(
-                client_session=self.pool_manager,
+            self._retry_client = aiohttp_retry.RetryClient(
+                client_session=self._pool_manager,
                 retry_options=aiohttp_retry.ExponentialRetry(
                     attempts=retries,
                     factor=2.0,
@@ -94,13 +103,24 @@ class RESTClientObject:
                     max_timeout=120.0
                 )
             )
-        else:
-            self.retry_client = None
+
+    @property
+    def pool_manager(self) -> aiohttp.ClientSession:
+        """Get the pool manager, initializing if needed."""
+        self._ensure_session()
+        return self._pool_manager
+
+    @property
+    def retry_client(self) -> Optional[aiohttp_retry.RetryClient]:
+        """Get the retry client, initializing if needed."""
+        self._ensure_session()
+        return self._retry_client
 
     async def close(self):
-        await self.pool_manager.close()
-        if self.retry_client is not None:
-            await self.retry_client.close()
+        if self._pool_manager is not None:
+            await self._pool_manager.close()
+        if self._retry_client is not None:
+            await self._retry_client.close()
 
     async def request(
         self,
