@@ -33,6 +33,7 @@ If not provided, the server uses embedded `pg0` — convenient for development b
 | `HINDSIGHT_API_LLM_BASE_URL` | Custom LLM endpoint | Provider default |
 | `HINDSIGHT_API_LLM_MAX_CONCURRENT` | Max concurrent LLM requests | `32` |
 | `HINDSIGHT_API_LLM_TIMEOUT` | LLM request timeout in seconds | `120` |
+| `HINDSIGHT_API_LLM_GROQ_SERVICE_TIER` | Groq service tier: `on_demand`, `flex`, `auto` (requires paid plan) | Not set (uses `on_demand`) |
 
 **Provider Examples**
 
@@ -41,6 +42,8 @@ If not provided, the server uses embedded `pg0` — convenient for development b
 export HINDSIGHT_API_LLM_PROVIDER=groq
 export HINDSIGHT_API_LLM_API_KEY=gsk_xxxxxxxxxxxx
 export HINDSIGHT_API_LLM_MODEL=openai/gpt-oss-20b
+# Optional: use flex tier for higher rate limits (requires paid plan)
+# export HINDSIGHT_API_LLM_GROQ_SERVICE_TIER=flex
 
 # OpenAI
 export HINDSIGHT_API_LLM_PROVIDER=openai
