@@ -82,8 +82,8 @@ class LLMProvider:
         self.base_url = base_url
         self.model = model
         self.reasoning_effort = reasoning_effort
-        # Read from env if not provided, None means use Groq's default (on_demand)
-        self.groq_service_tier = groq_service_tier or os.getenv(ENV_LLM_GROQ_SERVICE_TIER)
+        # Default to 'auto' for best performance, users can override to 'on_demand' for free tier
+        self.groq_service_tier = groq_service_tier or os.getenv(ENV_LLM_GROQ_SERVICE_TIER, "auto")
 
         # Validate provider
         valid_providers = ["openai", "groq", "ollama", "gemini", "anthropic", "lmstudio"]
