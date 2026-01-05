@@ -5,6 +5,9 @@ set -e
 # Note: Rust client is auto-generated at build time via build.rs (uses progenitor)
 # Usage: ./scripts/generate-clients.sh
 
+# Pin openapi-generator version for reproducible builds across local and CI
+OPENAPI_GENERATOR_VERSION="v7.10.0"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CLIENTS_DIR="$PROJECT_ROOT/hindsight-clients"
@@ -38,6 +41,7 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 echo "✓ Docker available"
+echo "✓ Using openapi-generator ${OPENAPI_GENERATOR_VERSION}"
 echo ""
 
 # Generate Rust client
@@ -100,12 +104,12 @@ done
 echo "Generating new client with openapi-generator..."
 cd "$PYTHON_CLIENT_DIR"
 
-# Run openapi-generator via Docker
+# Run openapi-generator via Docker (pinned version for reproducibility)
 docker run --rm \
     -v "$OPENAPI_SPEC:/local/openapi.json" \
     -v "$PYTHON_CLIENT_DIR:/local/out" \
     -v "$PYTHON_CLIENT_DIR/openapi-generator-config.yaml:/local/config.yaml" \
-    openapitools/openapi-generator-cli generate \
+    "openapitools/openapi-generator-cli:${OPENAPI_GENERATOR_VERSION}" generate \
     -i /local/openapi.json \
     -g python \
     -o /local/out \
