@@ -356,10 +356,7 @@ class OpenAIEmbeddings(Embeddings):
         try:
             from openai import OpenAI
         except ImportError:
-            raise ImportError(
-                "openai is required for OpenAIEmbeddings. "
-                "Install it with: pip install openai"
-            )
+            raise ImportError("openai is required for OpenAIEmbeddings. Install it with: pip install openai")
 
         logger.info(f"Embeddings: initializing OpenAI provider with model {self.model}")
         self._client = OpenAI(api_key=self.api_key, max_retries=self.max_retries)
