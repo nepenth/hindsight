@@ -114,6 +114,7 @@ class Hindsight:
         context: Optional[str] = None,
         document_id: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
+        entities: Optional[List[Dict[str, str]]] = None,
     ) -> RetainResponse:
         """
         Store a single memory (simplified interface).
@@ -125,13 +126,14 @@ class Hindsight:
             context: Optional context description
             document_id: Optional document ID for grouping
             metadata: Optional user-defined metadata
+            entities: Optional list of entities [{"text": "...", "type": "..."}]
 
         Returns:
             RetainResponse with success status
         """
         return self.retain_batch(
             bank_id=bank_id,
-            items=[{"content": content, "timestamp": timestamp, "context": context, "metadata": metadata}],
+            items=[{"content": content, "timestamp": timestamp, "context": context, "metadata": metadata, "entities": entities}],
             document_id=document_id,
         )
 
@@ -147,24 +149,34 @@ class Hindsight:
 
         Args:
             bank_id: The memory bank ID
-            items: List of memory items with 'content' and optional 'timestamp', 'context', 'metadata', 'document_id'
+            items: List of memory items with 'content' and optional 'timestamp', 'context', 'metadata', 'document_id', 'entities'
             document_id: Optional document ID for grouping memories (applied to items that don't have their own)
             retain_async: If True, process asynchronously in background (default: False)
 
         Returns:
             RetainResponse with success status and item count
         """
-        memory_items = [
-            memory_item.MemoryItem(
-                content=item["content"],
-                timestamp=item.get("timestamp"),
-                context=item.get("context"),
-                metadata=item.get("metadata"),
-                # Use item's document_id if provided, otherwise fall back to batch-level document_id
-                document_id=item.get("document_id") or document_id,
+        from hindsight_client_api.models.entity_input import EntityInput
+
+        memory_items = []
+        for item in items:
+            entities = None
+            if item.get("entities"):
+                entities = [
+                    EntityInput(text=e["text"], type=e.get("type"))
+                    for e in item["entities"]
+                ]
+            memory_items.append(
+                memory_item.MemoryItem(
+                    content=item["content"],
+                    timestamp=item.get("timestamp"),
+                    context=item.get("context"),
+                    metadata=item.get("metadata"),
+                    # Use item's document_id if provided, otherwise fall back to batch-level document_id
+                    document_id=item.get("document_id") or document_id,
+                    entities=entities,
+                )
             )
-            for item in items
-        ]
 
         request_obj = retain_request.RetainRequest(
             items=memory_items,
@@ -314,24 +326,34 @@ class Hindsight:
 
         Args:
             bank_id: The memory bank ID
-            items: List of memory items with 'content' and optional 'timestamp', 'context', 'metadata', 'document_id'
+            items: List of memory items with 'content' and optional 'timestamp', 'context', 'metadata', 'document_id', 'entities'
             document_id: Optional document ID for grouping memories (applied to items that don't have their own)
             retain_async: If True, process asynchronously in background (default: False)
 
         Returns:
             RetainResponse with success status and item count
         """
-        memory_items = [
-            memory_item.MemoryItem(
-                content=item["content"],
-                timestamp=item.get("timestamp"),
-                context=item.get("context"),
-                metadata=item.get("metadata"),
-                # Use item's document_id if provided, otherwise fall back to batch-level document_id
-                document_id=item.get("document_id") or document_id,
+        from hindsight_client_api.models.entity_input import EntityInput
+
+        memory_items = []
+        for item in items:
+            entities = None
+            if item.get("entities"):
+                entities = [
+                    EntityInput(text=e["text"], type=e.get("type"))
+                    for e in item["entities"]
+                ]
+            memory_items.append(
+                memory_item.MemoryItem(
+                    content=item["content"],
+                    timestamp=item.get("timestamp"),
+                    context=item.get("context"),
+                    metadata=item.get("metadata"),
+                    # Use item's document_id if provided, otherwise fall back to batch-level document_id
+                    document_id=item.get("document_id") or document_id,
+                    entities=entities,
+                )
             )
-            for item in items
-        ]
 
         request_obj = retain_request.RetainRequest(
             items=memory_items,
@@ -348,6 +370,7 @@ class Hindsight:
         context: Optional[str] = None,
         document_id: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
+        entities: Optional[List[Dict[str, str]]] = None,
     ) -> RetainResponse:
         """
         Store a single memory (async).
@@ -359,13 +382,14 @@ class Hindsight:
             context: Optional context description
             document_id: Optional document ID for grouping
             metadata: Optional user-defined metadata
+            entities: Optional list of entities [{"text": "...", "type": "..."}]
 
         Returns:
             RetainResponse with success status
         """
         return await self.aretain_batch(
             bank_id=bank_id,
-            items=[{"content": content, "timestamp": timestamp, "context": context, "metadata": metadata}],
+            items=[{"content": content, "timestamp": timestamp, "context": context, "metadata": metadata, "entities": entities}],
             document_id=document_id,
         )
 
