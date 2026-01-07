@@ -291,7 +291,7 @@ class FactExtractionResponse(BaseModel):
         default=None,
         description="Causal relationships between facts. Define these AFTER listing all facts. "
         "Each relationship specifies from_fact_index -> to_fact_index with a relation type. "
-        "Indices must be valid (0 to N-1 where N is the number of facts)."
+        "Indices must be valid (0 to N-1 where N is the number of facts).",
     )
 
 
@@ -761,11 +761,13 @@ Text:
                     # Add to the map for the from_fact_index
                     if from_idx not in causal_relations_by_fact:
                         causal_relations_by_fact[from_idx] = []
-                    causal_relations_by_fact[from_idx].append({
-                        "target_fact_index": to_idx,
-                        "relation_type": relation_type,
-                        "strength": strength,
-                    })
+                    causal_relations_by_fact[from_idx].append(
+                        {
+                            "target_fact_index": to_idx,
+                            "relation_type": relation_type,
+                            "strength": strength,
+                        }
+                    )
 
             for i, llm_fact in enumerate(raw_facts):
                 # Skip non-dict entries but track them for retry
