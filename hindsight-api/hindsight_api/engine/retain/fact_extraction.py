@@ -584,6 +584,7 @@ WHAT TO EXTRACT vs SKIP
     # Retry logic for JSON validation errors
     max_retries = 2
     last_error = None
+    config = get_config()
 
     # Sanitize input text to prevent Unicode encoding errors (e.g., unpaired surrogates)
     sanitized_chunk = _sanitize_text(chunk)
@@ -604,7 +605,6 @@ Text:
 
     for attempt in range(max_retries):
         try:
-            config = get_config()
             extraction_response_json = await llm_config.call(
                 messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_message}],
                 response_format=FactExtractionResponse,

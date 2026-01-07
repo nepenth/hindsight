@@ -233,6 +233,19 @@ class HindsightConfig:
         logger.info(f"Graph retriever: {self.graph_retriever}")
 
 
+# Cached config instance
+_config_cache: HindsightConfig | None = None
+
+
 def get_config() -> HindsightConfig:
-    """Get the current configuration from environment variables."""
-    return HindsightConfig.from_env()
+    """Get the cached configuration, loading from environment on first call."""
+    global _config_cache
+    if _config_cache is None:
+        _config_cache = HindsightConfig.from_env()
+    return _config_cache
+
+
+def clear_config_cache() -> None:
+    """Clear the config cache. Useful for testing or reloading config."""
+    global _config_cache
+    _config_cache = None
