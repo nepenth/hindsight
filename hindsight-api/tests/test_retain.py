@@ -446,12 +446,13 @@ async def test_occurred_dates_not_defaulted(memory, request_context):
     try:
         # Store a current observation where occurred dates don't make sense
         # Use present tense to avoid LLM extracting past dates
+        # Content needs to be substantial enough to not be filtered as trivial
         event_date = datetime(2024, 2, 10, 15, 30, tzinfo=timezone.utc)
 
         unit_ids = await memory.retain_async(
             bank_id=bank_id,
-            content="Alice likes coffee. The weather is sunny today.",
-            context="current observations",
+            content="Alice is a software engineer who specializes in Python and machine learning. She prefers dark roast coffee and works remotely from Seattle.",
+            context="current observations about Alice",
             event_date=event_date,
             request_context=request_context,
         )
@@ -461,7 +462,7 @@ async def test_occurred_dates_not_defaulted(memory, request_context):
         # Recall and check that occurred dates are None
         result = await memory.recall_async(
             bank_id=bank_id,
-            query="What does Alice like?",
+            query="Tell me about Alice",
             budget=Budget.LOW,
             max_tokens=500,
             fact_type=["world", "opinion"],

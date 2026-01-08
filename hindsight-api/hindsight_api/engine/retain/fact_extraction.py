@@ -372,7 +372,7 @@ async def _extract_facts_from_chunk(
 
     prompt = f"""Extract SIGNIFICANT facts from text. Be SELECTIVE - only extract facts worth remembering long-term.
 
-LANGUAGE: Output in the SAME language as input. Do not translate.
+LANGUAGE RULE (CRITICAL): Output facts in the EXACT SAME language as the input text. If input is Japanese, output Japanese. If input is Chinese, output Chinese. NEVER translate to English. Preserve original language completely.
 
 {fact_types_instruction}
 
@@ -382,19 +382,19 @@ SELECTIVITY - CRITICAL (Reduces 90% of unnecessary output)
 
 ONLY extract facts that are:
 ✅ Personal info: names, relationships, roles, background
-✅ Preferences: likes, dislikes, habits, interests
+✅ Preferences: likes, dislikes, habits, interests (e.g., "Alice likes coffee")
 ✅ Significant events: milestones, decisions, achievements, changes
 ✅ Plans/goals: future intentions, deadlines, commitments
 ✅ Expertise: skills, knowledge, certifications, experience
 ✅ Important context: projects, problems, constraints
+✅ Sensory/emotional details: feelings, sensations, perceptions that provide context
+✅ Observations: descriptions of people, places, things with specific details
 
 DO NOT extract:
-❌ Small talk: weather chat, greetings, "how are you", pleasantries
-❌ Mundane actions: "grabbed coffee", "took a break", "walked to desk"
-❌ Filler: "thanks", "sounds good", "ok", "got it", "sure"
+❌ Generic greetings: "how are you", "hello", pleasantries without substance
+❌ Pure filler: "thanks", "sounds good", "ok", "got it", "sure"
 ❌ Process chatter: "let me check", "one moment", "I'll look into it"
 ❌ Repeated info: if already stated, don't extract again
-❌ Trivial opinions on mundane topics: coffee preferences, snack choices (unless it's a real preference pattern)
 
 CONSOLIDATE related statements into ONE fact when possible.
 
