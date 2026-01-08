@@ -143,18 +143,6 @@ class MetricsCollectorBase:
         """Context manager to record operation duration and status."""
         raise NotImplementedError
 
-    def record_tokens(
-        self,
-        operation: str,
-        bank_id: str,
-        input_tokens: int = 0,
-        output_tokens: int = 0,
-        budget: str | None = None,
-        max_tokens: int | None = None,
-    ):
-        """Record token usage for an operation."""
-        raise NotImplementedError
-
     def record_llm_call(
         self,
         provider: str,
@@ -195,18 +183,6 @@ class NoOpMetricsCollector(MetricsCollectorBase):
         """No-op context manager."""
         yield
 
-    def record_tokens(
-        self,
-        operation: str,
-        bank_id: str,
-        input_tokens: int = 0,
-        output_tokens: int = 0,
-        budget: str | None = None,
-        max_tokens: int | None = None,
-    ):
-        """No-op token recording."""
-        pass
-
     def record_llm_call(
         self,
         provider: str,
@@ -235,15 +211,6 @@ class MetricsCollector(MetricsCollectorBase):
         # Records duration of retain, recall, reflect operations
         self.operation_duration = self.meter.create_histogram(
             name="hindsight.operation.duration", description="Duration of Hindsight operations in seconds", unit="s"
-        )
-
-        # Token usage counters
-        self.tokens_input = self.meter.create_counter(
-            name="hindsight.tokens.input", description="Number of input tokens consumed", unit="tokens"
-        )
-
-        self.tokens_output = self.meter.create_counter(
-            name="hindsight.tokens.output", description="Number of output tokens generated", unit="tokens"
         )
 
         # Operation counter (success/failure)
@@ -321,41 +288,6 @@ class MetricsCollector(MetricsCollectorBase):
 
             # Record operation count
             self.operation_total.add(1, attributes)
-
-    def record_tokens(
-        self,
-        operation: str,
-        bank_id: str,
-        input_tokens: int = 0,
-        output_tokens: int = 0,
-        budget: str | None = None,
-        max_tokens: int | None = None,
-    ):
-        """
-        Record token usage for an operation.
-
-        Args:
-            operation: Operation name (retain, recall, reflect)
-            bank_id: Memory bank ID
-            input_tokens: Number of input tokens
-            output_tokens: Number of output tokens
-            budget: Optional budget level
-            max_tokens: Optional max tokens for the operation
-        """
-        attributes = {
-            "operation": operation,
-            "bank_id": bank_id,
-        }
-        if budget:
-            attributes["budget"] = budget
-        if max_tokens:
-            attributes["max_tokens"] = str(max_tokens)
-
-        if input_tokens > 0:
-            self.tokens_input.add(input_tokens, attributes)
-
-        if output_tokens > 0:
-            self.tokens_output.add(output_tokens, attributes)
 
     def record_llm_call(
         self,

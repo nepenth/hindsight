@@ -24,18 +24,6 @@ class TestNoOpMetricsCollector:
         with collector.record_operation("recall", bank_id="test_bank", source="api"):
             pass
 
-    def test_record_tokens_is_noop(self):
-        """Test that record_tokens does nothing."""
-        collector = NoOpMetricsCollector()
-
-        # Should not raise any exception
-        collector.record_tokens(
-            operation="recall",
-            bank_id="test_bank",
-            input_tokens=100,
-            output_tokens=50
-        )
-
     def test_nested_contexts_work(self):
         """Test that nested context managers work correctly."""
         collector = NoOpMetricsCollector()
@@ -80,8 +68,8 @@ class TestMetricsCollector:
         histogram_mocks = [MagicMock(), MagicMock()]
         meter.create_histogram.side_effect = histogram_mocks
         # Create separate mocks for each counter
-        # (tokens_input, tokens_output, operation_total, llm_tokens_input, llm_tokens_output, llm_calls_total)
-        counter_mocks = [MagicMock() for _ in range(6)]
+        # (operation_total, llm_tokens_input, llm_tokens_output, llm_calls_total)
+        counter_mocks = [MagicMock() for _ in range(4)]
         meter.create_counter.side_effect = counter_mocks
         return meter
 
@@ -178,40 +166,6 @@ class TestMetricsCollector:
         assert reflect_attrs["operation"] == "reflect"
         assert reflect_attrs["source"] == "api"
 
-    def test_record_tokens(self, collector):
-        """Test that record_tokens records token counts."""
-        collector.record_tokens(
-            operation="recall",
-            bank_id="test_bank",
-            input_tokens=100,
-            output_tokens=50
-        )
-
-        # Input tokens counter should be called
-        collector.tokens_input.add.assert_called_once()
-        input_call = collector.tokens_input.add.call_args
-        assert input_call[0][0] == 100
-        assert input_call[0][1]["operation"] == "recall"
-        assert input_call[0][1]["bank_id"] == "test_bank"
-
-        # Output tokens counter should be called
-        collector.tokens_output.add.assert_called_once()
-        output_call = collector.tokens_output.add.call_args
-        assert output_call[0][0] == 50
-
-    def test_record_tokens_with_zero_values(self, collector):
-        """Test that zero token values don't record."""
-        collector.record_tokens(
-            operation="recall",
-            bank_id="test_bank",
-            input_tokens=0,
-            output_tokens=0
-        )
-
-        # Neither counter should be called
-        collector.tokens_input.add.assert_not_called()
-        collector.tokens_output.add.assert_not_called()
-
 
 class TestGetMetricsCollector:
     """Tests for the get_metrics_collector function."""
@@ -245,9 +199,6 @@ class TestMetricsCollectorBase:
         with pytest.raises(NotImplementedError):
             with collector.record_operation("test", "test"):
                 pass
-
-        with pytest.raises(NotImplementedError):
-            collector.record_tokens("test", "test")
 
         with pytest.raises(NotImplementedError):
             collector.record_llm_call("test", "test", "test", 1.0)
@@ -310,7 +261,8 @@ class TestLLMMetrics:
         histogram_mocks = [MagicMock(), MagicMock()]
         meter.create_histogram.side_effect = histogram_mocks
         # Create separate mocks for each counter
-        counter_mocks = [MagicMock() for _ in range(6)]
+        # (operation_total, llm_tokens_input, llm_tokens_output, llm_calls_total)
+        counter_mocks = [MagicMock() for _ in range(4)]
         meter.create_counter.side_effect = counter_mocks
         return meter
 
