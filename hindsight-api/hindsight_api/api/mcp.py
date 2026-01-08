@@ -233,6 +233,9 @@ def create_mcp_server(memory: MemoryEngine) -> FastMCP:
                 # Fetch updated profile
                 profile = await memory.get_bank_profile(bank_id, request_context=RequestContext())
 
+            # Serialize disposition if it's a Pydantic model
+            if "disposition" in profile and hasattr(profile["disposition"], "model_dump"):
+                profile["disposition"] = profile["disposition"].model_dump()
             return json.dumps(profile, indent=2)
         except Exception as e:
             logger.error(f"Error creating bank: {e}", exc_info=True)

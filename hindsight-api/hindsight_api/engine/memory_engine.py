@@ -3030,7 +3030,7 @@ Guidelines:
         return {
             "bank_id": bank_id,
             "name": profile["name"],
-            "disposition": disposition.model_dump() if hasattr(disposition, "model_dump") else dict(disposition),
+            "disposition": disposition,
             "background": profile["background"],
         }
 
