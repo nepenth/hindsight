@@ -1125,7 +1125,7 @@ async def extract_facts_from_text(
     # Log chunk count before starting LLM requests
     total_chars = sum(len(c) for c in chunks)
     if len(chunks) > 1:
-        logger.info(
+        logger.debug(
             f"[FACT_EXTRACTION] Text chunked into {len(chunks)} chunks ({total_chars:,} chars total, "
             f"chunk_size={config.retain_chunk_size:,}) - starting parallel LLM extraction"
         )
