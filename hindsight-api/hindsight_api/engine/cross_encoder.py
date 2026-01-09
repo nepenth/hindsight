@@ -169,7 +169,6 @@ class RemoteTEICrossEncoder(CrossEncoderModel):
         self.max_concurrent = max_concurrent
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._model_id: str | None = None
 
@@ -222,62 +221,29 @@ class RemoteTEICrossEncoder(CrossEncoderModel):
 
         raise last_error
 
-    def _sync_request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
-        """Make a sync HTTP request with automatic retries on transient errors (used for initialization)."""
-        import time
-
-        last_error = None
-        delay = self.retry_delay
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                if method == "GET":
-                    response = self._sync_client.get(url, **kwargs)
-                else:
-                    response = self._sync_client.post(url, **kwargs)
-                response.raise_for_status()
-                return response
-            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
-                last_error = e
-                if attempt < self.max_retries:
-                    logger.warning(
-                        f"TEI request failed (attempt {attempt + 1}/{self.max_retries + 1}): {e}. "
-                        f"Retrying in {delay}s..."
-                    )
-                    time.sleep(delay)
-                    delay *= 2  # Exponential backoff
-            except httpx.HTTPStatusError as e:
-                # Retry on 5xx server errors
-                if e.response.status_code >= 500 and attempt < self.max_retries:
-                    last_error = e
-                    logger.warning(
-                        f"TEI server error (attempt {attempt + 1}/{self.max_retries + 1}): {e}. Retrying in {delay}s..."
-                    )
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    raise
-
-        raise last_error
-
     async def initialize(self) -> None:
-        """Initialize the HTTP clients and verify server connectivity."""
-        if self._sync_client is not None:
+        """Initialize the HTTP client and verify server connectivity."""
+        if self._async_client is not None:
             return
 
         logger.info(
             f"Reranker: initializing TEI provider at {self.base_url} "
             f"(batch_size={self.batch_size}, max_concurrent={self.max_concurrent})"
         )
-        self._sync_client = httpx.Client(timeout=self.timeout)
+        self._async_client = httpx.AsyncClient(timeout=self.timeout)
 
         # Verify server is reachable and get model info
+        # Use a temporary semaphore for initialization
+        init_semaphore = asyncio.Semaphore(1)
         try:
-            response = self._sync_request_with_retry("GET", f"{self.base_url}/info")
+            response = await self._async_request_with_retry(
+                self._async_client, init_semaphore, "GET", f"{self.base_url}/info"
+            )
             info = response.json()
             self._model_id = info.get("model_id", "unknown")
             logger.info(f"Reranker: TEI provider initialized (model: {self._model_id})")
         except httpx.HTTPError as e:
+            self._async_client = None
             raise RuntimeError(f"Failed to connect to TEI server at {self.base_url}: {e}")
 
     async def _rerank_query_group(
@@ -334,15 +300,17 @@ class RemoteTEICrossEncoder(CrossEncoderModel):
         all_scores = [0.0] * len(pairs)
         semaphore = asyncio.Semaphore(self.max_concurrent)
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            tasks = [self._rerank_query_group(client, semaphore, query, texts) for query, _, texts in tasks_info]
-            results = await asyncio.gather(*tasks)
+        tasks = [
+            self._rerank_query_group(self._async_client, semaphore, query, texts)
+            for query, _, texts in tasks_info
+        ]
+        results = await asyncio.gather(*tasks)
 
-            # Map scores back to original positions
-            for (_, indices, _), result_scores in zip(tasks_info, results):
-                for original_idx_in_batch, score in result_scores:
-                    global_idx = indices[original_idx_in_batch]
-                    all_scores[global_idx] = score
+        # Map scores back to original positions
+        for (_, indices, _), result_scores in zip(tasks_info, results):
+            for original_idx_in_batch, score in result_scores:
+                global_idx = indices[original_idx_in_batch]
+                all_scores[global_idx] = score
 
         return all_scores
 
@@ -358,7 +326,7 @@ class RemoteTEICrossEncoder(CrossEncoderModel):
         Returns:
             List of relevance scores
         """
-        if self._sync_client is None:
+        if self._async_client is None:
             raise RuntimeError("Reranker not initialized. Call initialize() first.")
 
         return await self._predict_async(pairs)
