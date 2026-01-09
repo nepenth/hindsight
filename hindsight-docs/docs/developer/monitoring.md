@@ -1,6 +1,39 @@
-# Metrics
+# Monitoring
 
-Hindsight exposes Prometheus metrics at `/metrics` for monitoring.
+Hindsight provides comprehensive monitoring through Prometheus metrics and pre-built Grafana dashboards.
+
+## Local Development
+
+For local metrics visualization, a convenience script downloads and runs Prometheus and Grafana:
+
+```bash
+./scripts/dev/start-monitoring.sh
+```
+
+This will start:
+- **Grafana**: http://localhost:8890 (anonymous access enabled)
+- **Prometheus**: http://localhost:8889
+- **API Metrics**: http://localhost:8888/metrics
+
+:::note Production Deployment
+The local monitoring script is for development only. In production, you need to install and configure Prometheus and Grafana separately, then point Prometheus to scrape your Hindsight API's `/metrics` endpoint.
+:::
+
+## Grafana Dashboards
+
+Pre-built dashboards are available in [`monitoring/grafana/dashboards/`](https://github.com/anthropics/hindsight/tree/main/monitoring/grafana/dashboards). Import these JSON files into your Grafana instance:
+
+| Dashboard | Description |
+|-----------|-------------|
+| **Hindsight Operations** | Operation rates, latency percentiles, per-bank metrics |
+| **Hindsight LLM Metrics** | LLM calls, token usage, latency by scope/provider |
+| **Hindsight API Service** | HTTP requests, error rates, DB pool, process metrics |
+
+The dashboards are automatically provisioned when using the monitoring stack script.
+
+## Metrics Endpoint
+
+Hindsight exposes Prometheus metrics at `/metrics`:
 
 ```bash
 curl http://localhost:8888/metrics
