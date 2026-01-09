@@ -44,6 +44,42 @@ The `source` label allows distinguishing between:
 - `success`: Whether the call succeeded (`true`, `false`)
 - `token_bucket`: Token count bucket for cardinality control (`0-100`, `100-500`, `500-1k`, `1k-5k`, `5k-10k`, `10k-50k`, `50k+`)
 
+### HTTP Request Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `hindsight.http.duration` | Histogram | method, endpoint, status_code, status_class | Duration of HTTP requests in seconds |
+| `hindsight.http.requests.total` | Counter | method, endpoint, status_code, status_class | Total number of HTTP requests |
+| `hindsight.http.requests.in_progress` | UpDownCounter | method, endpoint | Number of HTTP requests currently being processed |
+
+**Labels:**
+- `method`: HTTP method (`GET`, `POST`, `PUT`, `DELETE`)
+- `endpoint`: Request path (normalized to reduce cardinality - UUIDs replaced with `{id}`)
+- `status_code`: HTTP status code (`200`, `400`, `500`, etc.)
+- `status_class`: Status code class (`2xx`, `4xx`, `5xx`)
+
+### Database Pool Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `hindsight.db.pool.size` | Gauge | - | Current number of connections in the pool |
+| `hindsight.db.pool.idle` | Gauge | - | Number of idle connections in the pool |
+| `hindsight.db.pool.min` | Gauge | - | Minimum pool size |
+| `hindsight.db.pool.max` | Gauge | - | Maximum pool size |
+
+### Process Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `hindsight.process.cpu.seconds` | Gauge | type | Process CPU time in seconds |
+| `hindsight.process.memory.bytes` | Gauge | type | Process memory usage in bytes |
+| `hindsight.process.open_fds` | Gauge | - | Number of open file descriptors |
+| `hindsight.process.threads` | Gauge | - | Number of active threads |
+
+**Labels:**
+- `type` (CPU): `user` or `system`
+- `type` (Memory): `rss_max` (maximum resident set size)
+
 ### Histogram Buckets
 
 Custom bucket boundaries are configured for better percentile accuracy:
@@ -56,6 +92,11 @@ Custom bucket boundaries are configured for better percentile accuracy:
 **LLM Duration Buckets (seconds):**
 ```
 0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0
+```
+
+**HTTP Duration Buckets (seconds):**
+```
+0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0
 ```
 
 ## Prometheus Configuration
@@ -92,4 +133,34 @@ sum by (model) (hindsight_llm_tokens_input_total + hindsight_llm_tokens_output_t
 ### Internal vs API recall operations
 ```promql
 sum by (source) (rate(hindsight_operation_total{operation="recall"}[5m]))
+```
+
+### HTTP requests per second by endpoint
+```promql
+sum by (endpoint) (rate(hindsight_http_requests_total[1m]))
+```
+
+### HTTP error rate (5xx)
+```promql
+sum(rate(hindsight_http_requests_total{status_class="5xx"}[5m])) / sum(rate(hindsight_http_requests_total[5m]))
+```
+
+### P95 HTTP latency
+```promql
+histogram_quantile(0.95, sum by (le) (rate(hindsight_http_duration_seconds_bucket[5m])))
+```
+
+### Database pool utilization
+```promql
+hindsight_db_pool_size / hindsight_db_pool_max
+```
+
+### Active database connections
+```promql
+hindsight_db_pool_size - hindsight_db_pool_idle
+```
+
+### CPU usage rate
+```promql
+rate(hindsight_process_cpu_seconds{type="user"}[1m])
 ```
