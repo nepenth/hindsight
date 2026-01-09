@@ -495,6 +495,18 @@ export type EntityListResponse = {
    * Items
    */
   items: Array<EntityListItem>;
+  /**
+   * Total
+   */
+  total: number;
+  /**
+   * Limit
+   */
+  limit: number;
+  /**
+   * Offset
+   */
+  offset: number;
 };
 
 /**
@@ -1320,6 +1332,12 @@ export type ListBanksResponse = ListBanksResponses[keyof ListBanksResponses];
 
 export type GetAgentStatsData = {
   body?: never;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
   path: {
     /**
      * Bank Id
@@ -1370,6 +1388,12 @@ export type ListEntitiesData = {
      * Maximum number of entities to return
      */
     limit?: number;
+    /**
+     * Offset
+     *
+     * Offset for pagination
+     */
+    offset?: number;
   };
   url: "/v1/default/banks/{bank_id}/entities";
 };
