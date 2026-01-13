@@ -187,6 +187,8 @@ def main():
             embeddings_provider=config.embeddings_provider,
             embeddings_local_model=config.embeddings_local_model,
             embeddings_tei_url=config.embeddings_tei_url,
+            embeddings_openai_base_url=config.embeddings_openai_base_url,
+            embeddings_cohere_base_url=config.embeddings_cohere_base_url,
             reranker_provider=config.reranker_provider,
             reranker_local_model=config.reranker_local_model,
             reranker_tei_url=config.reranker_tei_url,
