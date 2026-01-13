@@ -1753,8 +1753,10 @@ class MemoryEngine(MemoryEngineInterface):
                     return [(r.id, r.__dict__) for r in results]
 
                 # Add retrieval results per fact type (to show parallel execution in UI)
-                for idx, rr in enumerate(all_retrievals):
-                    ft_name = fact_type[idx] if idx < len(fact_type) else "unknown"
+                for ft_name in fact_type:
+                    rr = multi_result.results_by_fact_type.get(ft_name)
+                    if not rr:
+                        continue
 
                     # Add semantic retrieval results for this fact type
                     tracer.add_retrieval_results(
