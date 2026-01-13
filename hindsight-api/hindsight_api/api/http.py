@@ -1843,14 +1843,16 @@ def _register_routes(app: FastAPI):
         response_model=ListTagsResponse,
         summary="List tags",
         description="List all unique tags in a memory bank with usage counts. "
-        "Supports prefix search for finding tags matching patterns like 'user:' to expand wildcards.",
+        "Supports wildcard search using '*' (e.g., 'user:*', '*-fred', 'tag*-2'). Case-insensitive.",
         operation_id="list_tags",
         tags=["Memory"],
     )
     async def api_list_tags(
         bank_id: str,
-        prefix: str | None = Query(
-            default=None, description="Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)"
+        q: str | None = Query(
+            default=None,
+            description="Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). "
+            "Use '*' as wildcard. Case-insensitive.",
         ),
         limit: int = Query(default=100, description="Maximum number of tags to return"),
         offset: int = Query(default=0, description="Offset for pagination"),
@@ -1859,19 +1861,22 @@ def _register_routes(app: FastAPI):
         """
         List all unique tags in a memory bank.
 
-        Use this endpoint to discover available tags for filtering, or to expand
-        wildcard patterns (e.g., find all tags starting with 'user:' to expand 'user:*').
+        Use this endpoint to discover available tags or expand wildcard patterns.
+        Supports '*' wildcards for flexible matching (case-insensitive):
+        - 'user:*' matches user:alice, user:bob
+        - '*-admin' matches role-admin, super-admin
+        - 'env*-prod' matches env-prod, environment-prod
 
         Args:
             bank_id: Memory Bank ID (from path)
-            prefix: Filter tags starting with this prefix (e.g., 'user:')
+            q: Wildcard pattern to filter tags (use '*' as wildcard)
             limit: Maximum number of tags to return (default: 100)
             offset: Offset for pagination (default: 0)
         """
         try:
             data = await app.state.memory.list_tags(
                 bank_id=bank_id,
-                prefix=prefix,
+                pattern=q,
                 limit=limit,
                 offset=offset,
                 request_context=request_context,

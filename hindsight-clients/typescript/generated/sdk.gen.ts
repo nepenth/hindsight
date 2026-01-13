@@ -352,7 +352,7 @@ export const getDocument = <ThrowOnError extends boolean = false>(
 /**
  * List tags
  *
- * List all unique tags in a memory bank with usage counts. Supports prefix search for finding tags matching patterns like 'user:' to expand wildcards.
+ * List all unique tags in a memory bank with usage counts. Supports wildcard search using '*' (e.g., 'user:*', '*-fred', 'tag*-2'). Case-insensitive.
  */
 export const listTags = <ThrowOnError extends boolean = false>(
   options: Options<ListTagsData, ThrowOnError>,

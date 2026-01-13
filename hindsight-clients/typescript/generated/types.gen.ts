@@ -1776,11 +1776,11 @@ export type ListTagsData = {
   };
   query?: {
     /**
-     * Prefix
+     * Q
      *
-     * Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)
+     * Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.
      */
-    prefix?: string | null;
+    q?: string | null;
     /**
      * Limit
      *

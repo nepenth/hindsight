@@ -1298,7 +1298,7 @@ class MemoryApi:
     async def list_tags(
         self,
         bank_id: StrictStr,
-        prefix: Annotated[Optional[StrictStr], Field(description="Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)")] = None,
+        q: Annotated[Optional[StrictStr], Field(description="Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.")] = None,
         limit: Annotated[Optional[StrictInt], Field(description="Maximum number of tags to return")] = None,
         offset: Annotated[Optional[StrictInt], Field(description="Offset for pagination")] = None,
         authorization: Optional[StrictStr] = None,
@@ -1317,12 +1317,12 @@ class MemoryApi:
     ) -> ListTagsResponse:
         """List tags
 
-        List all unique tags in a memory bank with usage counts. Supports prefix search for finding tags matching patterns like 'user:' to expand wildcards.
+        List all unique tags in a memory bank with usage counts. Supports wildcard search using '*' (e.g., 'user:*', '*-fred', 'tag*-2'). Case-insensitive.
 
         :param bank_id: (required)
         :type bank_id: str
-        :param prefix: Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)
-        :type prefix: str
+        :param q: Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.
+        :type q: str
         :param limit: Maximum number of tags to return
         :type limit: int
         :param offset: Offset for pagination
@@ -1353,7 +1353,7 @@ class MemoryApi:
 
         _param = self._list_tags_serialize(
             bank_id=bank_id,
-            prefix=prefix,
+            q=q,
             limit=limit,
             offset=offset,
             authorization=authorization,
@@ -1382,7 +1382,7 @@ class MemoryApi:
     async def list_tags_with_http_info(
         self,
         bank_id: StrictStr,
-        prefix: Annotated[Optional[StrictStr], Field(description="Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)")] = None,
+        q: Annotated[Optional[StrictStr], Field(description="Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.")] = None,
         limit: Annotated[Optional[StrictInt], Field(description="Maximum number of tags to return")] = None,
         offset: Annotated[Optional[StrictInt], Field(description="Offset for pagination")] = None,
         authorization: Optional[StrictStr] = None,
@@ -1401,12 +1401,12 @@ class MemoryApi:
     ) -> ApiResponse[ListTagsResponse]:
         """List tags
 
-        List all unique tags in a memory bank with usage counts. Supports prefix search for finding tags matching patterns like 'user:' to expand wildcards.
+        List all unique tags in a memory bank with usage counts. Supports wildcard search using '*' (e.g., 'user:*', '*-fred', 'tag*-2'). Case-insensitive.
 
         :param bank_id: (required)
         :type bank_id: str
-        :param prefix: Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)
-        :type prefix: str
+        :param q: Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.
+        :type q: str
         :param limit: Maximum number of tags to return
         :type limit: int
         :param offset: Offset for pagination
@@ -1437,7 +1437,7 @@ class MemoryApi:
 
         _param = self._list_tags_serialize(
             bank_id=bank_id,
-            prefix=prefix,
+            q=q,
             limit=limit,
             offset=offset,
             authorization=authorization,
@@ -1466,7 +1466,7 @@ class MemoryApi:
     async def list_tags_without_preload_content(
         self,
         bank_id: StrictStr,
-        prefix: Annotated[Optional[StrictStr], Field(description="Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)")] = None,
+        q: Annotated[Optional[StrictStr], Field(description="Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.")] = None,
         limit: Annotated[Optional[StrictInt], Field(description="Maximum number of tags to return")] = None,
         offset: Annotated[Optional[StrictInt], Field(description="Offset for pagination")] = None,
         authorization: Optional[StrictStr] = None,
@@ -1485,12 +1485,12 @@ class MemoryApi:
     ) -> RESTResponseType:
         """List tags
 
-        List all unique tags in a memory bank with usage counts. Supports prefix search for finding tags matching patterns like 'user:' to expand wildcards.
+        List all unique tags in a memory bank with usage counts. Supports wildcard search using '*' (e.g., 'user:*', '*-fred', 'tag*-2'). Case-insensitive.
 
         :param bank_id: (required)
         :type bank_id: str
-        :param prefix: Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)
-        :type prefix: str
+        :param q: Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.
+        :type q: str
         :param limit: Maximum number of tags to return
         :type limit: int
         :param offset: Offset for pagination
@@ -1521,7 +1521,7 @@ class MemoryApi:
 
         _param = self._list_tags_serialize(
             bank_id=bank_id,
-            prefix=prefix,
+            q=q,
             limit=limit,
             offset=offset,
             authorization=authorization,
@@ -1545,7 +1545,7 @@ class MemoryApi:
     def _list_tags_serialize(
         self,
         bank_id,
-        prefix,
+        q,
         limit,
         offset,
         authorization,
@@ -1573,9 +1573,9 @@ class MemoryApi:
         if bank_id is not None:
             _path_params['bank_id'] = bank_id
         # process the query parameters
-        if prefix is not None:
+        if q is not None:
             
-            _query_params.append(('prefix', prefix))
+            _query_params.append(('q', q))
             
         if limit is not None:
             

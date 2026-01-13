@@ -1016,7 +1016,7 @@
           "Memory"
         ],
         "summary": "List tags",
-        "description": "List all unique tags in a memory bank with usage counts. Supports prefix search for finding tags matching patterns like 'user:' to expand wildcards.",
+        "description": "List all unique tags in a memory bank with usage counts. Supports wildcard search using '*' (e.g., 'user:*', '*-fred', 'tag*-2'). Case-insensitive.",
         "operationId": "list_tags",
         "parameters": [
           {
@@ -1029,7 +1029,7 @@
             }
           },
           {
-            "name": "prefix",
+            "name": "q",
             "in": "query",
             "required": false,
             "schema": {
@@ -1041,10 +1041,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)",
-              "title": "Prefix"
+              "description": "Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive.",
+              "title": "Q"
             },
-            "description": "Filter tags by prefix (e.g., 'user:' to find user:alice, user:bob)"
+            "description": "Wildcard pattern to filter tags (e.g., 'user:*' for user:alice, '*-admin' for role-admin). Use '*' as wildcard. Case-insensitive."
           },
           {
             "name": "limit",

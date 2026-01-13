@@ -3826,7 +3826,7 @@ Guidelines:
         self,
         bank_id: str,
         *,
-        prefix: str | None = None,
+        pattern: str | None = None,
         limit: int = 100,
         offset: int = 0,
         request_context: "RequestContext",
@@ -3835,12 +3835,14 @@ Guidelines:
         List all unique tags for a bank with usage counts.
 
         Use this to discover available tags or expand wildcard patterns.
-        For example, to expand 'user:*', call with prefix='user:' and use
-        the returned tags in your recall filter.
+        Supports '*' as wildcard for flexible matching (case-insensitive):
+        - 'user:*' matches user:alice, user:bob
+        - '*-admin' matches role-admin, super-admin
+        - 'env*-prod' matches env-prod, environment-prod
 
         Args:
             bank_id: Bank identifier
-            prefix: Filter tags starting with this prefix (e.g., 'user:')
+            pattern: Wildcard pattern to filter tags (use '*' as wildcard, case-insensitive)
             limit: Maximum number of tags to return
             offset: Offset for pagination
             request_context: Request context for authentication.
@@ -3851,20 +3853,22 @@ Guidelines:
         await self._authenticate_tenant(request_context)
         pool = await self._get_pool()
         async with acquire_with_retry(pool) as conn:
-            # Build prefix filter if provided
-            prefix_clause = ""
+            # Build pattern filter if provided (convert * to % for ILIKE)
+            pattern_clause = ""
             params: list[Any] = [bank_id]
-            if prefix:
-                prefix_clause = "AND tag LIKE $2"
-                params.append(f"{prefix}%")
+            if pattern:
+                # Convert wildcard pattern: * -> % for SQL ILIKE
+                sql_pattern = pattern.replace("*", "%")
+                pattern_clause = "AND tag ILIKE $2"
+                params.append(sql_pattern)
 
-            # Get total count of distinct tags matching prefix
+            # Get total count of distinct tags matching pattern
             total_row = await conn.fetchrow(
                 f"""
                 SELECT COUNT(DISTINCT tag) as total
                 FROM {fq_table("memory_units")}, unnest(tags) AS tag
                 WHERE bank_id = $1 AND tags IS NOT NULL AND tags != '{{}}'
-                {prefix_clause}
+                {pattern_clause}
                 """,
                 *params,
             )
@@ -3880,7 +3884,7 @@ Guidelines:
                 SELECT tag, COUNT(*) as count
                 FROM {fq_table("memory_units")}, unnest(tags) AS tag
                 WHERE bank_id = $1 AND tags IS NOT NULL AND tags != '{{}}'
-                {prefix_clause}
+                {pattern_clause}
                 GROUP BY tag
                 ORDER BY count DESC, tag ASC
                 LIMIT ${limit_param} OFFSET ${offset_param}

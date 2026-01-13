@@ -674,27 +674,27 @@ async def test_list_tags_returns_all_tags(api_client):
 
 
 @pytest.mark.asyncio
-async def test_list_tags_with_prefix_filter(api_client):
-    """Test that list_tags filters by prefix for wildcard expansion."""
-    bank_id = f"list_tags_prefix_test_{datetime.now().timestamp()}"
+async def test_list_tags_with_wildcard_prefix(api_client):
+    """Test that list_tags filters with prefix wildcard pattern (user:*)."""
+    bank_id = f"list_tags_wildcard_test_{datetime.now().timestamp()}"
 
     # Store memories with various tags
     response = await api_client.post(
         f"/v1/default/banks/{bank_id}/memories",
         json={
             "items": [
-                {"content": "Memory for alice.", "tags": ["user:alice"]},
-                {"content": "Memory for bob.", "tags": ["user:bob"]},
-                {"content": "Memory for charlie.", "tags": ["user:charlie"]},
-                {"content": "Session memory.", "tags": ["session:abc"]},
-                {"content": "Room memory.", "tags": ["room:123"]},
+                {"content": "Memory for alice who works at tech.", "tags": ["user:alice"]},
+                {"content": "Memory for bob who is an engineer.", "tags": ["user:bob"]},
+                {"content": "Memory for charlie the designer.", "tags": ["user:charlie"]},
+                {"content": "Session memory about the meeting.", "tags": ["session:abc"]},
+                {"content": "Room memory for conference room.", "tags": ["room:123"]},
             ]
         }
     )
     assert response.status_code == 200
 
-    # List tags with 'user:' prefix (to expand 'user:*' wildcard)
-    response = await api_client.get(f"/v1/default/banks/{bank_id}/tags", params={"prefix": "user:"})
+    # List tags with 'user:*' wildcard pattern
+    response = await api_client.get(f"/v1/default/banks/{bank_id}/tags", params={"q": "user:*"})
     assert response.status_code == 200
     result = response.json()
 
@@ -705,6 +705,101 @@ async def test_list_tags_with_prefix_filter(api_client):
     assert "user:charlie" in tags
     assert "session:abc" not in tags
     assert "room:123" not in tags
+    assert result["total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_list_tags_with_wildcard_suffix(api_client):
+    """Test that list_tags filters with suffix wildcard pattern (*-admin)."""
+    bank_id = f"list_tags_suffix_test_{datetime.now().timestamp()}"
+
+    # Store memories with various tags
+    response = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories",
+        json={
+            "items": [
+                {"content": "Admin role memory for super admin.", "tags": ["role-admin"]},
+                {"content": "Super admin memory about permissions.", "tags": ["super-admin"]},
+                {"content": "User memory for standard users.", "tags": ["role-user"]},
+                {"content": "Guest memory for visitors.", "tags": ["role-guest"]},
+            ]
+        }
+    )
+    assert response.status_code == 200
+
+    # List tags with '*-admin' wildcard pattern (suffix match)
+    response = await api_client.get(f"/v1/default/banks/{bank_id}/tags", params={"q": "*-admin"})
+    assert response.status_code == 200
+    result = response.json()
+
+    # Should only return *-admin tags
+    tags = [item["tag"] for item in result["items"]]
+    assert "role-admin" in tags
+    assert "super-admin" in tags
+    assert "role-user" not in tags
+    assert "role-guest" not in tags
+    assert result["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_list_tags_with_wildcard_middle(api_client):
+    """Test that list_tags filters with middle wildcard pattern (env*-prod)."""
+    bank_id = f"list_tags_middle_test_{datetime.now().timestamp()}"
+
+    # Store memories with various tags - use meaningful content for fact extraction
+    response = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories",
+        json={
+            "items": [
+                {"content": "The production environment is configured with high availability and uses AWS infrastructure.", "tags": ["env-prod"]},
+                {"content": "The enterprise environment for production runs on dedicated servers with 24/7 monitoring.", "tags": ["environment-prod"]},
+                {"content": "The staging environment mirrors production but uses smaller instance sizes.", "tags": ["env-staging"]},
+                {"content": "The development environment allows developers to test their code locally.", "tags": ["env-dev"]},
+            ]
+        }
+    )
+    assert response.status_code == 200
+
+    # List tags with 'env*-prod' wildcard pattern (middle match)
+    response = await api_client.get(f"/v1/default/banks/{bank_id}/tags", params={"q": "env*-prod"})
+    assert response.status_code == 200
+    result = response.json()
+
+    # Should only return env*-prod tags
+    tags = [item["tag"] for item in result["items"]]
+    assert "env-prod" in tags
+    assert "environment-prod" in tags
+    assert "env-staging" not in tags
+    assert "env-dev" not in tags
+    assert result["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_list_tags_case_insensitive(api_client):
+    """Test that list_tags wildcard matching is case-insensitive."""
+    bank_id = f"list_tags_case_test_{datetime.now().timestamp()}"
+
+    # Store memories with mixed case tags - use meaningful content
+    response = await api_client.post(
+        f"/v1/default/banks/{bank_id}/memories",
+        json={
+            "items": [
+                {"content": "Alice is a software engineer who specializes in machine learning algorithms.", "tags": ["User:Alice"]},
+                {"content": "Bob works as a data scientist at a large technology company.", "tags": ["user:bob"]},
+                {"content": "Charlie is the lead designer responsible for the user interface.", "tags": ["USER:CHARLIE"]},
+            ]
+        }
+    )
+    assert response.status_code == 200
+
+    # List tags with lowercase pattern - should match all cases
+    response = await api_client.get(f"/v1/default/banks/{bank_id}/tags", params={"q": "user:*"})
+    assert response.status_code == 200
+    result = response.json()
+
+    # Should match all user tags regardless of case
+    tags = [item["tag"] for item in result["items"]]
+    assert len(tags) == 3
     assert result["total"] == 3
 
 
