@@ -171,6 +171,10 @@ jobs:
           hindsight-cli/target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+    - name: Run unit tests
+      working-directory: hindsight-cli
+      run: cargo test
+
     - name: Build CLI
       working-directory: hindsight-cli
       run: cargo build --release
