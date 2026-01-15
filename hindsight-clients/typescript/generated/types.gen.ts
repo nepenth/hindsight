@@ -897,18 +897,6 @@ export type MentalModelResponse = {
 };
 
 /**
- * MissionResponse
- *
- * Response model for mission update.
- */
-export type MissionResponse = {
-  /**
-   * Mission
-   */
-  mission: string;
-};
-
-/**
  * OperationResponse
  *
  * Response model for a single async operation.
@@ -1009,7 +997,7 @@ export type RecallRequest = {
   /**
    * Types
    *
-   * List of fact types to recall (defaults to all if not specified)
+   * List of fact types to recall: 'world', 'experience'. Defaults to both if not specified. Note: 'opinion' is accepted but ignored (opinions are excluded from recall).
    */
   types?: Array<string> | null;
   budget?: Budget;
@@ -1135,6 +1123,26 @@ export type RecallResult = {
    * Tags
    */
   tags?: Array<string> | null;
+};
+
+/**
+ * ReflectBasedOn
+ *
+ * Evidence the response is based on: memories and mental models.
+ */
+export type ReflectBasedOn = {
+  /**
+   * Memories
+   *
+   * Memory facts used to generate the response
+   */
+  memories?: Array<ReflectFact>;
+  /**
+   * Mental Models
+   *
+   * Mental models accessed during reflection
+   */
+  mental_models?: Array<ReflectMentalModel>;
 };
 
 /**
@@ -1311,9 +1319,9 @@ export type ReflectResponse = {
    */
   text: string;
   /**
-   * Based On
+   * Evidence used to generate the response. Only present when include.facts is set.
    */
-  based_on?: Array<ReflectFact>;
+  based_on?: ReflectBasedOn | null;
   /**
    * Structured Output
    *
@@ -1327,23 +1335,9 @@ export type ReflectResponse = {
    */
   usage?: TokenUsage | null;
   /**
-   * Tool Calls
-   *
-   * Trace of tool calls made during reflection. Only present when include.tool_calls is set.
+   * Execution trace of tool and LLM calls. Only present when include.tool_calls is set.
    */
-  tool_calls?: Array<ReflectToolCall> | null;
-  /**
-   * Llm Calls
-   *
-   * Trace of LLM calls made during reflection. Only present when include.tool_calls is set.
-   */
-  llm_calls?: Array<ReflectLlmCall> | null;
-  /**
-   * Mental Models
-   *
-   * Mental models accessed during reflection. Only present when include.facts is set.
-   */
-  mental_models?: Array<ReflectMentalModel> | null;
+  trace?: ReflectTrace | null;
 };
 
 /**
@@ -1380,6 +1374,26 @@ export type ReflectToolCall = {
    * Execution time in milliseconds
    */
   duration_ms: number;
+};
+
+/**
+ * ReflectTrace
+ *
+ * Execution trace of LLM and tool calls during reflection.
+ */
+export type ReflectTrace = {
+  /**
+   * Tool Calls
+   *
+   * Tool calls made during reflection
+   */
+  tool_calls?: Array<ReflectToolCall>;
+  /**
+   * Llm Calls
+   *
+   * LLM calls made during reflection
+   */
+  llm_calls?: Array<ReflectLlmCall>;
 };
 
 /**
@@ -1510,20 +1524,6 @@ export type RetainResponse = {
    * Token usage metrics for LLM calls during fact extraction (only present for synchronous operations)
    */
   usage?: TokenUsage | null;
-};
-
-/**
- * SetMissionRequest
- *
- * Request model for setting/updating the agent's mission.
- */
-export type SetMissionRequest = {
-  /**
-   * Content
-   *
-   * The mission content - who you are and what you're trying to accomplish
-   */
-  content: string;
 };
 
 /**
@@ -2775,44 +2775,6 @@ export type UpdateBankDispositionResponses = {
 export type UpdateBankDispositionResponse =
   UpdateBankDispositionResponses[keyof UpdateBankDispositionResponses];
 
-export type SetBankMissionData = {
-  body: SetMissionRequest;
-  headers?: {
-    /**
-     * Authorization
-     */
-    authorization?: string | null;
-  };
-  path: {
-    /**
-     * Bank Id
-     */
-    bank_id: string;
-  };
-  query?: never;
-  url: "/v1/default/banks/{bank_id}/mission";
-};
-
-export type SetBankMissionErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError;
-};
-
-export type SetBankMissionError =
-  SetBankMissionErrors[keyof SetBankMissionErrors];
-
-export type SetBankMissionResponses = {
-  /**
-   * Successful Response
-   */
-  200: MissionResponse;
-};
-
-export type SetBankMissionResponse =
-  SetBankMissionResponses[keyof SetBankMissionResponses];
-
 export type AddBankBackgroundData = {
   body: AddBackgroundRequest;
   headers?: {
@@ -2886,6 +2848,42 @@ export type DeleteBankResponses = {
 };
 
 export type DeleteBankResponse = DeleteBankResponses[keyof DeleteBankResponses];
+
+export type UpdateBankData = {
+  body: CreateBankRequest;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}";
+};
+
+export type UpdateBankErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type UpdateBankError = UpdateBankErrors[keyof UpdateBankErrors];
+
+export type UpdateBankResponses = {
+  /**
+   * Successful Response
+   */
+  200: BankProfileResponse;
+};
+
+export type UpdateBankResponse = UpdateBankResponses[keyof UpdateBankResponses];
 
 export type CreateOrUpdateBankData = {
   body: CreateBankRequest;

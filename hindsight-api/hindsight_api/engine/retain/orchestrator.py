@@ -38,7 +38,6 @@ async def retain_batch(
     embeddings_model,
     llm_config,
     entity_resolver,
-    task_backend,
     format_date_fn,
     duplicate_checker_fn,
     bank_id: str,
@@ -57,7 +56,6 @@ async def retain_batch(
         embeddings_model: Embeddings model for generating embeddings
         llm_config: LLM configuration for fact extraction
         entity_resolver: Entity resolver for entity processing
-        task_backend: Task backend for background jobs
         format_date_fn: Function to format datetime to readable string
         duplicate_checker_fn: Function to check for duplicate facts
         bank_id: Bank identifier
@@ -409,9 +407,6 @@ async def retain_batch(
             # Map results back to original content items
             result_unit_ids = _map_results_to_contents(contents, extracted_facts, is_duplicate_flags, unit_ids)
 
-        # Trigger background tasks AFTER transaction commits
-        await _trigger_background_tasks(task_backend, bank_id, unit_ids, non_duplicate_facts)
-
         # Log final summary
         total_time = time.time() - start_time
         log_buffer.append(f"{'=' * 60}")
@@ -453,32 +448,3 @@ def _map_results_to_contents(
         result_unit_ids.append(content_unit_ids)
 
     return result_unit_ids
-
-
-async def _trigger_background_tasks(
-    task_backend,
-    bank_id: str,
-    unit_ids: list[str],
-    facts: list[ProcessedFact],
-) -> None:
-    """
-    Trigger background tasks after transaction commits.
-
-    Args:
-        task_backend: Task backend for submitting background jobs
-        bank_id: Bank identifier
-        unit_ids: List of created memory unit IDs
-        facts: List of processed facts
-    """
-    # Opinion reinforcement triggers if any facts have entities
-    fact_entities = [[e.name for e in fact.entities] for fact in facts]
-    if any(fact_entities):
-        await task_backend.submit_task(
-            {
-                "type": "reinforce_opinion",
-                "bank_id": bank_id,
-                "created_unit_ids": unit_ids,
-                "unit_texts": [fact.fact_text for fact in facts],
-                "unit_entities": fact_entities,
-            }
-        )

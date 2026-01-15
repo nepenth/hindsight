@@ -17,17 +17,20 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
-from typing import Any, ClassVar, Dict, List
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, ClassVar, Dict, List, Optional
+from hindsight_client_api.models.reflect_fact import ReflectFact
+from hindsight_client_api.models.reflect_mental_model import ReflectMentalModel
 from typing import Optional, Set
 from typing_extensions import Self
 
-class SetMissionRequest(BaseModel):
+class ReflectBasedOn(BaseModel):
     """
-    Request model for setting/updating the agent's mission.
+    Evidence the response is based on: memories and mental models.
     """ # noqa: E501
-    content: StrictStr = Field(description="The mission content - who you are and what you're trying to accomplish")
-    __properties: ClassVar[List[str]] = ["content"]
+    memories: Optional[List[ReflectFact]] = Field(default=None, description="Memory facts used to generate the response")
+    mental_models: Optional[List[ReflectMentalModel]] = Field(default=None, description="Mental models accessed during reflection")
+    __properties: ClassVar[List[str]] = ["memories", "mental_models"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -47,7 +50,7 @@ class SetMissionRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of SetMissionRequest from a JSON string"""
+        """Create an instance of ReflectBasedOn from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -68,11 +71,25 @@ class SetMissionRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of each item in memories (list)
+        _items = []
+        if self.memories:
+            for _item_memories in self.memories:
+                if _item_memories:
+                    _items.append(_item_memories.to_dict())
+            _dict['memories'] = _items
+        # override the default output from pydantic by calling `to_dict()` of each item in mental_models (list)
+        _items = []
+        if self.mental_models:
+            for _item_mental_models in self.mental_models:
+                if _item_mental_models:
+                    _items.append(_item_mental_models.to_dict())
+            _dict['mental_models'] = _items
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of SetMissionRequest from a dict"""
+        """Create an instance of ReflectBasedOn from a dict"""
         if obj is None:
             return None
 
@@ -80,7 +97,8 @@ class SetMissionRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "content": obj.get("content")
+            "memories": [ReflectFact.from_dict(_item) for _item in obj["memories"]] if obj.get("memories") is not None else None,
+            "mental_models": [ReflectMentalModel.from_dict(_item) for _item in obj["mental_models"]] if obj.get("mental_models") is not None else None
         })
         return _obj
 

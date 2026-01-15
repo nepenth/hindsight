@@ -75,8 +75,6 @@ interface BankStats {
 interface Operation {
   id: string;
   task_type: string;
-  items_count: number;
-  document_id?: string;
   created_at: string;
   status: string;
   error_message?: string;
@@ -175,6 +173,7 @@ export function BankProfileView() {
   const [profile, setProfile] = useState<BankProfile | null>(null);
   const [stats, setStats] = useState<BankStats | null>(null);
   const [operations, setOperations] = useState<Operation[]>([]);
+  const [totalOperations, setTotalOperations] = useState(0);
   const [mentalModelsCount, setMentalModelsCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -213,6 +212,7 @@ export function BankProfileView() {
         ]);
         setStats(statsData as BankStats);
         setOperations((opsData as any)?.operations || []);
+        setTotalOperations((opsData as any)?.total || 0);
         setMentalModelsCount(modelsData.items?.length || 0);
       } catch (error) {
         console.error("Error refreshing stats:", error);
@@ -231,6 +231,7 @@ export function BankProfileView() {
       setProfile(profileData);
       setStats(statsData as BankStats);
       setOperations((opsData as any)?.operations || []);
+      setTotalOperations((opsData as any)?.total || 0);
       setMentalModelsCount(modelsData.items?.length || 0);
 
       // Only initialize edit state when not in edit mode
@@ -354,7 +355,7 @@ export function BankProfileView() {
             </>
           ) : (
             <>
-              <Button onClick={loadData} variant="secondary" size="sm">
+              <Button onClick={() => loadData()} variant="secondary" size="sm">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh
               </Button>
@@ -529,7 +530,10 @@ export function BankProfileView() {
                 <Activity className="w-5 h-5 text-primary" />
                 Background Operations
               </CardTitle>
-              <CardDescription>Async tasks processing memories</CardDescription>
+              <CardDescription>
+                {totalOperations} total operation{totalOperations !== 1 ? "s" : ""}
+                {operations.length < totalOperations ? ` (showing last ${operations.length})` : ""}
+              </CardDescription>
             </div>
             {stats && (stats.pending_operations > 0 || stats.failed_operations > 0) && (
               <div className="flex gap-3">
@@ -561,23 +565,17 @@ export function BankProfileView() {
                   <TableRow>
                     <TableHead className="w-[100px]">ID</TableHead>
                     <TableHead>Type</TableHead>
-                    <TableHead className="text-center">Items</TableHead>
-                    <TableHead>Document</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {operations.slice(0, 10).map((op) => (
+                  {operations.map((op) => (
                     <TableRow key={op.id} className={op.status === "failed" ? "bg-red-500/5" : ""}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {op.id.substring(0, 8)}
                       </TableCell>
                       <TableCell className="font-medium">{op.task_type}</TableCell>
-                      <TableCell className="text-center">{op.items_count}</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {op.document_id ? op.document_id.substring(0, 12) + "..." : "—"}
-                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {new Date(op.created_at).toLocaleString()}
                       </TableCell>

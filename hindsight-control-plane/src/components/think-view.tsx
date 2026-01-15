@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, Info, Tag, Clock, Database } from "lucide-react";
+import { Sparkles, Info, Tag, Clock, Database, Brain } from "lucide-react";
 import JsonView from "react18-json-view";
 import "react18-json-view/src/style.css";
 
@@ -205,21 +205,28 @@ export function ThinkView() {
                 </div>
               </>
             )}
-            {result.tool_calls && (
+            {result.trace?.tool_calls && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Tool calls:</span>
-                <span className="font-semibold">{result.tool_calls.length}</span>
+                <span className="font-semibold">{result.trace.tool_calls.length}</span>
                 <span className="text-muted-foreground">
-                  ({result.tool_calls.reduce((sum: number, tc: any) => sum + tc.duration_ms, 0)}ms)
+                  (
+                  {result.trace.tool_calls.reduce(
+                    (sum: number, tc: any) => sum + tc.duration_ms,
+                    0
+                  )}
+                  ms)
                 </span>
               </div>
             )}
-            {result.llm_calls && (
+            {result.trace?.llm_calls && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">LLM calls:</span>
-                <span className="font-semibold">{result.llm_calls.length}</span>
+                <span className="font-semibold">{result.trace.llm_calls.length}</span>
                 <span className="text-muted-foreground">
-                  ({result.llm_calls.reduce((sum: number, lc: any) => sum + lc.duration_ms, 0)}ms)
+                  (
+                  {result.trace.llm_calls.reduce((sum: number, lc: any) => sum + lc.duration_ms, 0)}
+                  ms)
                 </span>
               </div>
             )}
@@ -287,29 +294,34 @@ export function ThinkView() {
           {/* Trace View - Split Layout */}
           {viewMode === "trace" && (
             <div className="space-y-4">
-              {/* LLM Calls Summary */}
-              {result.llm_calls && result.llm_calls.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">LLM Calls</CardTitle>
+              {/* Mental Models Created */}
+              {result.mental_models_created && result.mental_models_created.length > 0 && (
+                <Card className="border-emerald-200 dark:border-emerald-800">
+                  <CardHeader className="bg-emerald-50 dark:bg-emerald-950 py-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Brain className="w-4 h-4 text-emerald-600" />
+                      Mental Models Created ({result.mental_models_created.length})
+                    </CardTitle>
                     <CardDescription className="text-xs">
-                      {result.llm_calls.length} LLM call{result.llm_calls.length !== 1 ? "s" : ""} •{" "}
-                      {result.llm_calls.reduce((sum: number, lc: any) => sum + lc.duration_ms, 0)}ms
-                      total
+                      New mental models learned during this reflection
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {result.llm_calls.map((lc: any, i: number) => (
+                  <CardContent className="pt-4">
+                    <div className="space-y-2">
+                      {result.mental_models_created.map((model: any, i: number) => (
                         <div
                           key={i}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg border border-border"
+                          className="p-3 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg border border-emerald-200 dark:border-emerald-800"
                         >
-                          <span className="text-sm font-medium">{lc.scope}</span>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {lc.duration_ms}ms
-                          </span>
+                          <div className="font-medium text-sm text-emerald-900 dark:text-emerald-100">
+                            {model.name}
+                          </div>
+                          <div className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
+                            {model.description}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-2 font-mono">
+                            ID: {model.id}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -317,15 +329,23 @@ export function ThinkView() {
                 </Card>
               )}
 
-              {/* Tool Calls and Based On - Side by Side */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Left: Tool Calls */}
+                {/* Left: Execution Trace (LLM + Tool Calls) */}
                 <Card className="h-fit">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Tool Calls</CardTitle>
+                    <CardTitle className="text-base">Execution Trace</CardTitle>
                     <CardDescription className="text-xs">
-                      {result.tool_calls?.length || 0} tool call
-                      {result.tool_calls?.length !== 1 ? "s" : ""} executed
+                      {result.iterations || 0} iteration
+                      {(result.iterations || 0) !== 1 ? "s" : ""} •{" "}
+                      {(result.trace?.llm_calls?.reduce(
+                        (sum: number, lc: any) => sum + lc.duration_ms,
+                        0
+                      ) || 0) +
+                        (result.trace?.tool_calls?.reduce(
+                          (sum: number, tc: any) => sum + tc.duration_ms,
+                          0
+                        ) || 0)}
+                      ms total
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -339,54 +359,151 @@ export function ThinkView() {
                           </p>
                         </div>
                       </div>
-                    ) : result.tool_calls && result.tool_calls.length > 0 ? (
-                      <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                        {result.tool_calls.map((tc: any, i: number) => (
-                          <div key={i} className="border border-border rounded-lg overflow-hidden">
-                            <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-mono text-muted-foreground">
-                                  #{i + 1}
-                                </span>
-                                <span className="font-medium text-sm text-foreground">
-                                  {tc.tool}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="w-3 h-3" />
-                                {tc.duration_ms}ms
-                              </div>
-                            </div>
-                            <div className="p-2 space-y-2">
-                              <div>
-                                <p className="text-[10px] font-semibold text-muted-foreground mb-1">
-                                  Input:
-                                </p>
-                                <div className="bg-muted p-1.5 rounded text-xs overflow-auto max-h-32">
-                                  <JsonView src={tc.input} collapsed={1} theme="default" />
+                    ) : (result.trace?.llm_calls && result.trace.llm_calls.length > 0) ||
+                      (result.trace?.tool_calls && result.trace.tool_calls.length > 0) ? (
+                      <div className="max-h-[500px] overflow-y-auto">
+                        {/* Build timeline: LLM -> Tools -> LLM -> Tools */}
+                        {(() => {
+                          const llmCalls = result.trace?.llm_calls || [];
+                          const toolCalls = result.trace?.tool_calls || [];
+
+                          // Build interleaved timeline
+                          const timeline: Array<{
+                            type: "llm" | "tools";
+                            llm?: any;
+                            tools?: any[];
+                            iteration: number;
+                            isFinal?: boolean;
+                          }> = [];
+
+                          llmCalls.forEach((lc: any, idx: number) => {
+                            const isFinal = lc.scope.includes("final");
+                            const iterNum = isFinal ? llmCalls.length : idx + 1;
+
+                            // Add LLM call
+                            timeline.push({
+                              type: "llm",
+                              llm: lc,
+                              iteration: iterNum,
+                              isFinal,
+                            });
+
+                            // Add tools for this iteration (using iteration field from tool trace)
+                            const iterTools = toolCalls.filter(
+                              (tc: any) => tc.iteration === idx + 1
+                            );
+                            if (iterTools.length > 0) {
+                              timeline.push({
+                                type: "tools",
+                                tools: iterTools,
+                                iteration: idx + 1,
+                              });
+                            }
+                          });
+
+                          return timeline.map((item, idx) => (
+                            <div key={idx} className="relative">
+                              {/* Timeline connector */}
+                              {idx < timeline.length - 1 && (
+                                <div className="absolute left-3 top-6 bottom-0 w-0.5 bg-border" />
+                              )}
+
+                              {item.type === "llm" ? (
+                                // LLM Call
+                                <div className="flex items-start gap-3 pb-3">
+                                  <div
+                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                                      item.isFinal
+                                        ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
+                                        : "bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300"
+                                    }`}
+                                  >
+                                    {item.isFinal ? "✓" : item.iteration}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium text-sm">
+                                        {item.isFinal ? "Response generated" : "Agent decided"}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        {item.llm.duration_ms}ms
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">
+                                      {item.isFinal ? "Final answer" : "Called tools below"}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                              {tc.output && (
-                                <div>
-                                  <p className="text-[10px] font-semibold text-muted-foreground mb-1">
-                                    Output:
-                                  </p>
-                                  <div className="bg-muted p-1.5 rounded text-xs overflow-auto max-h-32">
-                                    <JsonView src={tc.output} collapsed={1} theme="default" />
+                              ) : (
+                                // Tool Calls
+                                <div className="flex items-start gap-3 pb-3">
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex-shrink-0">
+                                    ⚡
+                                  </div>
+                                  <div className="flex-1 min-w-0 space-y-2">
+                                    <div className="text-xs text-muted-foreground">
+                                      Executing {item.tools?.length} tool
+                                      {item.tools?.length !== 1 ? "s" : ""}
+                                    </div>
+                                    {item.tools?.map((tc: any, tcIdx: number) => (
+                                      <div
+                                        key={tcIdx}
+                                        className="border border-border rounded-lg overflow-hidden"
+                                      >
+                                        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50">
+                                          <span className="font-medium text-sm text-foreground">
+                                            {tc.tool}
+                                          </span>
+                                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Clock className="w-3 h-3" />
+                                            {tc.duration_ms}ms
+                                          </span>
+                                        </div>
+                                        <div className="p-2 space-y-2">
+                                          <div>
+                                            <p className="text-[10px] font-semibold text-muted-foreground mb-1">
+                                              Input:
+                                            </p>
+                                            <div className="bg-muted p-1.5 rounded text-xs overflow-auto max-h-32">
+                                              <JsonView
+                                                src={tc.input}
+                                                collapsed={1}
+                                                theme="default"
+                                              />
+                                            </div>
+                                          </div>
+                                          {tc.output && (
+                                            <div>
+                                              <p className="text-[10px] font-semibold text-muted-foreground mb-1">
+                                                Output:
+                                              </p>
+                                              <div className="bg-muted p-1.5 rounded text-xs overflow-auto max-h-32">
+                                                <JsonView
+                                                  src={tc.output}
+                                                  collapsed={1}
+                                                  theme="default"
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               )}
                             </div>
-                          </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
                     ) : (
                       <div className="flex items-start gap-3 p-3 bg-muted border border-border rounded-lg">
                         <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="font-medium text-sm text-foreground">No tool calls</p>
+                          <p className="font-medium text-sm text-foreground">No operations</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            No tools were called during this reflection.
+                            No LLM or tool calls were made during this reflection.
                           </p>
                         </div>
                       </div>
@@ -399,7 +516,9 @@ export function ThinkView() {
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Based On</CardTitle>
                     <CardDescription className="text-xs">
-                      {result.based_on?.length || 0} memories used
+                      {(result.based_on?.memories?.length || 0) +
+                        (result.based_on?.mental_models?.length || 0)}{" "}
+                      items used
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -413,36 +532,35 @@ export function ThinkView() {
                           </p>
                         </div>
                       </div>
-                    ) : result.based_on && result.based_on.length > 0 ? (
+                    ) : (result.based_on?.memories && result.based_on.memories.length > 0) ||
+                      (result.based_on?.mental_models &&
+                        result.based_on.mental_models.length > 0) ? (
                       <div className="space-y-4 max-h-[500px] overflow-y-auto">
                         {(() => {
-                          const worldFacts = result.based_on.filter((f: any) => f.type === "world");
-                          const experienceFacts = result.based_on.filter(
+                          const memories = result.based_on?.memories || [];
+                          const worldFacts = memories.filter((f: any) => f.type === "world");
+                          const experienceFacts = memories.filter(
                             (f: any) => f.type === "experience"
                           );
-                          const opinionFacts = result.based_on.filter(
-                            (f: any) => f.type === "opinion"
-                          );
-                          const mentalModelFacts = result.based_on.filter(
-                            (f: any) => f.type === "mental_model"
-                          );
+                          const opinionFacts = memories.filter((f: any) => f.type === "opinion");
+                          const mentalModels = result.based_on?.mental_models || [];
 
                           return (
                             <>
                               {/* Mental Models */}
-                              {mentalModelFacts.length > 0 && (
+                              {mentalModels.length > 0 && (
                                 <div className="space-y-1.5">
                                   <div className="flex items-center gap-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
                                     <div className="w-2 h-2 rounded-full bg-orange-500" />
-                                    Mental Models ({mentalModelFacts.length})
+                                    Mental Models ({mentalModels.length})
                                   </div>
                                   <div className="space-y-1.5">
-                                    {mentalModelFacts.map((fact: any, i: number) => (
+                                    {mentalModels.map((model: any, i: number) => (
                                       <div key={i} className="p-2 bg-muted rounded text-xs">
-                                        {fact.text}
-                                        {fact.context && (
+                                        <div className="font-medium">{model.name}</div>
+                                        {model.description && (
                                           <div className="text-[10px] text-muted-foreground mt-1">
-                                            {fact.context}
+                                            {model.description}
                                           </div>
                                         )}
                                       </div>

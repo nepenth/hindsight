@@ -58,7 +58,7 @@ class StructuralModelTemplate(BaseModel):
     with this role would need to track.
     """
 
-    id: str = Field(description="Identifier for this template (e.g., 'team-structure')")
+    id: str = Field(default="", description="Existing model ID to keep, or empty for new models")
     name: str = Field(description="Human-readable name")
     description: str = Field(description="What this model should track")
     initial_probes: list[str] = Field(default_factory=list, description="Initial search queries to populate this model")

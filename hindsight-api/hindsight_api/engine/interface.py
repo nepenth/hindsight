@@ -537,7 +537,7 @@ class MemoryEngineInterface(ABC):
         bank_id: str,
         *,
         request_context: "RequestContext",
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """
         List async operations for a bank.
 
@@ -546,7 +546,7 @@ class MemoryEngineInterface(ABC):
             request_context: Request context for authentication.
 
         Returns:
-            List of operation dicts with id, task_type, status, etc.
+            Dict with 'total' (int) and 'operations' (list of operation dicts).
         """
         ...
 

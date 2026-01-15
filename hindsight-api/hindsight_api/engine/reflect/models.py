@@ -77,6 +77,7 @@ class ToolCall(BaseModel):
     input: dict = Field(description="Tool input parameters")
     output: dict = Field(description="Tool output/result")
     duration_ms: int = Field(description="Execution time in milliseconds")
+    iteration: int = Field(default=0, description="Iteration number (1-based) when this tool was called")
 
 
 class LLMCall(BaseModel):

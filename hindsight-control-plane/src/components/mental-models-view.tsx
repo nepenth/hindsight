@@ -47,8 +47,9 @@ import {
   Users,
   ChevronRight,
   Loader2,
+  ExternalLink,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { DocumentChunkModal } from "./document-chunk-modal";
 
 type ViewMode = "dashboard" | "table";
 
@@ -79,10 +80,10 @@ interface MentalModel {
   subtype: string;
   name: string;
   description: string;
-  observations: MentalModelObservation[];
+  observations?: MentalModelObservation[];
   entity_id: string | null;
   links: string[];
-  tags: string[];
+  tags?: string[];
   last_updated: string | null;
   created_at: string;
 }
@@ -102,7 +103,7 @@ export function MentalModelsView() {
   const [operationStatus, setOperationStatus] = useState<{
     operationId: string;
     type: "all" | "pinned" | "structural" | "emergent" | "learned";
-    status: "pending" | "completed" | "failed";
+    status: "pending" | "completed" | "failed" | "not_found";
     errorMessage?: string | null;
   } | null>(null);
   const [mission, setMission] = useState<string | null>(null);
@@ -122,10 +123,12 @@ export function MentalModelsView() {
     description: "",
   });
 
-  // Auto-refresh interval (10 seconds)
-  const AUTO_REFRESH_INTERVAL = 10000;
+  // Auto-refresh interval (5 seconds)
+  const AUTO_REFRESH_INTERVAL = 5000;
   const currentBankRef = useRef(currentBank);
   currentBankRef.current = currentBank;
+  const selectedModelRef = useRef(selectedModel);
+  selectedModelRef.current = selectedModel;
 
   const loadMentalModels = async () => {
     if (!currentBank) return;
@@ -153,7 +156,17 @@ export function MentalModelsView() {
 
     try {
       const modelsData = await client.listMentalModels(bank);
-      setMentalModels(modelsData.items || []);
+      const items = modelsData.items || [];
+      setMentalModels(items);
+
+      // Update selected model if it exists in the refreshed list
+      const currentSelected = selectedModelRef.current;
+      if (currentSelected) {
+        const updatedModel = items.find((m) => m.id === currentSelected.id);
+        if (updatedModel) {
+          setSelectedModel(updatedModel);
+        }
+      }
     } catch (error) {
       console.error("Error auto-refreshing mental models:", error);
     }
@@ -580,10 +593,11 @@ export function MentalModelsView() {
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead className="w-[30%]">Name</TableHead>
-                    <TableHead className="w-[12%]">Source</TableHead>
-                    <TableHead className="w-[36%]">Description</TableHead>
-                    <TableHead className="w-[10%] text-center">Facts</TableHead>
+                    <TableHead className="w-[28%]">Name</TableHead>
+                    <TableHead className="w-[10%]">Source</TableHead>
+                    <TableHead className="w-[32%]">Description</TableHead>
+                    <TableHead className="w-[8%] text-center">Obs</TableHead>
+                    <TableHead className="w-[10%] text-center">Memories</TableHead>
                     <TableHead className="w-[12%]">Updated</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -621,6 +635,9 @@ export function MentalModelsView() {
                         <p className="text-sm text-muted-foreground line-clamp-2">
                           {model.description}
                         </p>
+                      </TableCell>
+                      <TableCell className="py-2 text-center text-sm text-foreground">
+                        {model.observations?.length || 0}
                       </TableCell>
                       <TableCell className="py-2 text-center text-sm text-foreground">
                         {getTotalMemoryCount(model)}
@@ -672,16 +689,16 @@ export function MentalModelsView() {
                 </div>
               )}
 
-              {/* Emergent Models Section */}
-              {emergentModels.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                    Emergent Models
-                    <span className="text-sm font-normal text-muted-foreground">
-                      (Pattern-derived)
-                    </span>
-                  </h3>
+              {/* Emergent Models Section - Always show */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  Emergent Models
+                  <span className="text-sm font-normal text-muted-foreground">
+                    (Pattern-derived)
+                  </span>
+                </h3>
+                {emergentModels.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3">
                     {emergentModels.map((model) => (
                       <ModelListCard
@@ -692,8 +709,15 @@ export function MentalModelsView() {
                       />
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="p-6 border border-dashed border-border rounded-lg text-center">
+                    <Sparkles className="w-6 h-6 mx-auto mb-2 text-emerald-500/50" />
+                    <p className="text-sm text-muted-foreground">
+                      No emergent models yet. Models are discovered from patterns in your data.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* Pinned Models Section - Always show */}
               <div>
@@ -781,7 +805,11 @@ export function MentalModelsView() {
       {/* Detail Panel - Fixed on Right */}
       {selectedModel && (
         <div className="fixed right-0 top-0 h-screen w-1/2 bg-card border-l-2 border-primary shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300 ease-out">
-          <MentalModelDetailPanel model={selectedModel} onClose={() => setSelectedModel(null)} />
+          <MentalModelDetailPanel
+            model={selectedModel}
+            onClose={() => setSelectedModel(null)}
+            onRegenerated={silentRefreshModels}
+          />
         </div>
       )}
     </div>
@@ -811,6 +839,10 @@ function ModelListCard({
           <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{model.description}</p>
           <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
             <span>
+              <span className="font-medium text-foreground">{model.observations?.length || 0}</span>{" "}
+              obs
+            </span>
+            <span>
               <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
               memories
             </span>
@@ -827,6 +859,19 @@ function ModelListCard({
               </span>
             )}
           </div>
+          {model.tags && model.tags.length > 0 && (
+            <div className="flex items-center gap-1 mt-2 flex-wrap">
+              <Tag className="w-3 h-3 text-muted-foreground" />
+              {model.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -834,12 +879,85 @@ function ModelListCard({
 }
 
 // Detail panel for mental model (like MemoryDetailPanel)
-function MentalModelDetailPanel({ model, onClose }: { model: MentalModel; onClose: () => void }) {
+function MentalModelDetailPanel({
+  model,
+  onClose,
+  onRegenerated,
+}: {
+  model: MentalModel;
+  onClose: () => void;
+  onRegenerated?: () => void;
+}) {
   const { currentBank } = useBank();
   const [expandedObservation, setExpandedObservation] = useState<number | null>(null);
   const [loadingFacts, setLoadingFacts] = useState<Record<string, boolean>>({});
   const [factDetails, setFactDetails] = useState<Record<string, MemoryDetail>>({});
   const [factErrors, setFactErrors] = useState<Record<string, string>>({});
+  const [regenerateStatus, setRegenerateStatus] = useState<{
+    status: "scheduling" | "pending" | "completed" | "failed";
+    errorMessage?: string | null;
+  } | null>(null);
+
+  // Document/Chunk modal state
+  const [modalType, setModalType] = useState<"document" | "chunk" | null>(null);
+  const [modalId, setModalId] = useState<string | null>(null);
+
+  const openDocumentModal = (docId: string) => {
+    setModalType("document");
+    setModalId(docId);
+  };
+
+  const openChunkModal = (chunkId: string) => {
+    setModalType("chunk");
+    setModalId(chunkId);
+  };
+
+  const closeModal = () => {
+    setModalType(null);
+    setModalId(null);
+  };
+
+  const handleRegenerate = async () => {
+    if (!currentBank) return;
+
+    setRegenerateStatus({ status: "scheduling" });
+    try {
+      const result = await client.generateMentalModel(currentBank, model.id);
+      if (result.operation_id) {
+        setRegenerateStatus({ status: "pending" });
+        pollRegenerateStatus(result.operation_id);
+      }
+    } catch (error) {
+      console.error("Error regenerating mental model:", error);
+      setRegenerateStatus({ status: "failed", errorMessage: (error as Error).message });
+      setTimeout(() => setRegenerateStatus(null), 5000);
+    }
+  };
+
+  const pollRegenerateStatus = async (operationId: string) => {
+    if (!currentBank) return;
+
+    const poll = async () => {
+      try {
+        const status = await client.getOperationStatus(currentBank, operationId);
+        if (status.status === "pending") {
+          setTimeout(poll, 2000);
+        } else if (status.status === "completed") {
+          setRegenerateStatus({ status: "completed" });
+          onRegenerated?.();
+          setTimeout(() => setRegenerateStatus(null), 3000);
+        } else {
+          setRegenerateStatus({ status: "failed", errorMessage: status.error_message });
+          setTimeout(() => setRegenerateStatus(null), 5000);
+        }
+      } catch (error) {
+        console.error("Error polling regenerate status:", error);
+        setRegenerateStatus(null);
+      }
+    };
+
+    poll();
+  };
 
   const loadFactDetails = async (factIds: string[]) => {
     if (!currentBank) return;
@@ -917,7 +1035,7 @@ function MentalModelDetailPanel({ model, onClose }: { model: MentalModel; onClos
           {getSubtypeIcon(model.subtype)}
           <div>
             <h3 className="text-xl font-bold text-foreground">{model.name}</h3>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span
                 className={`text-xs px-1.5 py-0.5 rounded ${
                   model.subtype === "pinned"
@@ -931,12 +1049,63 @@ function MentalModelDetailPanel({ model, onClose }: { model: MentalModel; onClos
               >
                 {model.subtype}
               </span>
+              {model.tags && model.tags.length > 0 && (
+                <>
+                  {model.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1"
+                    >
+                      <Tag className="w-2.5 h-2.5" />
+                      {tag}
+                    </span>
+                  ))}
+                </>
+              )}
             </div>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={regenerateStatus?.status === "completed" ? "default" : "outline"}
+            size="sm"
+            onClick={handleRegenerate}
+            disabled={
+              !!regenerateStatus &&
+              regenerateStatus.status !== "completed" &&
+              regenerateStatus.status !== "failed"
+            }
+            className={`h-8 ${
+              regenerateStatus?.status === "completed"
+                ? "bg-emerald-500 hover:bg-emerald-600"
+                : regenerateStatus?.status === "failed"
+                  ? "border-red-500 text-red-500"
+                  : ""
+            }`}
+          >
+            {regenerateStatus?.status === "scheduling" || regenerateStatus?.status === "pending" ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : regenerateStatus?.status === "completed" ? (
+              <Check className="w-4 h-4 mr-1" />
+            ) : regenerateStatus?.status === "failed" ? (
+              <X className="w-4 h-4 mr-1" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-1" />
+            )}
+            {regenerateStatus?.status === "scheduling"
+              ? "Scheduling..."
+              : regenerateStatus?.status === "pending"
+                ? "Regenerating..."
+                : regenerateStatus?.status === "completed"
+                  ? "Done!"
+                  : regenerateStatus?.status === "failed"
+                    ? "Failed"
+                    : "Regenerate"}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -1071,10 +1240,38 @@ function MentalModelDetailPanel({ model, onClose }: { model: MentalModel; onClos
                                         </span>
                                       </div>
                                     )}
-                                    <div className="pt-1">
+                                    <div className="pt-1 flex items-center gap-2">
                                       <code className="text-[10px] font-mono text-muted-foreground/60">
                                         {factId}
                                       </code>
+                                      {(fact.document_id || fact.chunk_id) && (
+                                        <div className="flex gap-1 ml-auto">
+                                          {fact.document_id && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                openDocumentModal(fact.document_id!);
+                                              }}
+                                              className="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                                            >
+                                              <ExternalLink className="w-2.5 h-2.5" />
+                                              Doc
+                                            </button>
+                                          )}
+                                          {fact.chunk_id && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                openChunkModal(fact.chunk_id!);
+                                              }}
+                                              className="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                                            >
+                                              <ExternalLink className="w-2.5 h-2.5" />
+                                              Chunk
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 ) : (
@@ -1135,6 +1332,11 @@ function MentalModelDetailPanel({ model, onClose }: { model: MentalModel; onClos
           <code className="text-sm font-mono break-all text-muted-foreground">{model.id}</code>
         </div>
       </div>
+
+      {/* Document/Chunk Modal */}
+      {modalType && modalId && (
+        <DocumentChunkModal type={modalType} id={modalId} onClose={closeModal} />
+      )}
     </div>
   );
 }

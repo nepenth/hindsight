@@ -64,17 +64,17 @@ TOOL_LEARN = {
     "type": "function",
     "function": {
         "name": "learn",
-        "description": "Create a placeholder for a new mental model. The actual content will be generated automatically during refresh.",
+        "description": "Create a new mental model to track an important recurring topic. Use when you discover a person, project, concept, or pattern that appears frequently and would benefit from synthesized knowledge. The model content will be generated automatically.",
         "parameters": {
             "type": "object",
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Human-readable name for the mental model",
+                    "description": "Human-readable name (e.g., 'Project Alpha', 'John Smith', 'Product Strategy')",
                 },
                 "description": {
                     "type": "string",
-                    "description": "What this model should track - used as the prompt for content generation",
+                    "description": "What to track and synthesize (e.g., 'Track goals, milestones, blockers, and key decisions for Project Alpha')",
                 },
             },
             "required": ["name", "description"],
@@ -116,12 +116,12 @@ TOOL_DONE_ANSWER = {
             "properties": {
                 "answer": {
                     "type": "string",
-                    "description": "Your response as plain text. Do NOT use markdown formatting. Write naturally as if speaking.",
+                    "description": "Your response as plain text. Do NOT use markdown formatting. NEVER include memory IDs, UUIDs, or 'Memory references' in this text - put IDs only in memory_ids array.",
                 },
                 "memory_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Array of memory IDs from recall results that support your answer",
+                    "description": "Array of memory IDs that support your answer (put IDs here, NOT in answer text)",
                 },
                 "model_ids": {
                     "type": "array",
@@ -138,32 +138,33 @@ TOOL_DONE_OBSERVATIONS = {
     "type": "function",
     "function": {
         "name": "done",
-        "description": "Signal completion with structured observations about the topic.",
+        "description": "Signal completion with MULTIPLE structured observations. Each observation must be a SEPARATE item in the array covering ONE theme. Do NOT combine all content into a single observation.",
         "parameters": {
             "type": "object",
             "properties": {
                 "observations": {
                     "type": "array",
+                    "minItems": 3,
                     "items": {
                         "type": "object",
                         "properties": {
                             "title": {
                                 "type": "string",
-                                "description": "Observation header (can be empty for intro/overview)",
+                                "description": "Short header for this observation's theme (e.g., 'Work Style', 'Technical Skills')",
                             },
                             "text": {
                                 "type": "string",
-                                "description": "Observation content. Can use lists, tables, bold, italic.",
+                                "description": "Observation content about ONE theme. End with 'Key evidence:' containing text citations (summaries of what memories say), NOT memory IDs.",
                             },
                             "memory_ids": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Memory IDs supporting this observation",
+                                "description": "Full UUIDs of memories supporting this observation (put IDs here, not in text)",
                             },
                         },
-                        "required": ["title", "text"],
+                        "required": ["title", "text", "memory_ids"],
                     },
-                    "description": "Array of observations, each covering a different aspect of the topic",
+                    "description": "Array of 3-8 observations, each covering a DIFFERENT aspect/theme. Do NOT put everything in one observation.",
                 },
             },
             "required": ["observations"],
@@ -181,15 +182,21 @@ def get_reflect_tools(
     Args:
         enable_learn: Whether to include the learn tool
         output_mode: "answer" or "observations" - determines done tool format
+                     In observations mode, mental model tools are excluded to avoid
+                     using potentially outdated models during regeneration.
 
     Returns:
         List of tool definitions in OpenAI format
     """
-    tools = [
-        TOOL_LIST_MENTAL_MODELS,
-        TOOL_GET_MENTAL_MODEL,
-        TOOL_RECALL,
-    ]
+    tools = []
+
+    # In answer mode, include mental model tools for lookup
+    # In observations mode (mental model generation), exclude them to avoid circular references
+    if output_mode == "answer":
+        tools.append(TOOL_LIST_MENTAL_MODELS)
+        tools.append(TOOL_GET_MENTAL_MODEL)
+
+    tools.append(TOOL_RECALL)
 
     if enable_learn:
         tools.append(TOOL_LEARN)

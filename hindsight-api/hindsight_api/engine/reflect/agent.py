@@ -69,7 +69,7 @@ async def run_reflect_agent(
     tools = get_reflect_tools(enable_learn=enable_learn, output_mode=output_mode)
 
     # Build initial messages
-    system_prompt = build_system_prompt_for_tools(bank_profile, context)
+    system_prompt = build_system_prompt_for_tools(bank_profile, context, output_mode=output_mode)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": query},
@@ -86,6 +86,45 @@ async def run_reflect_agent(
     # Track available IDs for validation (prevents hallucinated citations)
     available_memory_ids: set[str] = set()
     available_model_ids: set[str] = set()
+
+    # In answer mode, pre-fetch mental models so the agent always starts with this knowledge
+    if output_mode == "answer":
+        prefetch_start = time.time()
+        models_result = await lookup_fn(None)  # List all mental models
+        prefetch_duration = int((time.time() - prefetch_start) * 1000)
+
+        # Track available model IDs
+        if isinstance(models_result, dict) and "models" in models_result:
+            for model in models_result["models"]:
+                if "id" in model:
+                    available_model_ids.add(model["id"])
+
+        # Add to context history for the agent
+        context_history.append({"tool": "list_mental_models", "output": models_result})
+
+        # Add to tool trace
+        tool_trace.append(
+            ToolCall(
+                tool="list_mental_models",
+                input={"tool": "list_mental_models"},
+                output=models_result,
+                duration_ms=prefetch_duration,
+                iteration=0,
+            )
+        )
+        tool_trace_summary.append(
+            {
+                "tool": "list_mental_models",
+                "input_summary": "(prefetch)",
+                "duration_ms": prefetch_duration,
+                "output_chars": len(json.dumps(models_result, default=str)),
+            }
+        )
+        total_tools_called += 1
+
+        # Include in the user message so the agent sees it
+        models_info = json.dumps(models_result, indent=2, default=str)
+        messages[1]["content"] = f"{query}\n\n## Available Mental Models (pre-fetched)\n```json\n{models_info}\n```"
 
     def _get_llm_trace() -> list[LLMCall]:
         return [LLMCall(scope=c["scope"], duration_ms=c["duration_ms"]) for c in llm_trace]
@@ -117,7 +156,6 @@ async def run_reflect_agent(
 
     for iteration in range(max_iterations):
         is_last = iteration == max_iterations - 1
-        logger.debug(f"[REFLECT {reflect_id}] Iteration {iteration + 1}/{max_iterations}")
 
         if is_last:
             # Force text response on last iteration - no tools
@@ -144,7 +182,6 @@ async def run_reflect_agent(
             )
 
         # Call LLM with tools
-        logger.info(f"[REFLECT {reflect_id}] Iteration {iteration + 1} - calling LLM with {len(tools)} tools")
         llm_start = time.time()
 
         try:
@@ -155,24 +192,16 @@ async def run_reflect_agent(
                 tool_choice="required" if iteration == 0 else "auto",  # Force tool use on first iteration
             )
             llm_duration = int((time.time() - llm_start) * 1000)
-            tool_names = [tc.name for tc in result.tool_calls] if result.tool_calls else []
-            logger.info(
-                f"[REFLECT {reflect_id}] LLM call completed in {llm_duration}ms, "
-                f"tool_calls={tool_names}, finish={result.finish_reason}"
-            )
             llm_trace.append({"scope": f"agent_{iteration + 1}", "duration_ms": llm_duration})
 
-        except Exception as e:
+        except Exception:
             llm_trace.append(
                 {"scope": f"agent_{iteration + 1}_err", "duration_ms": int((time.time() - llm_start) * 1000)}
             )
             # Guardrail: If no evidence gathered yet, retry
             has_gathered_evidence = bool(available_memory_ids) or bool(available_model_ids)
             if not has_gathered_evidence and iteration < max_iterations - 1:
-                logger.warning(f"[REFLECT {reflect_id}] LLM call failed: {e}, but no evidence gathered yet. Retrying.")
                 continue
-
-            logger.warning(f"[REFLECT {reflect_id}] LLM call failed: {e}, forcing final response")
             prompt = build_final_prompt(query, context_history, bank_profile, context)
             llm_start = time.time()
             response = await llm_config.call(
@@ -237,10 +266,6 @@ async def run_reflect_agent(
             # Guardrail: Require evidence before done
             has_gathered_evidence = bool(available_memory_ids) or bool(available_model_ids)
             if not has_gathered_evidence and iteration < max_iterations - 1:
-                logger.debug(
-                    f"[REFLECT {reflect_id}] Rejecting early done - no evidence gathered. "
-                    f"Forcing agent to gather evidence first."
-                )
                 # Add assistant message and fake tool result asking for evidence
                 messages.append(
                     {
@@ -288,47 +313,46 @@ async def run_reflect_agent(
             )
 
             # Execute tools in parallel
-            logger.info(f"[REFLECT {reflect_id}] Executing {len(other_tools)} tools in parallel")
-            parallel_start = time.time()
-
             tool_tasks = [
                 _execute_tool_with_timing(tc, lookup_fn, recall_fn, expand_fn, learn_fn) for tc in other_tools
             ]
             tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
-
-            parallel_ms = int((time.time() - parallel_start) * 1000)
-            logger.info(f"[REFLECT {reflect_id}] All {len(other_tools)} tools completed in {parallel_ms}ms")
             total_tools_called += len(other_tools)
 
             # Process results and add to messages
             for tc, result_data in zip(other_tools, tool_results):
                 if isinstance(result_data, Exception):
-                    output = {"error": str(result_data)}
-                    duration_ms = 0
-                    logger.debug(f"[REFLECT {reflect_id}] Tool {tc.name} failed: {result_data}")
-                else:
-                    output, duration_ms = result_data
+                    # Tool execution failed - log and raise to fail the request
+                    logger.error(f"[REFLECT {reflect_id}] Tool {tc.name} failed with exception: {result_data}")
+                    raise RuntimeError(f"Reflect tool '{tc.name}' failed: {result_data}")
 
-                    # Track created mental models
-                    if tc.name == "learn" and isinstance(output, dict) and "model_id" in output:
-                        mental_models_created.append(output["model_id"])
+                output, duration_ms = result_data
 
-                    # Track available memory IDs from recall
-                    if tc.name == "recall" and isinstance(output, dict) and "memories" in output:
-                        for memory in output["memories"]:
-                            if "id" in memory:
-                                available_memory_ids.add(memory["id"])
+                # Check if tool returned an error response
+                if isinstance(output, dict) and "error" in output:
+                    logger.error(f"[REFLECT {reflect_id}] Tool {tc.name} returned error: {output['error']}")
+                    raise RuntimeError(f"Reflect tool '{tc.name}' error: {output['error']}")
 
-                    # Track available model IDs
-                    if tc.name in ("list_mental_models", "get_mental_model") and isinstance(output, dict):
-                        if output.get("found") and "model" in output:
-                            model_id = output["model"].get("id")
-                            if model_id:
-                                available_model_ids.add(model_id)
-                        elif "models" in output:
-                            for model in output["models"]:
-                                if "id" in model:
-                                    available_model_ids.add(model["id"])
+                # Track created mental models
+                if tc.name == "learn" and isinstance(output, dict) and "model_id" in output:
+                    mental_models_created.append(output["model_id"])
+
+                # Track available memory IDs from recall
+                if tc.name == "recall" and isinstance(output, dict) and "memories" in output:
+                    for memory in output["memories"]:
+                        if "id" in memory:
+                            available_memory_ids.add(memory["id"])
+
+                # Track available model IDs
+                if tc.name in ("list_mental_models", "get_mental_model") and isinstance(output, dict):
+                    if output.get("found") and "model" in output:
+                        model_id = output["model"].get("id")
+                        if model_id:
+                            available_model_ids.add(model_id)
+                    elif "models" in output:
+                        for model in output["models"]:
+                            if "id" in model:
+                                available_model_ids.add(model["id"])
 
                 # Add tool result message
                 messages.append(
@@ -343,7 +367,11 @@ async def run_reflect_agent(
                 input_dict = {"tool": tc.name, **tc.arguments}
                 input_summary = _summarize_input(tc.name, tc.arguments)
 
-                tool_trace.append(ToolCall(tool=tc.name, input=input_dict, output=output, duration_ms=duration_ms))
+                tool_trace.append(
+                    ToolCall(
+                        tool=tc.name, input=input_dict, output=output, duration_ms=duration_ms, iteration=iteration + 1
+                    )
+                )
 
                 try:
                     output_chars = len(json.dumps(output))
@@ -404,19 +432,22 @@ def _process_done_tool(
     args = done_call.arguments
 
     if output_mode == "observations" and "observations" in args:
-        # Process observations
+        # Process observations - handle both list and nested {"observations": [...]} format
         observations: list[Observation] = []
         used_memory_ids: list[str] = []
 
-        for obs_data in args["observations"]:
+        obs_list = args["observations"]
+        # Handle nested format where LLM outputs {"observations": [...]} instead of just [...]
+        if isinstance(obs_list, dict) and "observations" in obs_list:
+            obs_list = obs_list["observations"]
+
+        for obs_data in obs_list:
             validated_mids = []
             for mid in obs_data.get("memory_ids", []):
                 if mid in available_memory_ids:
                     validated_mids.append(mid)
                     if mid not in used_memory_ids:
                         used_memory_ids.append(mid)
-                else:
-                    logger.debug(f"[REFLECT {reflect_id}] Filtered invalid memory_id: {mid}")
 
             observations.append(
                 Observation(
@@ -477,38 +508,10 @@ async def _execute_tool_with_timing(
     learn_fn: Callable[[MentalModelInput], Awaitable[dict[str, Any]]] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """Execute a tool call and return result with timing."""
-    tool_desc = _get_tool_description(tc.name, tc.arguments)
-    logger.info(f"[TOOL DEBUG] Starting {tc.name}: {tool_desc}")
     start = time.time()
-
     result = await _execute_tool(tc.name, tc.arguments, lookup_fn, recall_fn, expand_fn, learn_fn)
-
     duration_ms = int((time.time() - start) * 1000)
-    try:
-        result_chars = len(json.dumps(result))
-    except (TypeError, ValueError):
-        result_chars = len(str(result))
-    logger.info(f"[TOOL DEBUG] Completed {tc.name}: {duration_ms}ms, {result_chars} chars output")
-
     return result, duration_ms
-
-
-def _get_tool_description(tool_name: str, args: dict[str, Any]) -> str:
-    """Get a brief description of the tool call for logging."""
-    if tool_name == "list_mental_models":
-        return "listing all models"
-    elif tool_name == "get_mental_model":
-        return f"model_id={args.get('model_id')}"
-    elif tool_name == "recall":
-        query = args.get("query", "")
-        query_preview = query[:30] + "..." if len(query) > 30 else query
-        return f"query='{query_preview}', max_tokens={args.get('max_tokens', 2048)}"
-    elif tool_name == "learn":
-        return f"name={args.get('name', '?')}"
-    elif tool_name == "expand":
-        count = len(args.get("memory_ids", []))
-        return f"{count} memory_ids, depth={args.get('depth', 'chunk')}"
-    return str(args)[:50]
 
 
 async def _execute_tool(
@@ -533,7 +536,7 @@ async def _execute_tool(
         query = args.get("query")
         if not query:
             return {"error": "recall requires a query parameter"}
-        max_tokens = args.get("max_tokens", 2048)
+        max_tokens = max(args.get("max_tokens") or 2048, 1000)  # Default 2048, min 1000
         return await recall_fn(query, max_tokens)
 
     elif tool_name == "learn":
@@ -557,18 +560,30 @@ async def _execute_tool(
 
 
 def _summarize_input(tool_name: str, args: dict[str, Any]) -> str:
-    """Create a brief summary of tool input for logging."""
+    """Create a summary of tool input for logging, showing all params."""
     if tool_name == "list_mental_models":
-        return ""
+        return "()"
     elif tool_name == "get_mental_model":
-        return args.get("model_id", "?")
+        return f"(model_id={args.get('model_id', '?')})"
     elif tool_name == "recall":
         query = args.get("query", "")
-        return f"'{query[:20]}...'" if len(query) > 20 else f"'{query}'"
+        query_preview = f"'{query[:30]}...'" if len(query) > 30 else f"'{query}'"
+        # Show actual value used (default 2048, min 1000)
+        max_tokens = max(args.get("max_tokens") or 2048, 1000)
+        return f"(query={query_preview}, max_tokens={max_tokens})"
     elif tool_name == "learn":
-        return args.get("name", "?")[:20]
+        name = args.get("name", "?")
+        desc = args.get("description", "")
+        desc_preview = f"'{desc[:20]}...'" if len(desc) > 20 else f"'{desc}'"
+        return f"(name='{name}', description={desc_preview})"
     elif tool_name == "expand":
-        count = len(args.get("memory_ids", []))
+        memory_ids = args.get("memory_ids", [])
         depth = args.get("depth", "chunk")
-        return f"{count}ids/{depth}"
-    return ""
+        return f"(memory_ids=[{len(memory_ids)} ids], depth={depth})"
+    elif tool_name == "done":
+        answer = args.get("answer", "")
+        answer_preview = f"'{answer[:30]}...'" if len(answer) > 30 else f"'{answer}'"
+        memory_ids = args.get("memory_ids", [])
+        model_ids = args.get("model_ids", [])
+        return f"(answer={answer_preview}, memory_ids={len(memory_ids)}, model_ids={len(model_ids)})"
+    return str(args)

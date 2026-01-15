@@ -1114,8 +1114,7 @@ class MemoryEngine(MemoryEngineInterface):
         """
         Wait for all pending background tasks to complete.
 
-        This is useful in tests to ensure background tasks (like opinion reinforcement)
-        complete before making assertions.
+        This is useful in tests to ensure background tasks complete before making assertions.
         """
         if hasattr(self._task_backend, "wait_for_pending_tasks"):
             await self._task_backend.wait_for_pending_tasks()
@@ -1558,7 +1557,6 @@ class MemoryEngine(MemoryEngineInterface):
                 embeddings_model=self.embeddings,
                 llm_config=self._retain_llm_config,
                 entity_resolver=self.entity_resolver,
-                task_backend=self._task_backend,
                 format_date_fn=self._format_readable_date,
                 duplicate_checker_fn=self._find_duplicate_facts_batch,
                 bank_id=bank_id,
@@ -1710,6 +1708,10 @@ class MemoryEngine(MemoryEngineInterface):
         budget_mapping = {Budget.LOW: 100, Budget.MID: 300, Budget.HIGH: 1000}
         effective_budget = budget if budget is not None else Budget.MID
         thinking_budget = budget_mapping[effective_budget]
+
+        # Log recall start with tags if present
+        tags_info = f", tags={tags} ({tags_match})" if tags else ""
+        logger.info(f"[RECALL {bank_id[:8]}] Starting recall for query: {query[:50]}...{tags_info}")
 
         # Backpressure: limit concurrent recalls to prevent overwhelming the database
         result = None
@@ -3508,7 +3510,8 @@ class MemoryEngine(MemoryEngineInterface):
 
         reflect_start = time.time()
         reflect_id = f"{bank_id[:8]}-{int(time.time() * 1000) % 100000}"
-        logger.info(f"[REFLECT {reflect_id}] Starting agentic reflect for query: {query[:50]}...")
+        tags_info = f", tags={tags} ({tags_match})" if tags else ""
+        logger.info(f"[REFLECT {reflect_id}] Starting agentic reflect for query: {query[:50]}...{tags_info}")
 
         # Get bank profile for agent identity
         profile = await self.get_bank_profile(bank_id, request_context=request_context)
@@ -3532,7 +3535,7 @@ class MemoryEngine(MemoryEngineInterface):
         # Create tool callbacks that acquire connections only when needed
         async def lookup_fn(model_id: str | None = None) -> dict[str, Any]:
             async with pool.acquire() as conn:
-                return await tool_lookup(conn, bank_id, model_id)
+                return await tool_lookup(conn, bank_id, model_id, tags=tags, tags_match=tags_match)
 
         async def recall_fn(q: str, max_tokens: int = 4096) -> dict[str, Any]:
             return await tool_recall(
@@ -3588,6 +3591,7 @@ class MemoryEngine(MemoryEngineInterface):
                 input=tc.input,
                 output=tc.output,
                 duration_ms=tc.duration_ms,
+                iteration=tc.iteration,
             )
             for tc in agent_result.tool_trace
         ]
@@ -3629,7 +3633,7 @@ class MemoryEngine(MemoryEngineInterface):
         mental_models_result: list[MentalModelRef] = []
         seen_model_ids: set[str] = set()
         for tc in agent_result.tool_trace:
-            if tc.tool == "lookup":
+            if tc.tool == "get_mental_model":
                 # Single model lookup (with full details)
                 if tc.output.get("found") and "model" in tc.output:
                     model = tc.output["model"]
@@ -4153,6 +4157,8 @@ class MemoryEngine(MemoryEngineInterface):
     ) -> dict[str, Any] | tuple[dict[str, Any] | None, Any] | None:
         """Refresh the summary for a mental model using the reflect agent.
 
+        Uses the model's stored tags to filter recall results.
+
         Args:
             bank_id: Bank identifier
             model_id: Mental model ID
@@ -4169,6 +4175,9 @@ class MemoryEngine(MemoryEngineInterface):
         model = await self.get_mental_model(bank_id, model_id, request_context=request_context)
         if not model:
             return None
+
+        # Use the model's stored tags for filtering recall
+        model_tags = model.get("tags") or None
 
         # Import reflect agent and tools
         from .reflect.agent import run_reflect_agent
@@ -4196,6 +4205,9 @@ Each observation should be self-contained and focus on a specific theme (e.g., p
         # Use observations mode to get structured observations instead of a single text answer
         config = get_config()
         metrics = get_metrics_collector()
+        # Use 2x iterations for observations mode - needs more iterations for:
+        # multiple recall queries + expand verification + observations creation
+        observations_max_iterations = config.reflect_max_iterations * 2
         with metrics.record_operation("mental_model_refresh", bank_id=bank_id, source="api"):
             async with acquire_with_retry(pool) as conn:
                 result = await run_reflect_agent(
@@ -4204,10 +4216,18 @@ Each observation should be self-contained and focus on a specific theme (e.g., p
                     query=query,
                     bank_profile=bank_profile,
                     lookup_fn=lambda mid=None: tool_lookup(conn, bank_id, mid),
-                    recall_fn=lambda q, mt=4096: tool_recall(self, bank_id, q, request_context, max_tokens=mt),
+                    recall_fn=lambda q, mt=4096: tool_recall(
+                        self,
+                        bank_id,
+                        q,
+                        request_context,
+                        max_tokens=mt,
+                        tags=model_tags,
+                        tags_match="any",
+                    ),
                     expand_fn=lambda mem_ids, depth: tool_expand(conn, bank_id, mem_ids, depth),
                     learn_fn=None,  # Disable learn tool for summary generation
-                    max_iterations=config.reflect_max_iterations,
+                    max_iterations=observations_max_iterations,
                     output_mode="observations",  # Get structured observations
                 )
 
@@ -4575,78 +4595,6 @@ Each observation should be self-contained and focus on a specific theme (e.g., p
 
         return result == "DELETE 1"
 
-    async def research(
-        self,
-        bank_id: str,
-        query: str,
-        *,
-        tags: list[str] | None = None,
-        tags_match: TagsMatch = "any",
-        request_context: "RequestContext",
-    ) -> dict[str, Any]:
-        """
-        Research query against mental models using an agentic loop.
-
-        The LLM can call tools to:
-        - get_mental_model(name): Get details of a specific mental model
-        - recall(query): Search for relevant facts
-
-        Args:
-            bank_id: Bank identifier
-            query: The research question
-            tags: Filter mental models by tags - returns untagged models OR models matching tags
-            tags_match: How to match tags - "any" (OR), "all" (AND), or "exact"
-
-        Returns synthesized answer with sources.
-        """
-        await self._authenticate_tenant(request_context)
-
-        from .mental_models.research import research as do_research
-
-        # Get list of available mental models (name + description only), filtered by tags
-        all_models = await self.list_mental_models(
-            bank_id, tags=tags, tags_match=tags_match, request_context=request_context
-        )
-        available_models = [{"name": m["name"], "description": m["description"]} for m in all_models]
-
-        # Build name -> model map for lookup
-        models_by_name = {m["name"]: m for m in all_models}
-
-        # Function to get a mental model by name
-        async def get_mental_model_fn(name: str) -> dict[str, Any] | None:
-            return models_by_name.get(name)
-
-        # Function to recall facts (also filtered by tags for consistency)
-        async def recall_fn(q: str) -> list[str]:
-            result = await self.recall_async(
-                bank_id=bank_id,
-                query=q,
-                max_tokens=2000,
-                fact_type=["world", "experience"],
-                include_entities=False,
-                include_chunks=False,
-                tags=tags,
-                tags_match=tags_match,
-                request_context=request_context,
-            )
-            return [f.text for f in result.results[:10]]
-
-        # Execute research
-        result = await do_research(
-            self._llm_config,
-            query,
-            available_models,
-            get_mental_model_fn,
-            recall_fn,
-        )
-
-        return {
-            "answer": result.answer,
-            "mental_models_used": result.mental_models_used,
-            "facts_used": result.facts_used,
-            "question_type": result.question_type,
-        }
-
     def _row_to_mental_model(self, row) -> dict[str, Any]:
         """Convert a database row to a mental model dict."""
         import json
@@ -4778,37 +4726,40 @@ Each observation should be self-contained and focus on a specific theme (e.g., p
         pool = await self._get_pool()
 
         async with acquire_with_retry(pool) as conn:
+            # Get total count
+            total_row = await conn.fetchrow(
+                f"SELECT COUNT(*) as total FROM {fq_table('async_operations')} WHERE bank_id = $1",
+                bank_id,
+            )
+            total = total_row["total"] if total_row else 0
+
+            # Get recent operations
             operations = await conn.fetch(
                 f"""
-                SELECT operation_id, bank_id, operation_type, created_at, status, error_message, result_metadata
+                SELECT operation_id, operation_type, created_at, status, error_message
                 FROM {fq_table("async_operations")}
                 WHERE bank_id = $1
                 ORDER BY created_at DESC
+                LIMIT 50
                 """,
                 bank_id,
             )
 
-            def parse_metadata(metadata):
-                if metadata is None:
-                    return {}
-                if isinstance(metadata, str):
-                    import json
-
-                    return json.loads(metadata)
-                return metadata
-
-            return [
-                {
-                    "id": str(row["operation_id"]),
-                    "task_type": row["operation_type"],
-                    "items_count": parse_metadata(row["result_metadata"]).get("items_count", 0),
-                    "document_id": parse_metadata(row["result_metadata"]).get("document_id"),
-                    "created_at": row["created_at"].isoformat(),
-                    "status": row["status"],
-                    "error_message": row["error_message"],
-                }
-                for row in operations
-            ]
+            return {
+                "total": total,
+                "operations": [
+                    {
+                        "id": str(row["operation_id"]),
+                        "task_type": row["operation_type"],
+                        "items_count": 0,
+                        "document_id": None,
+                        "created_at": row["created_at"].isoformat(),
+                        "status": row["status"],
+                        "error_message": row["error_message"],
+                    }
+                    for row in operations
+                ],
+            }
 
     async def get_operation_status(
         self,

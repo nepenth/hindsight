@@ -209,14 +209,10 @@ class LLMProvider:
             OutputTooLongError: If output exceeds token limits.
             Exception: Re-raises API errors after retries exhausted.
         """
-        queue_start_time = time.time()
-        logger.debug(f"[LLM DEBUG] Waiting for semaphore (scope={scope}, model={self.model})")
+        semaphore_start = time.time()
         async with _global_llm_semaphore:
+            semaphore_wait_time = time.time() - semaphore_start
             start_time = time.time()
-            semaphore_wait_time = start_time - queue_start_time
-            if semaphore_wait_time > 0.1:  # Log if waited more than 100ms
-                logger.info(f"[LLM DEBUG] Semaphore wait: {semaphore_wait_time * 1000:.0f}ms (scope={scope})")
-            logger.debug(f"[LLM DEBUG] Acquired semaphore, calling {self.provider}/{self.model} (scope={scope})")
 
             # Handle Mock provider (for testing)
             if self.provider == "mock":
@@ -357,21 +353,9 @@ class LLMProvider:
                         call_params["response_format"] = {"type": "json_object"}
 
             for attempt in range(max_retries + 1):
-                if attempt > 0:
-                    logger.info(f"[LLM DEBUG] Starting attempt {attempt + 1}/{max_retries + 1} (scope={scope})")
                 try:
                     if response_format is not None:
-                        api_call_start = time.time()
-                        input_chars = sum(len(m.get("content", "")) for m in messages)
-                        logger.info(
-                            f"[LLM DEBUG] Sending request to {self.provider}/{self.model} (timeout={self.timeout}, scope={scope}, input={input_chars}c)"
-                        )
                         response = await self._client.chat.completions.create(**call_params)
-                        api_call_ms = int((time.time() - api_call_start) * 1000)
-                        output_len = len(response.choices[0].message.content or "") if response.choices else 0
-                        logger.info(
-                            f"[LLM DEBUG] Received response from {self.provider}/{self.model} in {api_call_ms}ms (scope={scope}, output={output_len}c)"
-                        )
 
                         content = response.choices[0].message.content
 
@@ -419,9 +403,6 @@ class LLMProvider:
                                 # Retry on JSON parse errors - LLM may return valid JSON on next attempt
                                 if attempt < max_retries:
                                     backoff = min(initial_backoff * (2**attempt), max_backoff)
-                                    logger.info(
-                                        f"[LLM DEBUG] Retrying due to JSON parse error, backoff={backoff:.1f}s (attempt {attempt + 1}/{max_retries + 1})"
-                                    )
                                     await asyncio.sleep(backoff)
                                     last_exception = json_err
                                     continue
@@ -434,17 +415,7 @@ class LLMProvider:
                         else:
                             result = response_format.model_validate(json_data)
                     else:
-                        api_call_start = time.time()
-                        input_chars = sum(len(m.get("content", "")) for m in messages)
-                        logger.info(
-                            f"[LLM DEBUG] Sending plain request to {self.provider}/{self.model} (timeout={self.timeout}, scope={scope}, input={input_chars}c)"
-                        )
                         response = await self._client.chat.completions.create(**call_params)
-                        api_call_ms = int((time.time() - api_call_start) * 1000)
-                        output_len = len(response.choices[0].message.content or "") if response.choices else 0
-                        logger.info(
-                            f"[LLM DEBUG] Received plain response from {self.provider}/{self.model} in {api_call_ms}ms (scope={scope}, output={output_len}c)"
-                        )
                         result = response.choices[0].message.content
 
                     # Record token usage metrics
@@ -500,9 +471,7 @@ class LLMProvider:
                     status_code = getattr(e, "status_code", None) or getattr(
                         getattr(e, "response", None), "status_code", None
                     )
-                    logger.warning(
-                        f"[LLM DEBUG] APIConnectionError (HTTP {status_code}), attempt {attempt + 1}/{max_retries + 1}: {str(e)[:300]}"
-                    )
+                    logger.warning(f"APIConnectionError (HTTP {status_code}), attempt {attempt + 1}: {str(e)[:200]}")
                     if attempt < max_retries:
                         backoff = min(initial_backoff * (2**attempt), max_backoff)
                         await asyncio.sleep(backoff)
@@ -512,9 +481,6 @@ class LLMProvider:
                         raise
 
                 except APIStatusError as e:
-                    logger.warning(
-                        f"[LLM DEBUG] APIStatusError (HTTP {e.status_code}), attempt {attempt + 1}/{max_retries + 1}: {str(e)[:300]}"
-                    )
                     # Fast fail only on 401 (unauthorized) and 403 (forbidden) - these won't recover with retries
                     if e.status_code in (401, 403):
                         logger.error(f"Auth error (HTTP {e.status_code}), not retrying: {str(e)}")
@@ -536,9 +502,6 @@ class LLMProvider:
                                         tool_args = tool_call.get("arguments", {})
                                         # Convert to actions format: {"actions": [{"tool": "name", ...args}]}
                                         converted = {"actions": [{"tool": tool_name, **tool_args}]}
-                                        logger.info(
-                                            f"[LLM DEBUG] Converted tool_use_failed to actions format: {tool_name}"
-                                        )
                                         if skip_validation:
                                             result = converted
                                         else:
@@ -559,8 +522,8 @@ class LLMProvider:
                                         if return_usage:
                                             return result, TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0)
                                         return result
-                        except (json.JSONDecodeError, KeyError, TypeError) as parse_err:
-                            logger.warning(f"[LLM DEBUG] Failed to parse tool_use_failed: {parse_err}")
+                        except (json.JSONDecodeError, KeyError, TypeError):
+                            pass  # Failed to parse tool_use_failed, continue with normal retry
 
                     last_exception = e
                     if attempt < max_retries:
@@ -572,8 +535,7 @@ class LLMProvider:
                         logger.error(f"API error after {max_retries + 1} attempts: {str(e)}")
                         raise
 
-                except Exception as e:
-                    logger.error(f"[LLM DEBUG] Unexpected {type(e).__module__}.{type(e).__name__}: {str(e)[:500]}")
+                except Exception:
                     raise
 
             if last_exception:
@@ -611,12 +573,8 @@ class LLMProvider:
         """
         from .response_models import LLMToolCall, LLMToolCallResult
 
-        queue_start_time = time.time()
         async with _global_llm_semaphore:
             start_time = time.time()
-            semaphore_wait_time = start_time - queue_start_time
-            if semaphore_wait_time > 0.1:
-                logger.info(f"[LLM DEBUG] Semaphore wait: {semaphore_wait_time * 1000:.0f}ms (scope={scope})")
 
             # Handle Mock provider
             if self.provider == "mock":
@@ -655,15 +613,7 @@ class LLMProvider:
 
             for attempt in range(max_retries + 1):
                 try:
-                    api_call_start = time.time()
-                    input_chars = sum(len(str(m.get("content", ""))) for m in messages)
-                    logger.info(
-                        f"[LLM DEBUG] Sending tool request to {self.provider}/{self.model} "
-                        f"(tools={len(tools)}, scope={scope}, input={input_chars}c)"
-                    )
-
                     response = await self._client.chat.completions.create(**call_params)
-                    api_call_ms = int((time.time() - api_call_start) * 1000)
 
                     message = response.choices[0].message
                     finish_reason = response.choices[0].finish_reason
@@ -679,10 +629,6 @@ class LLMProvider:
                             tool_calls.append(LLMToolCall(id=tc.id, name=tc.function.name, arguments=args))
 
                     content = message.content
-                    logger.info(
-                        f"[LLM DEBUG] Received tool response in {api_call_ms}ms "
-                        f"(finish={finish_reason}, tool_calls={len(tool_calls)}, content={len(content or '')}c)"
-                    )
 
                     # Record metrics
                     duration = time.time() - start_time
@@ -706,7 +652,6 @@ class LLMProvider:
                 except APIConnectionError as e:
                     last_exception = e
                     if attempt < max_retries:
-                        logger.warning(f"[LLM DEBUG] Tool call connection error, retrying: {str(e)[:200]}")
                         await asyncio.sleep(min(initial_backoff * (2**attempt), max_backoff))
                         continue
                     raise
@@ -716,13 +661,11 @@ class LLMProvider:
                         raise
                     last_exception = e
                     if attempt < max_retries:
-                        logger.warning(f"[LLM DEBUG] Tool call API error (HTTP {e.status_code}): {str(e)[:200]}")
                         await asyncio.sleep(min(initial_backoff * (2**attempt), max_backoff))
                         continue
                     raise
 
-                except Exception as e:
-                    logger.error(f"[LLM DEBUG] Unexpected tool call error: {type(e).__name__}: {str(e)[:300]}")
+                except Exception:
                     raise
 
             if last_exception:

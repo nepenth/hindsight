@@ -30,6 +30,8 @@ async def tool_lookup(
     conn: "Connection",
     bank_id: str,
     model_id: str | None = None,
+    tags: list[str] | None = None,
+    tags_match: str = "any",
 ) -> dict[str, Any]:
     """
     List or get mental models.
@@ -38,6 +40,8 @@ async def tool_lookup(
         conn: Database connection
         bank_id: Bank identifier
         model_id: Optional specific model ID to get (if None, lists all)
+        tags: Optional tags to filter models (when listing)
+        tags_match: How to match tags - "any" (OR), "all" (AND)
 
     Returns:
         Dict with either a list of models or a single model's details
@@ -89,17 +93,44 @@ async def tool_lookup(
             }
         return {"found": False, "model_id": model_id}
     else:
-        # List all mental models (compact: id, name, description only)
+        # List mental models (compact: id, name, description only)
         # Full observations are retrieved via get_mental_model(model_id)
-        rows = await conn.fetch(
-            """
-            SELECT id, subtype, name, description
-            FROM mental_models
-            WHERE bank_id = $1
-            ORDER BY last_updated DESC NULLS LAST, created_at DESC
-            """,
-            bank_id,
-        )
+        # Filter by tags if provided
+        if tags:
+            if tags_match == "all":
+                # All tags must match
+                rows = await conn.fetch(
+                    """
+                    SELECT id, subtype, name, description
+                    FROM mental_models
+                    WHERE bank_id = $1 AND tags @> $2::varchar[]
+                    ORDER BY last_updated DESC NULLS LAST, created_at DESC
+                    """,
+                    bank_id,
+                    tags,
+                )
+            else:
+                # Any tag matches (OR) - default
+                rows = await conn.fetch(
+                    """
+                    SELECT id, subtype, name, description
+                    FROM mental_models
+                    WHERE bank_id = $1 AND tags && $2::varchar[]
+                    ORDER BY last_updated DESC NULLS LAST, created_at DESC
+                    """,
+                    bank_id,
+                    tags,
+                )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT id, subtype, name, description
+                FROM mental_models
+                WHERE bank_id = $1
+                ORDER BY last_updated DESC NULLS LAST, created_at DESC
+                """,
+                bank_id,
+            )
 
         return {
             "count": len(rows),

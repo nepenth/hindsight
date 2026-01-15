@@ -49,12 +49,12 @@ def build_structural_derivation_prompt(mission: str, existing_models: list[dict]
     """Build the prompt for deriving structural models from a mission."""
     existing_section = ""
     if existing_models:
-        model_list = "\n".join([f"- {m['name']}: {m['description']}" for m in existing_models])
+        model_list = "\n".join([f"- id='{m['id']}' name='{m['name']}': {m['description']}" for m in existing_models])
         existing_section = f"""
 EXISTING STRUCTURAL MODELS:
 {model_list}
 
-Review these existing models. Include them in your output ONLY if they are still relevant.
+IMPORTANT: If keeping an existing model, you MUST return its EXACT 'id' value.
 Models not included in your output will be REMOVED.
 """
 
@@ -67,7 +67,8 @@ IMPORTANT CONSTRAINTS:
 - Only include models for SPECIFIC, CONCRETE things the agent needs to track
 - Each model must be DIRECTLY tied to achieving the mission
 - If the mission is simple, return 0 models (empty array is fine)
-- If existing models are provided, only include ones that are still relevant
+- If existing models are provided and you want to keep one, use its EXACT id
+- Do NOT create near-duplicates (e.g., don't create "topic-map" if "topic-connections" exists)
 
 GOOD examples (specific, actionable):
 - Mission: "Be a PM for engineering team" → "Team Members" (track who's on the team)
@@ -80,9 +81,10 @@ BAD examples (too generic, don't create these):
 - Generic role-based models not tied to the specific mission
 
 For each model:
-1. name: Short, specific name (e.g., "Team Members", "Sprint Goals")
-2. description: One line describing what to track
-3. initial_probes: 2-3 search queries to find relevant information
+1. id: Use EXACT existing id if keeping a model, or leave empty for new models
+2. name: Short, specific name (e.g., "Team Members", "Sprint Goals")
+3. description: One line describing what to track
+4. initial_probes: 2-3 search queries to find relevant information
 
 Return ONLY the models that should exist. Existing models not in your output will be deleted."""
 
@@ -96,9 +98,52 @@ Rules:
 - Only SPECIFIC, CONCRETE things - not generic categories
 - Each must DIRECTLY help achieve the mission
 - Empty array is valid if no models are truly needed
-- If existing models are shown, only include ones worth keeping
+- If existing models are shown and you want to keep one, return its EXACT id
+- Never create duplicates - if a similar model exists, keep the existing one
 
 Output JSON with 'templates' array (can be empty)."""
+
+
+def _normalize_id(text: str) -> str:
+    """Normalize a string to a canonical form for comparison.
+
+    Removes common suffixes, pluralization, and normalizes separators.
+    """
+    # Lowercase and normalize separators
+    normalized = text.lower().replace(" ", "-").replace("_", "-")
+
+    # Remove common suffixes that indicate the same concept
+    suffixes_to_remove = ["-map", "-list", "-overview", "-tracker", "-s"]
+    for suffix in suffixes_to_remove:
+        if normalized.endswith(suffix) and len(normalized) > len(suffix):
+            normalized = normalized[: -len(suffix)]
+
+    return normalized
+
+
+def _find_similar_existing_id(new_id: str, existing_models: list[dict]) -> str | None:
+    """Find an existing model ID that is similar to the new ID.
+
+    Returns the existing ID if a similar one is found, None otherwise.
+    """
+    if not existing_models:
+        return None
+
+    new_normalized = _normalize_id(new_id)
+
+    for model in existing_models:
+        existing_id = model.get("id", "")
+        existing_normalized = _normalize_id(existing_id)
+
+        # Check if one is a prefix of the other (normalized)
+        if new_normalized.startswith(existing_normalized) or existing_normalized.startswith(new_normalized):
+            return existing_id
+
+        # Check if they're the same when normalized
+        if new_normalized == existing_normalized:
+            return existing_id
+
+    return None
 
 
 async def derive_structural_models(
@@ -138,22 +183,46 @@ async def derive_structural_models(
     templates = result.templates
     logger.info(f"[STRUCTURAL] LLM returned {len(templates)} structural models")
 
-    # Generate stable IDs for templates
-    for template in templates:
-        if not template.id:
-            # Generate ID from name (lowercase, hyphenated)
-            template.id = template.name.lower().replace(" ", "-").replace("_", "-")
+    # Build set of existing IDs for quick lookup
+    existing_ids = {m["id"] for m in existing_models} if existing_models else set()
 
-    # Find existing models to remove (not in LLM output)
+    # Process templates: validate IDs, deduplicate, assign stable IDs
+    processed_templates: list[StructuralModelTemplate] = []
+    kept_existing_ids: set[str] = set()
+
+    for template in templates:
+        # If LLM returned an ID, check if it's a valid existing ID
+        if template.id and template.id in existing_ids:
+            # LLM is keeping an existing model
+            kept_existing_ids.add(template.id)
+            processed_templates.append(template)
+            logger.info(f"[STRUCTURAL] Keeping existing model: {template.id}")
+        else:
+            # New model or LLM didn't return a valid ID
+            # Generate ID from name
+            generated_id = template.name.lower().replace(" ", "-").replace("_", "-")
+
+            # Check for similar existing models to prevent near-duplicates
+            similar_id = _find_similar_existing_id(generated_id, existing_models)
+            if similar_id and similar_id not in kept_existing_ids:
+                # Use the existing similar model instead of creating a new one
+                logger.info(f"[STRUCTURAL] Detected near-duplicate: '{generated_id}' matches existing '{similar_id}'")
+                template.id = similar_id
+                kept_existing_ids.add(similar_id)
+            else:
+                template.id = generated_id
+
+            processed_templates.append(template)
+
+    # Find existing models to remove (not kept in LLM output)
     models_to_remove = []
     if existing_models:
-        returned_names = {t.name for t in templates}
         for model in existing_models:
-            if model["name"] not in returned_names:
-                logger.info(f"[STRUCTURAL] Marking '{model['name']}' for removal (not in LLM output)")
+            if model["id"] not in kept_existing_ids:
+                logger.info(f"[STRUCTURAL] Marking '{model['name']}' (id={model['id']}) for removal")
                 models_to_remove.append(model["id"])
 
     if models_to_remove:
         logger.info(f"[STRUCTURAL] {len(models_to_remove)} existing models will be removed")
 
-    return templates, models_to_remove
+    return processed_templates, models_to_remove

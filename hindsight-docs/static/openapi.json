@@ -1242,75 +1242,6 @@
         }
       }
     },
-    "/v1/default/banks/{bank_id}/research": {
-      "post": {
-        "tags": [
-          "Mental Models"
-        ],
-        "summary": "Research query",
-        "description": "Execute a research query against mental models. Returns a synthesized answer with sources. Optionally filter mental models by tags (includes untagged models).",
-        "operationId": "research",
-        "parameters": [
-          {
-            "name": "bank_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Bank Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResearchRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/default/banks/{bank_id}/documents": {
       "get": {
         "tags": [
@@ -2019,75 +1950,6 @@
         }
       }
     },
-    "/v1/default/banks/{bank_id}/mission": {
-      "put": {
-        "tags": [
-          "Banks"
-        ],
-        "summary": "Set memory bank mission",
-        "description": "Set the mission for this agent - who they are and what they're trying to accomplish.",
-        "operationId": "set_bank_mission",
-        "parameters": [
-          {
-            "name": "bank_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Bank Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetMissionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MissionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/default/banks/{bank_id}/background": {
       "post": {
         "tags": [
@@ -2166,6 +2028,73 @@
         "summary": "Create or update memory bank",
         "description": "Create a new agent or update existing agent with disposition and mission. Auto-fills missing fields with defaults.",
         "operationId": "create_or_update_bank",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBankRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankProfileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Banks"
+        ],
+        "summary": "Partial update memory bank",
+        "description": "Partially update an agent's profile. Only provided fields will be updated.",
+        "operationId": "update_bank",
         "parameters": [
           {
             "name": "bank_id",
@@ -2993,6 +2922,33 @@
             "project-x"
           ]
         }
+      },
+      "CreatedMentalModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Mental model ID"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Human-readable name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "What this model tracks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "title": "CreatedMentalModel",
+        "description": "A mental model created during reflection."
       },
       "DeleteDocumentResponse": {
         "properties": {
@@ -4009,23 +3965,6 @@
           ]
         }
       },
-      "MissionResponse": {
-        "properties": {
-          "mission": {
-            "type": "string",
-            "title": "Mission"
-          }
-        },
-        "type": "object",
-        "required": [
-          "mission"
-        ],
-        "title": "MissionResponse",
-        "description": "Response model for mission update.",
-        "example": {
-          "mission": "I am a PM helping my engineering team stay organized and ship quality code."
-        }
-      },
       "OperationResponse": {
         "properties": {
           "id": {
@@ -4076,7 +4015,6 @@
           "id",
           "task_type",
           "items_count",
-          "document_id",
           "created_at",
           "status",
           "error_message"
@@ -4085,7 +4023,6 @@
         "description": "Response model for a single async operation.",
         "example": {
           "created_at": "2024-01-15T10:30:00Z",
-          "document_id": "meeting-notes-2024",
           "id": "550e8400-e29b-41d4-a716-446655440000",
           "items_count": 5,
           "status": "pending",
@@ -4186,6 +4123,10 @@
             "type": "string",
             "title": "Bank Id"
           },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
           "operations": {
             "items": {
               "$ref": "#/components/schemas/OperationResponse"
@@ -4197,6 +4138,7 @@
         "type": "object",
         "required": [
           "bank_id",
+          "total",
           "operations"
         ],
         "title": "OperationsListResponse",
@@ -4207,11 +4149,11 @@
             {
               "created_at": "2024-01-15T10:30:00Z",
               "id": "550e8400-e29b-41d4-a716-446655440000",
-              "items_count": 5,
               "status": "pending",
               "task_type": "retain"
             }
-          ]
+          ],
+          "total": 150
         }
       },
       "RecallRequest": {
@@ -4233,7 +4175,7 @@
               }
             ],
             "title": "Types",
-            "description": "List of fact types to recall (defaults to all if not specified)"
+            "description": "List of fact types to recall: 'world', 'experience'. Defaults to both if not specified. Note: 'opinion' is accepted but ignored (opinions are excluded from recall)."
           },
           "budget": {
             "$ref": "#/components/schemas/Budget",
@@ -4580,6 +4522,29 @@
           "type": "world"
         }
       },
+      "ReflectBasedOn": {
+        "properties": {
+          "memories": {
+            "items": {
+              "$ref": "#/components/schemas/ReflectFact"
+            },
+            "type": "array",
+            "title": "Memories",
+            "description": "Memory facts used to generate the response"
+          },
+          "mental_models": {
+            "items": {
+              "$ref": "#/components/schemas/ReflectMentalModel"
+            },
+            "type": "array",
+            "title": "Mental Models",
+            "description": "Mental models accessed during reflection"
+          }
+        },
+        "type": "object",
+        "title": "ReflectBasedOn",
+        "description": "Evidence the response is based on: memories and mental models."
+      },
       "ReflectFact": {
         "properties": {
           "id": {
@@ -4876,12 +4841,15 @@
             "title": "Text"
           },
           "based_on": {
-            "items": {
-              "$ref": "#/components/schemas/ReflectFact"
-            },
-            "type": "array",
-            "title": "Based On",
-            "default": []
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReflectBasedOn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Evidence used to generate the response. Only present when include.facts is set."
           },
           "structured_output": {
             "anyOf": [
@@ -4907,50 +4875,24 @@
             ],
             "description": "Token usage metrics for LLM calls during reflection."
           },
-          "tool_calls": {
+          "trace": {
             "anyOf": [
               {
-                "items": {
-                  "$ref": "#/components/schemas/ReflectToolCall"
-                },
-                "type": "array"
+                "$ref": "#/components/schemas/ReflectTrace"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Tool Calls",
-            "description": "Trace of tool calls made during reflection. Only present when include.tool_calls is set."
+            "description": "Execution trace of tool and LLM calls. Only present when include.tool_calls is set."
           },
-          "llm_calls": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ReflectLLMCall"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Llm Calls",
-            "description": "Trace of LLM calls made during reflection. Only present when include.tool_calls is set."
-          },
-          "mental_models": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ReflectMentalModel"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mental Models",
-            "description": "Mental models accessed during reflection. Only present when include.facts is set."
+          "mental_models_created": {
+            "items": {
+              "$ref": "#/components/schemas/CreatedMentalModel"
+            },
+            "type": "array",
+            "title": "Mental Models Created",
+            "description": "Mental models created during this reflection (via the learn tool)."
           }
         },
         "type": "object",
@@ -4960,16 +4902,34 @@
         "title": "ReflectResponse",
         "description": "Response model for think endpoint.",
         "example": {
-          "based_on": [
+          "based_on": {
+            "memories": [
+              {
+                "id": "123",
+                "text": "AI is used in healthcare",
+                "type": "world"
+              },
+              {
+                "id": "456",
+                "text": "I discussed AI applications last week",
+                "type": "experience"
+              }
+            ],
+            "mental_models": [
+              {
+                "description": "Understanding of AI capabilities",
+                "id": "mm-1",
+                "name": "AI Technology",
+                "subtype": "structural",
+                "type": "concept"
+              }
+            ]
+          },
+          "mental_models_created": [
             {
-              "id": "123",
-              "text": "AI is used in healthcare",
-              "type": "world"
-            },
-            {
-              "id": "456",
-              "text": "I discussed AI applications last week",
-              "type": "experience"
+              "description": "Track AI-related decisions and plans",
+              "id": "mm-new-1",
+              "name": "AI Strategy"
             }
           ],
           "structured_output": {
@@ -4980,6 +4940,23 @@
             "summary": "AI is transformative"
           },
           "text": "Based on my understanding, AI is a transformative technology...",
+          "trace": {
+            "llm_calls": [
+              {
+                "duration_ms": 1200,
+                "scope": "agent_1"
+              }
+            ],
+            "tool_calls": [
+              {
+                "duration_ms": 150,
+                "input": {
+                  "query": "AI"
+                },
+                "tool": "recall"
+              }
+            ]
+          },
           "usage": {
             "input_tokens": 1500,
             "output_tokens": 500,
@@ -5017,6 +4994,12 @@
             "type": "integer",
             "title": "Duration Ms",
             "description": "Execution time in milliseconds"
+          },
+          "iteration": {
+            "type": "integer",
+            "title": "Iteration",
+            "description": "Iteration number (1-based) when this tool was called",
+            "default": 0
           }
         },
         "type": "object",
@@ -5027,6 +5010,29 @@
         ],
         "title": "ReflectToolCall",
         "description": "A tool call made during reflect agent execution."
+      },
+      "ReflectTrace": {
+        "properties": {
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ReflectToolCall"
+            },
+            "type": "array",
+            "title": "Tool Calls",
+            "description": "Tool calls made during reflection"
+          },
+          "llm_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ReflectLLMCall"
+            },
+            "type": "array",
+            "title": "Llm Calls",
+            "description": "LLM calls made during reflection"
+          }
+        },
+        "type": "object",
+        "title": "ReflectTrace",
+        "description": "Execution trace of LLM and tool calls during reflection."
       },
       "RefreshMentalModelsRequest": {
         "properties": {
@@ -5072,106 +5078,6 @@
           "tags": [
             "project-x"
           ]
-        }
-      },
-      "ResearchRequest": {
-        "properties": {
-          "query": {
-            "type": "string",
-            "title": "Query",
-            "description": "The research question to answer"
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags",
-            "description": "Filter mental models by tags (includes untagged models)"
-          },
-          "tags_match": {
-            "type": "string",
-            "enum": [
-              "any",
-              "all",
-              "exact"
-            ],
-            "title": "Tags Match",
-            "description": "How to match tags: 'any' (OR), 'all' (AND), or 'exact'",
-            "default": "any"
-          }
-        },
-        "type": "object",
-        "required": [
-          "query"
-        ],
-        "title": "ResearchRequest",
-        "description": "Request model for research endpoint.",
-        "example": {
-          "query": "Who should handle the database migration task?",
-          "tags": [
-            "project-x"
-          ]
-        }
-      },
-      "ResearchResponse": {
-        "properties": {
-          "answer": {
-            "type": "string",
-            "title": "Answer"
-          },
-          "mental_models_used": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Mental Models Used",
-            "default": []
-          },
-          "facts_used": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Facts Used",
-            "default": []
-          },
-          "question_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Question Type"
-          }
-        },
-        "type": "object",
-        "required": [
-          "answer"
-        ],
-        "title": "ResearchResponse",
-        "description": "Response model for research endpoint.",
-        "example": {
-          "answer": "Based on the team structure, Tom is the best fit...",
-          "facts_used": [
-            "fact-id-1",
-            "fact-id-2"
-          ],
-          "mental_models_used": [
-            "team-structure",
-            "entity-abc123"
-          ],
-          "question_type": "WHO"
         }
       },
       "RetainRequest": {
@@ -5293,24 +5199,6 @@
             "output_tokens": 100,
             "total_tokens": 600
           }
-        }
-      },
-      "SetMissionRequest": {
-        "properties": {
-          "content": {
-            "type": "string",
-            "title": "Content",
-            "description": "The mission content - who you are and what you're trying to accomplish"
-          }
-        },
-        "type": "object",
-        "required": [
-          "content"
-        ],
-        "title": "SetMissionRequest",
-        "description": "Request model for setting/updating the agent's mission.",
-        "example": {
-          "content": "I am a PM helping my engineering team stay organized"
         }
       },
       "TagItem": {

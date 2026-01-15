@@ -255,8 +255,8 @@ export class ControlPlaneClient {
    * Set bank mission
    */
   async setBankMission(bankId: string, mission: string) {
-    return this.fetchApi(`/api/banks/${bankId}/mission`, {
-      method: "PUT",
+    return this.fetchApi(`/api/banks/${bankId}`, {
+      method: "PATCH",
       body: JSON.stringify({ mission }),
     });
   }
@@ -272,10 +272,10 @@ export class ControlPlaneClient {
         subtype: string;
         name: string;
         description: string;
-        summary: string | null;
+        observations?: Array<{ title: string; text: string; based_on: string[] }>;
         entity_id: string | null;
-        source_facts: string[];
         links: string[];
+        tags?: string[];
         last_updated: string | null;
         created_at: string;
       }>;
@@ -352,10 +352,10 @@ export class ControlPlaneClient {
       subtype: string;
       name: string;
       description: string;
-      summary: string | null;
+      observations?: Array<{ title: string; text: string; based_on: string[] }>;
       entity_id: string | null;
-      source_facts: string[];
       links: string[];
+      tags?: string[];
       last_updated: string | null;
       created_at: string;
     }>(`/api/banks/${bankId}/mental-models`, {

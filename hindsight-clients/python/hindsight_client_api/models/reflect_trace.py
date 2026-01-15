@@ -17,17 +17,20 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictStr
-from typing import Any, ClassVar, Dict, List
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, ClassVar, Dict, List, Optional
+from hindsight_client_api.models.reflect_llm_call import ReflectLLMCall
+from hindsight_client_api.models.reflect_tool_call import ReflectToolCall
 from typing import Optional, Set
 from typing_extensions import Self
 
-class MissionResponse(BaseModel):
+class ReflectTrace(BaseModel):
     """
-    Response model for mission update.
+    Execution trace of LLM and tool calls during reflection.
     """ # noqa: E501
-    mission: StrictStr
-    __properties: ClassVar[List[str]] = ["mission"]
+    tool_calls: Optional[List[ReflectToolCall]] = Field(default=None, description="Tool calls made during reflection")
+    llm_calls: Optional[List[ReflectLLMCall]] = Field(default=None, description="LLM calls made during reflection")
+    __properties: ClassVar[List[str]] = ["tool_calls", "llm_calls"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -47,7 +50,7 @@ class MissionResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of MissionResponse from a JSON string"""
+        """Create an instance of ReflectTrace from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -68,11 +71,25 @@ class MissionResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of each item in tool_calls (list)
+        _items = []
+        if self.tool_calls:
+            for _item_tool_calls in self.tool_calls:
+                if _item_tool_calls:
+                    _items.append(_item_tool_calls.to_dict())
+            _dict['tool_calls'] = _items
+        # override the default output from pydantic by calling `to_dict()` of each item in llm_calls (list)
+        _items = []
+        if self.llm_calls:
+            for _item_llm_calls in self.llm_calls:
+                if _item_llm_calls:
+                    _items.append(_item_llm_calls.to_dict())
+            _dict['llm_calls'] = _items
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of MissionResponse from a dict"""
+        """Create an instance of ReflectTrace from a dict"""
         if obj is None:
             return None
 
@@ -80,7 +97,8 @@ class MissionResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "mission": obj.get("mission")
+            "tool_calls": [ReflectToolCall.from_dict(_item) for _item in obj["tool_calls"]] if obj.get("tool_calls") is not None else None,
+            "llm_calls": [ReflectLLMCall.from_dict(_item) for _item in obj["llm_calls"]] if obj.get("llm_calls") is not None else None
         })
         return _obj
 

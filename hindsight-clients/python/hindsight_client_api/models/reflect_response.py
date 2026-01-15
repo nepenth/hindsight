@@ -19,10 +19,8 @@ import json
 
 from pydantic import BaseModel, ConfigDict, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
-from hindsight_client_api.models.reflect_fact import ReflectFact
-from hindsight_client_api.models.reflect_llm_call import ReflectLLMCall
-from hindsight_client_api.models.reflect_mental_model import ReflectMentalModel
-from hindsight_client_api.models.reflect_tool_call import ReflectToolCall
+from hindsight_client_api.models.reflect_based_on import ReflectBasedOn
+from hindsight_client_api.models.reflect_trace import ReflectTrace
 from hindsight_client_api.models.token_usage import TokenUsage
 from typing import Optional, Set
 from typing_extensions import Self
@@ -32,13 +30,11 @@ class ReflectResponse(BaseModel):
     Response model for think endpoint.
     """ # noqa: E501
     text: StrictStr
-    based_on: Optional[List[ReflectFact]] = None
+    based_on: Optional[ReflectBasedOn] = None
     structured_output: Optional[Dict[str, Any]] = None
     usage: Optional[TokenUsage] = None
-    tool_calls: Optional[List[ReflectToolCall]] = None
-    llm_calls: Optional[List[ReflectLLMCall]] = None
-    mental_models: Optional[List[ReflectMentalModel]] = None
-    __properties: ClassVar[List[str]] = ["text", "based_on", "structured_output", "usage", "tool_calls", "llm_calls", "mental_models"]
+    trace: Optional[ReflectTrace] = None
+    __properties: ClassVar[List[str]] = ["text", "based_on", "structured_output", "usage", "trace"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -79,37 +75,20 @@ class ReflectResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of each item in based_on (list)
-        _items = []
+        # override the default output from pydantic by calling `to_dict()` of based_on
         if self.based_on:
-            for _item_based_on in self.based_on:
-                if _item_based_on:
-                    _items.append(_item_based_on.to_dict())
-            _dict['based_on'] = _items
+            _dict['based_on'] = self.based_on.to_dict()
         # override the default output from pydantic by calling `to_dict()` of usage
         if self.usage:
             _dict['usage'] = self.usage.to_dict()
-        # override the default output from pydantic by calling `to_dict()` of each item in tool_calls (list)
-        _items = []
-        if self.tool_calls:
-            for _item_tool_calls in self.tool_calls:
-                if _item_tool_calls:
-                    _items.append(_item_tool_calls.to_dict())
-            _dict['tool_calls'] = _items
-        # override the default output from pydantic by calling `to_dict()` of each item in llm_calls (list)
-        _items = []
-        if self.llm_calls:
-            for _item_llm_calls in self.llm_calls:
-                if _item_llm_calls:
-                    _items.append(_item_llm_calls.to_dict())
-            _dict['llm_calls'] = _items
-        # override the default output from pydantic by calling `to_dict()` of each item in mental_models (list)
-        _items = []
-        if self.mental_models:
-            for _item_mental_models in self.mental_models:
-                if _item_mental_models:
-                    _items.append(_item_mental_models.to_dict())
-            _dict['mental_models'] = _items
+        # override the default output from pydantic by calling `to_dict()` of trace
+        if self.trace:
+            _dict['trace'] = self.trace.to_dict()
+        # set to None if based_on (nullable) is None
+        # and model_fields_set contains the field
+        if self.based_on is None and "based_on" in self.model_fields_set:
+            _dict['based_on'] = None
+
         # set to None if structured_output (nullable) is None
         # and model_fields_set contains the field
         if self.structured_output is None and "structured_output" in self.model_fields_set:
@@ -120,20 +99,10 @@ class ReflectResponse(BaseModel):
         if self.usage is None and "usage" in self.model_fields_set:
             _dict['usage'] = None
 
-        # set to None if tool_calls (nullable) is None
+        # set to None if trace (nullable) is None
         # and model_fields_set contains the field
-        if self.tool_calls is None and "tool_calls" in self.model_fields_set:
-            _dict['tool_calls'] = None
-
-        # set to None if llm_calls (nullable) is None
-        # and model_fields_set contains the field
-        if self.llm_calls is None and "llm_calls" in self.model_fields_set:
-            _dict['llm_calls'] = None
-
-        # set to None if mental_models (nullable) is None
-        # and model_fields_set contains the field
-        if self.mental_models is None and "mental_models" in self.model_fields_set:
-            _dict['mental_models'] = None
+        if self.trace is None and "trace" in self.model_fields_set:
+            _dict['trace'] = None
 
         return _dict
 
@@ -148,12 +117,10 @@ class ReflectResponse(BaseModel):
 
         _obj = cls.model_validate({
             "text": obj.get("text"),
-            "based_on": [ReflectFact.from_dict(_item) for _item in obj["based_on"]] if obj.get("based_on") is not None else None,
+            "based_on": ReflectBasedOn.from_dict(obj["based_on"]) if obj.get("based_on") is not None else None,
             "structured_output": obj.get("structured_output"),
             "usage": TokenUsage.from_dict(obj["usage"]) if obj.get("usage") is not None else None,
-            "tool_calls": [ReflectToolCall.from_dict(_item) for _item in obj["tool_calls"]] if obj.get("tool_calls") is not None else None,
-            "llm_calls": [ReflectLLMCall.from_dict(_item) for _item in obj["llm_calls"]] if obj.get("llm_calls") is not None else None,
-            "mental_models": [ReflectMentalModel.from_dict(_item) for _item in obj["mental_models"]] if obj.get("mental_models") is not None else None
+            "trace": ReflectTrace.from_dict(obj["trace"]) if obj.get("trace") is not None else None
         })
         return _obj
 

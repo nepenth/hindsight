@@ -100,12 +100,12 @@ import type {
   RetainMemoriesData,
   RetainMemoriesErrors,
   RetainMemoriesResponses,
-  SetBankMissionData,
-  SetBankMissionErrors,
-  SetBankMissionResponses,
+  UpdateBankData,
   UpdateBankDispositionData,
   UpdateBankDispositionErrors,
   UpdateBankDispositionResponses,
+  UpdateBankErrors,
+  UpdateBankResponses,
 } from "./types.gen";
 
 export type Options<
@@ -618,27 +618,6 @@ export const updateBankDisposition = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Set memory bank mission
- *
- * Set the mission for this agent - who they are and what they're trying to accomplish.
- */
-export const setBankMission = <ThrowOnError extends boolean = false>(
-  options: Options<SetBankMissionData, ThrowOnError>,
-) =>
-  (options.client ?? client).put<
-    SetBankMissionResponses,
-    SetBankMissionErrors,
-    ThrowOnError
-  >({
-    url: "/v1/default/banks/{bank_id}/mission",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-/**
  * Add/merge memory bank background (deprecated)
  *
  * Deprecated: Use PUT /mission instead. This endpoint now updates the mission field.
@@ -674,6 +653,27 @@ export const deleteBank = <ThrowOnError extends boolean = false>(
     DeleteBankErrors,
     ThrowOnError
   >({ url: "/v1/default/banks/{bank_id}", ...options });
+
+/**
+ * Partial update memory bank
+ *
+ * Partially update an agent's profile. Only provided fields will be updated.
+ */
+export const updateBank = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateBankData, ThrowOnError>,
+) =>
+  (options.client ?? client).patch<
+    UpdateBankResponses,
+    UpdateBankErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
 
 /**
  * Create or update memory bank

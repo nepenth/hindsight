@@ -543,6 +543,7 @@ class ReflectToolCall(BaseModel):
         default=None, description="Tool output (only included when include.tool_calls.output is true)"
     )
     duration_ms: int = Field(description="Execution time in milliseconds")
+    iteration: int = Field(default=0, description="Iteration number (1-based) when this tool was called")
 
 
 class ReflectLLMCall(BaseModel):
@@ -563,6 +564,30 @@ class ReflectMentalModel(BaseModel):
     summary: str | None = Field(default=None, description="Full summary (when looked up in detail)")
 
 
+class ReflectBasedOn(BaseModel):
+    """Evidence the response is based on: memories and mental models."""
+
+    memories: list[ReflectFact] = Field(default_factory=list, description="Memory facts used to generate the response")
+    mental_models: list[ReflectMentalModel] = Field(
+        default_factory=list, description="Mental models accessed during reflection"
+    )
+
+
+class ReflectTrace(BaseModel):
+    """Execution trace of LLM and tool calls during reflection."""
+
+    tool_calls: list[ReflectToolCall] = Field(default_factory=list, description="Tool calls made during reflection")
+    llm_calls: list[ReflectLLMCall] = Field(default_factory=list, description="LLM calls made during reflection")
+
+
+class CreatedMentalModel(BaseModel):
+    """A mental model created during reflection."""
+
+    id: str = Field(description="Mental model ID")
+    name: str = Field(description="Human-readable name")
+    description: str = Field(description="What this model tracks")
+
+
 class ReflectResponse(BaseModel):
     """Response model for think endpoint."""
 
@@ -570,21 +595,42 @@ class ReflectResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "text": "Based on my understanding, AI is a transformative technology...",
-                "based_on": [
-                    {"id": "123", "text": "AI is used in healthcare", "type": "world"},
-                    {"id": "456", "text": "I discussed AI applications last week", "type": "experience"},
-                ],
+                "based_on": {
+                    "memories": [
+                        {"id": "123", "text": "AI is used in healthcare", "type": "world"},
+                        {"id": "456", "text": "I discussed AI applications last week", "type": "experience"},
+                    ],
+                    "mental_models": [
+                        {
+                            "id": "mm-1",
+                            "name": "AI Technology",
+                            "type": "concept",
+                            "subtype": "structural",
+                            "description": "Understanding of AI capabilities",
+                        }
+                    ],
+                },
                 "structured_output": {
                     "summary": "AI is transformative",
                     "key_points": ["Used in healthcare", "Discussed recently"],
                 },
                 "usage": {"input_tokens": 1500, "output_tokens": 500, "total_tokens": 2000},
+                "trace": {
+                    "tool_calls": [{"tool": "recall", "input": {"query": "AI"}, "duration_ms": 150}],
+                    "llm_calls": [{"scope": "agent_1", "duration_ms": 1200}],
+                },
+                "mental_models_created": [
+                    {"id": "mm-new-1", "name": "AI Strategy", "description": "Track AI-related decisions and plans"}
+                ],
             }
         }
     )
 
     text: str
-    based_on: list[ReflectFact] = []  # Facts used to generate the response
+    based_on: ReflectBasedOn | None = Field(
+        default=None,
+        description="Evidence used to generate the response. Only present when include.facts is set.",
+    )
     structured_output: dict | None = Field(
         default=None,
         description="Structured output parsed according to the request's response_schema. Only present when response_schema was provided in the request.",
@@ -593,17 +639,13 @@ class ReflectResponse(BaseModel):
         default=None,
         description="Token usage metrics for LLM calls during reflection.",
     )
-    tool_calls: list[ReflectToolCall] | None = Field(
+    trace: ReflectTrace | None = Field(
         default=None,
-        description="Trace of tool calls made during reflection. Only present when include.tool_calls is set.",
+        description="Execution trace of tool and LLM calls. Only present when include.tool_calls is set.",
     )
-    llm_calls: list[ReflectLLMCall] | None = Field(
-        default=None,
-        description="Trace of LLM calls made during reflection. Only present when include.tool_calls is set.",
-    )
-    mental_models: list[ReflectMentalModel] | None = Field(
-        default=None,
-        description="Mental models accessed during reflection. Only present when include.facts is set.",
+    mental_models_created: list[CreatedMentalModel] = Field(
+        default_factory=list,
+        description="Mental models created during this reflection (via the learn tool).",
     )
 
 
@@ -1083,42 +1125,6 @@ class CreateMentalModelRequest(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Tags for scoped visibility")
 
 
-class ResearchRequest(BaseModel):
-    """Request model for research endpoint."""
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {"query": "Who should handle the database migration task?", "tags": ["project-x"]}
-        }
-    )
-
-    query: str = Field(description="The research question to answer")
-    tags: list[str] | None = Field(default=None, description="Filter mental models by tags (includes untagged models)")
-    tags_match: Literal["any", "all", "exact"] = Field(
-        default="any", description="How to match tags: 'any' (OR), 'all' (AND), or 'exact'"
-    )
-
-
-class ResearchResponse(BaseModel):
-    """Response model for research endpoint."""
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "answer": "Based on the team structure, Tom is the best fit...",
-                "mental_models_used": ["team-structure", "entity-abc123"],
-                "facts_used": ["fact-id-1", "fact-id-2"],
-                "question_type": "WHO",
-            }
-        }
-    )
-
-    answer: str
-    mental_models_used: list[str] = []
-    facts_used: list[str] = []
-    question_type: str | None = None
-
-
 class OperationResponse(BaseModel):
     """Response model for a single async operation."""
 
@@ -1128,7 +1134,7 @@ class OperationResponse(BaseModel):
                 "id": "550e8400-e29b-41d4-a716-446655440000",
                 "task_type": "retain",
                 "items_count": 5,
-                "document_id": "meeting-notes-2024",
+                "document_id": None,
                 "created_at": "2024-01-15T10:30:00Z",
                 "status": "pending",
                 "error_message": None,
@@ -1139,7 +1145,7 @@ class OperationResponse(BaseModel):
     id: str
     task_type: str
     items_count: int
-    document_id: str | None
+    document_id: str | None = None
     created_at: str
     status: str
     error_message: str | None
@@ -1152,12 +1158,11 @@ class OperationsListResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "bank_id": "user123",
+                "total": 150,
                 "operations": [
                     {
                         "id": "550e8400-e29b-41d4-a716-446655440000",
                         "task_type": "retain",
-                        "items_count": 5,
-                        "document_id": None,
                         "created_at": "2024-01-15T10:30:00Z",
                         "status": "pending",
                         "error_message": None,
@@ -1168,6 +1173,7 @@ class OperationsListResponse(BaseModel):
     )
 
     bank_id: str
+    total: int
     operations: list[OperationResponse]
 
 
@@ -1714,12 +1720,13 @@ def _register_routes(app: FastAPI):
                     tags_match=request.tags_match,
                 )
 
-            # Convert core MemoryFact objects to API ReflectFact objects if facts are requested
-            based_on_facts = []
+            # Build based_on (memories + mental_models) if facts are requested
+            based_on_result: ReflectBasedOn | None = None
             if request.include.facts is not None:
+                memories = []
                 for fact_type, facts in core_result.based_on.items():
                     for fact in facts:
-                        based_on_facts.append(
+                        memories.append(
                             ReflectFact(
                                 id=fact.id,
                                 text=fact.text,
@@ -1729,29 +1736,7 @@ def _register_routes(app: FastAPI):
                                 occurred_end=fact.occurred_end,
                             )
                         )
-
-            # Convert tool trace and llm trace if tool_calls is requested
-            tool_calls_result: list[ReflectToolCall] | None = None
-            llm_calls_result: list[ReflectLLMCall] | None = None
-            if request.include.tool_calls is not None:
-                include_output = request.include.tool_calls.output
-                tool_calls_result = [
-                    ReflectToolCall(
-                        tool=tc.tool,
-                        input=tc.input,
-                        output=tc.output if include_output else None,
-                        duration_ms=tc.duration_ms,
-                    )
-                    for tc in core_result.tool_trace
-                ]
-                llm_calls_result = [
-                    ReflectLLMCall(scope=lc.scope, duration_ms=lc.duration_ms) for lc in core_result.llm_trace
-                ]
-
-            # Convert mental models if facts are requested
-            mental_models_result: list[ReflectMentalModel] | None = None
-            if request.include.facts is not None:
-                mental_models_result = [
+                mental_models = [
                     ReflectMentalModel(
                         id=mm.id,
                         name=mm.name,
@@ -1762,15 +1747,44 @@ def _register_routes(app: FastAPI):
                     )
                     for mm in core_result.mental_models
                 ]
+                based_on_result = ReflectBasedOn(memories=memories, mental_models=mental_models)
+
+            # Build trace (tool_calls + llm_calls) if tool_calls is requested
+            trace_result: ReflectTrace | None = None
+            if request.include.tool_calls is not None:
+                include_output = request.include.tool_calls.output
+                tool_calls = [
+                    ReflectToolCall(
+                        tool=tc.tool,
+                        input=tc.input,
+                        output=tc.output if include_output else None,
+                        duration_ms=tc.duration_ms,
+                        iteration=tc.iteration,
+                    )
+                    for tc in core_result.tool_trace
+                ]
+                llm_calls = [ReflectLLMCall(scope=lc.scope, duration_ms=lc.duration_ms) for lc in core_result.llm_trace]
+                trace_result = ReflectTrace(tool_calls=tool_calls, llm_calls=llm_calls)
+
+            # Build mental_models_created from tool trace (learn tool outputs)
+            created_models: list[CreatedMentalModel] = []
+            for tc in core_result.tool_trace:
+                if tc.tool == "learn" and isinstance(tc.output, dict) and tc.output.get("status") == "created":
+                    created_models.append(
+                        CreatedMentalModel(
+                            id=tc.output.get("model_id", ""),
+                            name=tc.input.get("name", ""),
+                            description=tc.input.get("description", ""),
+                        )
+                    )
 
             return ReflectResponse(
                 text=core_result.text,
-                based_on=based_on_facts,
+                based_on=based_on_result,
                 structured_output=core_result.structured_output,
                 usage=core_result.usage,
-                tool_calls=tool_calls_result,
-                llm_calls=llm_calls_result,
-                mental_models=mental_models_result,
+                trace=trace_result,
+                mental_models_created=created_models,
             )
 
         except OperationValidationError as e:
@@ -2249,40 +2263,6 @@ def _register_routes(app: FastAPI):
             logger.error(f"Error in POST /v1/default/banks/{bank_id}/mental-models/{model_id}/generate: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.post(
-        "/v1/default/banks/{bank_id}/research",
-        response_model=ResearchResponse,
-        summary="Research query",
-        description="Execute a research query against mental models. "
-        "Returns a synthesized answer with sources. "
-        "Optionally filter mental models by tags (includes untagged models).",
-        operation_id="research",
-        tags=["Mental Models"],
-    )
-    async def api_research(
-        bank_id: str,
-        request: ResearchRequest,
-        request_context: RequestContext = Depends(get_request_context),
-    ):
-        """Execute a research query."""
-        try:
-            result = await app.state.memory.research(
-                bank_id=bank_id,
-                query=request.query,
-                tags=request.tags,
-                tags_match=request.tags_match,
-                request_context=request_context,
-            )
-            return ResearchResponse(**result)
-        except (AuthenticationError, HTTPException):
-            raise
-        except Exception as e:
-            import traceback
-
-            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in POST /v1/default/banks/{bank_id}/research: {error_detail}")
-            raise HTTPException(status_code=500, detail=str(e))
-
     @app.get(
         "/v1/default/banks/{bank_id}/documents",
         response_model=ListDocumentsResponse,
@@ -2490,10 +2470,11 @@ def _register_routes(app: FastAPI):
     async def api_list_operations(bank_id: str, request_context: RequestContext = Depends(get_request_context)):
         """List all async operations (pending and failed) for a memory bank."""
         try:
-            operations = await app.state.memory.list_operations(bank_id, request_context=request_context)
+            result = await app.state.memory.list_operations(bank_id, request_context=request_context)
             return OperationsListResponse(
                 bank_id=bank_id,
-                operations=[OperationResponse(**op) for op in operations],
+                total=result["total"],
+                operations=[OperationResponse(**op) for op in result["operations"]],
             )
         except (AuthenticationError, HTTPException):
             raise
@@ -2644,30 +2625,6 @@ def _register_routes(app: FastAPI):
             logger.error(f"Error in /v1/default/banks/{bank_id}/profile: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.put(
-        "/v1/default/banks/{bank_id}/mission",
-        response_model=MissionResponse,
-        summary="Set memory bank mission",
-        description="Set the mission for this agent - who they are and what they're trying to accomplish.",
-        operation_id="set_bank_mission",
-        tags=["Banks"],
-    )
-    async def api_set_bank_mission(
-        bank_id: str, request: SetMissionRequest, request_context: RequestContext = Depends(get_request_context)
-    ):
-        """Set the agent's mission."""
-        try:
-            await app.state.memory.set_bank_mission(bank_id, request.content, request_context=request_context)
-            return MissionResponse(mission=request.content)
-        except (AuthenticationError, HTTPException):
-            raise
-        except Exception as e:
-            import traceback
-
-            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in /v1/default/banks/{bank_id}/mission: {error_detail}")
-            raise HTTPException(status_code=500, detail=str(e))
-
     @app.post(
         "/v1/default/banks/{bank_id}/background",
         response_model=BackgroundResponse,
@@ -2750,6 +2707,62 @@ def _register_routes(app: FastAPI):
 
             error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             logger.error(f"Error in /v1/default/banks/{bank_id}: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.patch(
+        "/v1/default/banks/{bank_id}",
+        response_model=BankProfileResponse,
+        summary="Partial update memory bank",
+        description="Partially update an agent's profile. Only provided fields will be updated.",
+        operation_id="update_bank",
+        tags=["Banks"],
+    )
+    async def api_update_bank(
+        bank_id: str, request: CreateBankRequest, request_context: RequestContext = Depends(get_request_context)
+    ):
+        """Partially update an agent's profile (name, mission, disposition)."""
+        try:
+            # Ensure bank exists
+            await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
+
+            # Update name and/or mission if provided
+            mission_value = request.mission or request.background
+            if request.name is not None or mission_value is not None:
+                await app.state.memory.update_bank(
+                    bank_id,
+                    name=request.name,
+                    mission=mission_value,
+                    request_context=request_context,
+                )
+
+            # Update disposition if provided
+            if request.disposition is not None:
+                await app.state.memory.update_bank_disposition(
+                    bank_id, request.disposition.model_dump(), request_context=request_context
+                )
+
+            # Get final profile
+            final_profile = await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
+            disposition_dict = (
+                final_profile["disposition"].model_dump()
+                if hasattr(final_profile["disposition"], "model_dump")
+                else dict(final_profile["disposition"])
+            )
+            mission = final_profile.get("mission") or ""
+            return BankProfileResponse(
+                bank_id=bank_id,
+                name=final_profile["name"],
+                disposition=DispositionTraits(**disposition_dict),
+                mission=mission,
+                background=mission,  # Backwards compat
+            )
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in PATCH /v1/default/banks/{bank_id}: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.delete(

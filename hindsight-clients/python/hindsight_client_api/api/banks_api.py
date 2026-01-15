@@ -25,8 +25,6 @@ from hindsight_client_api.models.bank_profile_response import BankProfileRespons
 from hindsight_client_api.models.bank_stats_response import BankStatsResponse
 from hindsight_client_api.models.create_bank_request import CreateBankRequest
 from hindsight_client_api.models.delete_response import DeleteResponse
-from hindsight_client_api.models.mission_response import MissionResponse
-from hindsight_client_api.models.set_mission_request import SetMissionRequest
 from hindsight_client_api.models.update_disposition_request import UpdateDispositionRequest
 
 from hindsight_client_api.api_client import ApiClient, RequestSerialized
@@ -1760,10 +1758,10 @@ class BanksApi:
 
 
     @validate_call
-    async def set_bank_mission(
+    async def update_bank(
         self,
         bank_id: StrictStr,
-        set_mission_request: SetMissionRequest,
+        create_bank_request: CreateBankRequest,
         authorization: Optional[StrictStr] = None,
         _request_timeout: Union[
             None,
@@ -1777,15 +1775,15 @@ class BanksApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> MissionResponse:
-        """Set memory bank mission
+    ) -> BankProfileResponse:
+        """Partial update memory bank
 
-        Set the mission for this agent - who they are and what they're trying to accomplish.
+        Partially update an agent's profile. Only provided fields will be updated.
 
         :param bank_id: (required)
         :type bank_id: str
-        :param set_mission_request: (required)
-        :type set_mission_request: SetMissionRequest
+        :param create_bank_request: (required)
+        :type create_bank_request: CreateBankRequest
         :param authorization:
         :type authorization: str
         :param _request_timeout: timeout setting for this request. If one
@@ -1810,9 +1808,9 @@ class BanksApi:
         :return: Returns the result object.
         """ # noqa: E501
 
-        _param = self._set_bank_mission_serialize(
+        _param = self._update_bank_serialize(
             bank_id=bank_id,
-            set_mission_request=set_mission_request,
+            create_bank_request=create_bank_request,
             authorization=authorization,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -1821,7 +1819,7 @@ class BanksApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "MissionResponse",
+            '200': "BankProfileResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -1836,10 +1834,10 @@ class BanksApi:
 
 
     @validate_call
-    async def set_bank_mission_with_http_info(
+    async def update_bank_with_http_info(
         self,
         bank_id: StrictStr,
-        set_mission_request: SetMissionRequest,
+        create_bank_request: CreateBankRequest,
         authorization: Optional[StrictStr] = None,
         _request_timeout: Union[
             None,
@@ -1853,15 +1851,15 @@ class BanksApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> ApiResponse[MissionResponse]:
-        """Set memory bank mission
+    ) -> ApiResponse[BankProfileResponse]:
+        """Partial update memory bank
 
-        Set the mission for this agent - who they are and what they're trying to accomplish.
+        Partially update an agent's profile. Only provided fields will be updated.
 
         :param bank_id: (required)
         :type bank_id: str
-        :param set_mission_request: (required)
-        :type set_mission_request: SetMissionRequest
+        :param create_bank_request: (required)
+        :type create_bank_request: CreateBankRequest
         :param authorization:
         :type authorization: str
         :param _request_timeout: timeout setting for this request. If one
@@ -1886,9 +1884,9 @@ class BanksApi:
         :return: Returns the result object.
         """ # noqa: E501
 
-        _param = self._set_bank_mission_serialize(
+        _param = self._update_bank_serialize(
             bank_id=bank_id,
-            set_mission_request=set_mission_request,
+            create_bank_request=create_bank_request,
             authorization=authorization,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -1897,7 +1895,7 @@ class BanksApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "MissionResponse",
+            '200': "BankProfileResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -1912,10 +1910,10 @@ class BanksApi:
 
 
     @validate_call
-    async def set_bank_mission_without_preload_content(
+    async def update_bank_without_preload_content(
         self,
         bank_id: StrictStr,
-        set_mission_request: SetMissionRequest,
+        create_bank_request: CreateBankRequest,
         authorization: Optional[StrictStr] = None,
         _request_timeout: Union[
             None,
@@ -1930,14 +1928,14 @@ class BanksApi:
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Set memory bank mission
+        """Partial update memory bank
 
-        Set the mission for this agent - who they are and what they're trying to accomplish.
+        Partially update an agent's profile. Only provided fields will be updated.
 
         :param bank_id: (required)
         :type bank_id: str
-        :param set_mission_request: (required)
-        :type set_mission_request: SetMissionRequest
+        :param create_bank_request: (required)
+        :type create_bank_request: CreateBankRequest
         :param authorization:
         :type authorization: str
         :param _request_timeout: timeout setting for this request. If one
@@ -1962,9 +1960,9 @@ class BanksApi:
         :return: Returns the result object.
         """ # noqa: E501
 
-        _param = self._set_bank_mission_serialize(
+        _param = self._update_bank_serialize(
             bank_id=bank_id,
-            set_mission_request=set_mission_request,
+            create_bank_request=create_bank_request,
             authorization=authorization,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -1973,7 +1971,7 @@ class BanksApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "MissionResponse",
+            '200': "BankProfileResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -1983,10 +1981,10 @@ class BanksApi:
         return response_data.response
 
 
-    def _set_bank_mission_serialize(
+    def _update_bank_serialize(
         self,
         bank_id,
-        set_mission_request,
+        create_bank_request,
         authorization,
         _request_auth,
         _content_type,
@@ -2017,8 +2015,8 @@ class BanksApi:
             _header_params['authorization'] = authorization
         # process the form parameters
         # process the body parameter
-        if set_mission_request is not None:
-            _body_params = set_mission_request
+        if create_bank_request is not None:
+            _body_params = create_bank_request
 
 
         # set the HTTP header `Accept`
@@ -2048,8 +2046,8 @@ class BanksApi:
         ]
 
         return self.api_client.param_serialize(
-            method='PUT',
-            resource_path='/v1/default/banks/{bank_id}/mission',
+            method='PATCH',
+            resource_path='/v1/default/banks/{bank_id}',
             path_params=_path_params,
             query_params=_query_params,
             header_params=_header_params,

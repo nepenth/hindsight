@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { lowLevelClient } from "@/lib/hindsight-client";
+import { sdk, lowLevelClient } from "@/lib/hindsight-client";
 
 export async function GET(
   request: Request,
@@ -16,13 +16,10 @@ export async function GET(
       return NextResponse.json({ error: "operation_id is required" }, { status: 400 });
     }
 
-    // Call the API endpoint directly since SDK may not be regenerated yet
-    const response = await lowLevelClient.GET(
-      "/v1/default/banks/{bank_id}/operations/{operation_id}",
-      {
-        params: { path: { bank_id: bankId, operation_id: operationId } },
-      }
-    );
+    const response = await sdk.getOperationStatus({
+      client: lowLevelClient,
+      path: { bank_id: bankId, operation_id: operationId },
+    });
 
     if (response.error) {
       console.error("API error getting operation status:", response.error);

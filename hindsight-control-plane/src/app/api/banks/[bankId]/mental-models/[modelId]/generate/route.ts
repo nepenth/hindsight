@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { lowLevelClient } from "@/lib/hindsight-client";
+import { sdk, lowLevelClient } from "@/lib/hindsight-client";
 
 export async function POST(
   request: Request,
@@ -16,13 +16,10 @@ export async function POST(
       return NextResponse.json({ error: "model_id is required" }, { status: 400 });
     }
 
-    // Call the API endpoint directly since SDK may not be regenerated yet
-    const response = await lowLevelClient.POST(
-      "/v1/default/banks/{bank_id}/mental-models/{model_id}/generate",
-      {
-        params: { path: { bank_id: bankId, model_id: modelId } },
-      }
-    );
+    const response = await sdk.generateMentalModel({
+      client: lowLevelClient,
+      path: { bank_id: bankId, model_id: modelId },
+    });
 
     if (response.error) {
       console.error("API error generating mental model:", response.error);
