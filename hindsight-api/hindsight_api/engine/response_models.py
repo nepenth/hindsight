@@ -252,7 +252,7 @@ class ReflectResult(BaseModel):
     )
     mental_models: list[MentalModelRef] = Field(
         default_factory=list,
-        description="Mental models accessed during reflection. Only present when include.facts is enabled.",
+        description="Mental models accessed during reflection, including directives (subtype='directive').",
     )
 
 

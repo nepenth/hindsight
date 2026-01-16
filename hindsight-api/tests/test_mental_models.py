@@ -812,8 +812,8 @@ class TestDirectives:
             description="Rules about mentioning competitors",
             subtype="directive",
             observations=[
-                {"title": "Never mention", "text": "Never mention competitor product names directly"},
-                {"title": "Redirect", "text": "If asked about competitors, redirect to our features"},
+                {"title": "Never mention", "content": "Never mention competitor product names directly"},
+                {"title": "Redirect", "content": "If asked about competitors, redirect to our features"},
             ],
             request_context=request_context,
         )
@@ -822,8 +822,8 @@ class TestDirectives:
         assert model["description"] == "Rules about mentioning competitors"
         assert model["subtype"] == "directive"
         assert len(model["observations"]) == 2
-        assert model["observations"][0]["title"] == "Never mention"
-        assert model["observations"][0]["content"] == "Never mention competitor product names directly"
+        assert model["observations"][0].title == "Never mention"
+        assert model["observations"][0].content == "Never mention competitor product names directly"
 
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
@@ -845,7 +845,7 @@ class TestDirectives:
             name="Test Directive",
             description="A test directive",
             subtype="directive",
-            observations=[{"title": "Rule", "text": "Follow this rule"}],
+            observations=[{"title": "Rule", "content": "Follow this rule"}],
             request_context=request_context,
         )
 
@@ -894,8 +894,8 @@ class TestDirectives:
             description="Rules for scheduling meetings",
             subtype="directive",
             observations=[
-                {"title": "No mornings", "text": "Never schedule meetings before noon"},
-                {"title": "Max duration", "text": "Meetings should be 30 minutes max"},
+                {"title": "No mornings", "content": "Never schedule meetings before noon"},
+                {"title": "Max duration", "content": "Meetings should be 30 minutes max"},
             ],
             request_context=request_context,
         )
@@ -910,8 +910,8 @@ class TestDirectives:
         assert retrieved is not None
         assert retrieved["subtype"] == "directive"
         assert len(retrieved["observations"]) == 2
-        assert retrieved["observations"][0]["title"] == "No mornings"
-        assert retrieved["observations"][1]["title"] == "Max duration"
+        assert retrieved["observations"][0].title == "No mornings"
+        assert retrieved["observations"][1].title == "Max duration"
 
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
@@ -941,7 +941,7 @@ class TestDirectives:
             name="Important Rule",
             description="A critical rule",
             subtype="directive",
-            observations=[{"title": "Rule 1", "text": "Always follow this rule"}],
+            observations=[{"title": "Rule 1", "content": "Always follow this rule"}],
             request_context=request_context,
         )
 
@@ -962,8 +962,8 @@ class TestDirectives:
         assert retrieved is not None
         assert retrieved["subtype"] == "directive"
         assert len(retrieved["observations"]) == 1
-        assert retrieved["observations"][0]["title"] == "Rule 1"
-        assert retrieved["observations"][0]["content"] == "Always follow this rule"
+        assert retrieved["observations"][0].title == "Rule 1"
+        assert retrieved["observations"][0].content == "Always follow this rule"
 
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
@@ -992,6 +992,82 @@ class TestDirectives:
         await memory.delete_bank(bank_id, request_context=request_context)
 
 
+class TestDirectivesInReflect:
+    """Test that directives are followed during reflect operations."""
+
+    async def test_reflect_follows_language_directive(self, memory: MemoryEngine, request_context):
+        """Test that reflect follows a directive to respond in a specific language."""
+        bank_id = f"test-directive-reflect-{uuid.uuid4().hex[:8]}"
+
+        # Ensure bank exists
+        await memory.get_bank_profile(bank_id, request_context=request_context)
+
+        # Add some content in English
+        await memory.retain_batch_async(
+            bank_id=bank_id,
+            contents=[
+                {"content": "Alice is a software engineer who works at Google."},
+                {"content": "Alice enjoys hiking on weekends and has been to Yosemite."},
+                {"content": "Alice is currently working on a machine learning project."},
+            ],
+            request_context=request_context,
+        )
+        await memory.wait_for_background_tasks()
+
+        # Create a directive to always respond in French
+        await memory.create_mental_model(
+            bank_id=bank_id,
+            name="Language Policy",
+            description="Rules about language usage",
+            subtype="directive",
+            observations=[
+                {
+                    "title": "French Only",
+                    "content": "ALWAYS respond in French language. Never respond in English.",
+                },
+            ],
+            request_context=request_context,
+        )
+
+        # Run reflect query
+        result = await memory.reflect_async(
+            bank_id=bank_id,
+            query="What does Alice do for work?",
+            request_context=request_context,
+        )
+
+        assert result.text is not None
+        assert len(result.text) > 0
+
+        # Check that the response contains French words/patterns
+        # Common French words that would appear when talking about someone's job
+        french_indicators = [
+            "elle",
+            "travaille",
+            "est",
+            "une",
+            "le",
+            "la",
+            "qui",
+            "chez",
+            "logiciel",
+            "ingénieur",
+            "ingénieure",
+            "développeur",
+            "développeuse",
+        ]
+        response_lower = result.text.lower()
+
+        # At least some French words should appear in the response
+        french_word_count = sum(1 for word in french_indicators if word in response_lower)
+        assert (
+            french_word_count >= 2
+        ), f"Expected French response, but got: {result.text[:200]}"
+
+        # Cleanup
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+
 class TestDirectivesPromptInjection:
     """Test that directives are properly injected into the system prompt."""
 
@@ -1010,8 +1086,8 @@ class TestDirectivesPromptInjection:
             {
                 "name": "Competitor Policy",
                 "observations": [
-                    {"title": "Never mention", "text": "Never mention competitor names"},
-                    {"title": "Redirect", "text": "Redirect to our features"},
+                    {"title": "Never mention", "content": "Never mention competitor names"},
+                    {"title": "Redirect", "content": "Redirect to our features"},
                 ],
             }
         ]
@@ -1047,7 +1123,7 @@ class TestDirectivesPromptInjection:
         directives = [
             {
                 "name": "Test Directive",
-                "observations": [{"title": "Rule", "text": "Follow this rule"}],
+                "observations": [{"title": "Rule", "content": "Follow this rule"}],
             }
         ]
 

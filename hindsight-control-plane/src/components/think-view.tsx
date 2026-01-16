@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, Info, Tag, Clock, Database, Brain } from "lucide-react";
+import { Sparkles, Info, Tag, Clock, Database, Brain, MessageSquare } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import JsonView from "react18-json-view";
 import "react18-json-view/src/style.css";
 
@@ -33,6 +34,49 @@ export function ThinkView() {
   const [loading, setLoading] = useState(false);
   const [tags, setTags] = useState("");
   const [tagsMatch, setTagsMatch] = useState<TagsMatch>("any");
+  const [feedback, setFeedback] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+
+  const FEEDBACK_DIRECTIVE_NAME = "General Feedback";
+
+  const submitFeedback = async () => {
+    if (!currentBank || !feedback.trim()) return;
+
+    setFeedbackSubmitting(true);
+    try {
+      // Find existing "General Feedback" directive
+      const directives = await client.listDirectives(currentBank);
+      const existingDirective = directives.items?.find((d) => d.name === FEEDBACK_DIRECTIVE_NAME);
+
+      if (existingDirective) {
+        // Append to existing directive description
+        const newDescription = existingDirective.description
+          ? `${existingDirective.description}\n${feedback.trim()}`
+          : feedback.trim();
+        await client.updateMentalModel(currentBank, existingDirective.id, {
+          description: newDescription,
+        });
+      } else {
+        // Create new directive with observation
+        await client.createMentalModel(currentBank, {
+          name: FEEDBACK_DIRECTIVE_NAME,
+          description: "User feedback for improving responses",
+          subtype: "directive",
+          observations: [{ title: "Feedback", content: feedback.trim() }],
+        });
+      }
+
+      setFeedback("");
+      setFeedbackSubmitted(true);
+      setTimeout(() => setFeedbackSubmitted(false), 3000);
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      alert("Error submitting feedback: " + (error as Error).message);
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
 
   const runReflect = async () => {
     if (!currentBank || !query) return;
@@ -288,6 +332,50 @@ export function ThinkView() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Feedback */}
+              <Card className="border-blue-200 dark:border-blue-800">
+                <CardHeader className="py-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <MessageSquare className="w-4 h-4" />
+                    Provide Feedback
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Your feedback will be saved as a directive to improve future responses
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {feedbackSubmitted ? (
+                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                      <span className="text-lg">&#10003;</span>
+                      <span className="text-sm font-medium">
+                        Feedback saved to {FEEDBACK_DIRECTIVE_NAME}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex gap-3">
+                      <Textarea
+                        value={feedback}
+                        onChange={(e) => setFeedback(e.target.value)}
+                        placeholder="Enter your feedback here..."
+                        className="flex-1 min-h-[60px] resize-none"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                            submitFeedback();
+                          }
+                        }}
+                      />
+                      <Button
+                        onClick={submitFeedback}
+                        disabled={feedbackSubmitting || !feedback.trim()}
+                        className="self-end"
+                      >
+                        {feedbackSubmitting ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
 

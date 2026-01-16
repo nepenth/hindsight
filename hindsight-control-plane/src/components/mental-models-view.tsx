@@ -50,6 +50,9 @@ import {
   ExternalLink,
   AlertTriangle,
   Trash2,
+  History,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import { MemoryDetailModal } from "./memory-detail-modal";
 
@@ -81,6 +84,22 @@ interface MentalModelFreshness {
   memories_since_refresh: number;
 }
 
+interface MentalModelVersion {
+  version: number;
+  created_at: string | null;
+  observation_count: number;
+}
+
+interface VersionObservation {
+  title: string;
+  content: string;
+  evidence: ObservationEvidence[];
+  created_at: string;
+  trend: string;
+  evidence_count: number;
+  evidence_span: { from: string | null; to: string | null };
+}
+
 interface MentalModel {
   id: string;
   bank_id: string;
@@ -92,7 +111,7 @@ interface MentalModel {
   links: string[];
   tags?: string[];
   last_updated: string | null;
-  last_refresh_at: string | null;
+  last_refresh_at?: string | null;
   freshness?: MentalModelFreshness | null;
   created_at: string;
 }
@@ -132,6 +151,11 @@ export function MentalModelsView() {
 
   // Delete state
   const [deletingModel, setDeletingModel] = useState<string | null>(null);
+
+  // Edit state
+  const [editingModel, setEditingModel] = useState<MentalModel | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "" });
+  const [saving, setSaving] = useState(false);
 
   // Auto-refresh interval (5 seconds)
   const AUTO_REFRESH_INTERVAL = 5000;
@@ -304,6 +328,30 @@ export function MentalModelsView() {
       alert("Error deleting mental model: " + (error as Error).message);
     } finally {
       setDeletingModel(null);
+    }
+  };
+
+  const handleStartEdit = (model: MentalModel) => {
+    setEditingModel(model);
+    setEditForm({ name: model.name, description: model.description });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!currentBank || !editingModel) return;
+
+    setSaving(true);
+    try {
+      await client.updateMentalModel(currentBank, editingModel.id, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+      });
+      setEditingModel(null);
+      await loadMentalModels();
+    } catch (error) {
+      console.error("Error updating mental model:", error);
+      alert("Error updating mental model: " + (error as Error).message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -668,6 +716,69 @@ export function MentalModelsView() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Mental Model Dialog */}
+      <Dialog open={!!editingModel} onOpenChange={(open) => !open && setEditingModel(null)}>
+        <DialogContent
+          className={`sm:max-w-lg border-2 ${editingModel?.subtype === "directive" ? "border-rose-500" : "border-primary"}`}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {editingModel?.subtype === "directive" ? (
+                <>
+                  <AlertTriangle className="w-5 h-5 text-rose-500" />
+                  Edit Directive
+                </>
+              ) : (
+                <>
+                  <Pin className="w-5 h-5 text-primary" />
+                  Edit Pinned Model
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {editingModel?.subtype === "directive"
+                ? "Update the directive name and rule text."
+                : "Update the pinned model name and description."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Name</label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                {editingModel?.subtype === "directive" ? "Rule" : "Description"}
+              </label>
+              <Textarea
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                className={editingModel?.subtype === "directive" ? "min-h-[120px]" : "min-h-[80px]"}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingModel(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={saving || !editForm.name.trim() || !editForm.description.trim()}
+              className={
+                editingModel?.subtype === "directive" ? "bg-rose-500 hover:bg-rose-600" : ""
+              }
+            >
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Loading state */}
       {loading ? (
         <div className="text-center py-12">
@@ -735,11 +846,14 @@ export function MentalModelsView() {
                       </TableCell>
                       <TableCell className="py-2 text-xs">
                         <div className="flex items-center gap-2">
-                          {model.freshness && !model.freshness.is_up_to_date && (
-                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px]">
-                              {model.freshness.memories_since_refresh} new
-                            </span>
-                          )}
+                          {model.freshness &&
+                            !model.freshness.is_up_to_date &&
+                            model.freshness.memories_since_refresh > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                {model.freshness.memories_since_refresh} new
+                              </span>
+                            )}
                           <span className="text-muted-foreground">
                             {model.last_refresh_at
                               ? new Date(model.last_refresh_at).toLocaleDateString("en-US", {
@@ -846,6 +960,7 @@ export function MentalModelsView() {
                         model={model}
                         selected={selectedModel?.id === model.id}
                         onClick={() => setSelectedModel(model)}
+                        onEdit={() => handleStartEdit(model)}
                         onDelete={() => handleDeleteModel(model.id)}
                         deleting={deletingModel === model.id}
                       />
@@ -918,6 +1033,7 @@ export function MentalModelsView() {
                         model={model}
                         selected={selectedModel?.id === model.id}
                         onClick={() => setSelectedModel(model)}
+                        onEdit={() => handleStartEdit(model)}
                         onDelete={() => handleDeleteModel(model.id)}
                         deleting={deletingModel === model.id}
                       />
@@ -993,11 +1109,14 @@ function ModelListCard({
               <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
               memories
             </span>
-            {model.freshness && !model.freshness.is_up_to_date && (
-              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                {model.freshness.memories_since_refresh} new
-              </span>
-            )}
+            {model.freshness &&
+              !model.freshness.is_up_to_date &&
+              model.freshness.memories_since_refresh > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  {model.freshness.memories_since_refresh} new
+                </span>
+              )}
             {model.last_refresh_at && (
               <span>
                 {new Date(model.last_refresh_at).toLocaleDateString("en-US", {
@@ -1026,17 +1145,19 @@ function ModelListCard({
   );
 }
 
-// Card for pinned models with delete button
+// Card for pinned models with edit and delete buttons
 function PinnedModelCard({
   model,
   selected,
   onClick,
+  onEdit,
   onDelete,
   deleting,
 }: {
   model: MentalModel;
   selected: boolean;
   onClick: () => void;
+  onEdit: () => void;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -1066,11 +1187,14 @@ function PinnedModelCard({
                 <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
                 memories
               </span>
-              {model.freshness && !model.freshness.is_up_to_date && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  {model.freshness.memories_since_refresh} new
-                </span>
-              )}
+              {model.freshness &&
+                !model.freshness.is_up_to_date &&
+                model.freshness.memories_since_refresh > 0 && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    {model.freshness.memories_since_refresh} new
+                  </span>
+                )}
               {model.last_refresh_at && (
                 <span>
                   {new Date(model.last_refresh_at).toLocaleDateString("en-US", {
@@ -1081,39 +1205,56 @@ function PinnedModelCard({
               )}
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Trash2 className="w-4 h-4" />
-            )}
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              title="Edit"
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              disabled={deleting}
+              title="Delete"
+            >
+              {deleting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// Card for directives with delete button
+// Card for directives with edit and delete buttons
 function DirectiveCard({
   model,
   selected,
   onClick,
+  onEdit,
   onDelete,
   deleting,
 }: {
   model: MentalModel;
   selected: boolean;
   onClick: () => void;
+  onEdit: () => void;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -1133,22 +1274,37 @@ function DirectiveCard({
             </div>
             <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{model.description}</p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Trash2 className="w-4 h-4" />
-            )}
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              title="Edit"
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              disabled={deleting}
+              title="Delete"
+            >
+              {deleting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -1174,6 +1330,52 @@ function MentalModelDetailPanel({
 
   // Memory detail modal state
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
+
+  // Version history state
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [versions, setVersions] = useState<MentalModelVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [versionObservations, setVersionObservations] = useState<VersionObservation[]>([]);
+  const [loadingVersionData, setLoadingVersionData] = useState(false);
+
+  const loadVersionHistory = async () => {
+    if (!currentBank) return;
+    setLoadingVersions(true);
+    try {
+      const data = await client.listMentalModelVersions(currentBank, model.id);
+      setVersions(data.versions || []);
+    } catch (error) {
+      console.error("Error loading version history:", error);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const loadVersionData = async (version: number) => {
+    if (!currentBank) return;
+    setLoadingVersionData(true);
+    try {
+      const data = await client.getMentalModelVersion(currentBank, model.id, version);
+      setVersionObservations(data.observations || []);
+      setSelectedVersion(version);
+    } catch (error) {
+      console.error("Error loading version data:", error);
+    } finally {
+      setLoadingVersionData(false);
+    }
+  };
+
+  const handleShowHistory = () => {
+    setShowVersionHistory(true);
+    loadVersionHistory();
+  };
+
+  const handleCloseHistory = () => {
+    setShowVersionHistory(false);
+    setSelectedVersion(null);
+    setVersionObservations([]);
+  };
 
   const handleRegenerate = async () => {
     if (!currentBank) return;
@@ -1305,6 +1507,22 @@ function MentalModelDetailPanel({
               >
                 {model.subtype}
               </span>
+              {model.subtype !== "directive" && model.freshness && (
+                <span
+                  className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                    model.freshness.is_up_to_date
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${model.freshness.is_up_to_date ? "bg-emerald-500" : "bg-amber-500"}`}
+                  />
+                  {model.freshness.is_up_to_date
+                    ? "Up to date"
+                    : `${model.freshness.memories_since_refresh} new memories`}
+                </span>
+              )}
               {model.tags && model.tags.length > 0 && (
                 <>
                   {model.tags.map((tag) => (
@@ -1322,42 +1540,57 @@ function MentalModelDetailPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant={regenerateStatus?.status === "completed" ? "default" : "outline"}
-            size="sm"
-            onClick={handleRegenerate}
-            disabled={
-              !!regenerateStatus &&
-              regenerateStatus.status !== "completed" &&
-              regenerateStatus.status !== "failed"
-            }
-            className={`h-8 ${
-              regenerateStatus?.status === "completed"
-                ? "bg-emerald-500 hover:bg-emerald-600"
-                : regenerateStatus?.status === "failed"
-                  ? "border-rose-500 text-rose-500"
-                  : ""
-            }`}
-          >
-            {regenerateStatus?.status === "scheduling" || regenerateStatus?.status === "pending" ? (
-              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-            ) : regenerateStatus?.status === "completed" ? (
-              <Check className="w-4 h-4 mr-1" />
-            ) : regenerateStatus?.status === "failed" ? (
-              <X className="w-4 h-4 mr-1" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-1" />
-            )}
-            {regenerateStatus?.status === "scheduling"
-              ? "Scheduling..."
-              : regenerateStatus?.status === "pending"
-                ? "Refreshing..."
-                : regenerateStatus?.status === "completed"
-                  ? "Done!"
-                  : regenerateStatus?.status === "failed"
-                    ? "Failed"
-                    : "Refresh"}
-          </Button>
+          {model.subtype !== "directive" && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleShowHistory}
+                className="h-8"
+                title="View version history"
+              >
+                <History className="w-4 h-4 mr-1" />
+                History
+              </Button>
+              <Button
+                variant={regenerateStatus?.status === "completed" ? "default" : "outline"}
+                size="sm"
+                onClick={handleRegenerate}
+                disabled={
+                  !!regenerateStatus &&
+                  regenerateStatus.status !== "completed" &&
+                  regenerateStatus.status !== "failed"
+                }
+                className={`h-8 ${
+                  regenerateStatus?.status === "completed"
+                    ? "bg-emerald-500 hover:bg-emerald-600"
+                    : regenerateStatus?.status === "failed"
+                      ? "border-rose-500 text-rose-500"
+                      : ""
+                }`}
+              >
+                {regenerateStatus?.status === "scheduling" ||
+                regenerateStatus?.status === "pending" ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : regenerateStatus?.status === "completed" ? (
+                  <Check className="w-4 h-4 mr-1" />
+                ) : regenerateStatus?.status === "failed" ? (
+                  <X className="w-4 h-4 mr-1" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-1" />
+                )}
+                {regenerateStatus?.status === "scheduling"
+                  ? "Scheduling..."
+                  : regenerateStatus?.status === "pending"
+                    ? "Refreshing..."
+                    : regenerateStatus?.status === "completed"
+                      ? "Done!"
+                      : regenerateStatus?.status === "failed"
+                        ? "Failed"
+                        : "Refresh"}
+              </Button>
+            </>
+          )}
           <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
             <X className="h-4 w-4" />
           </Button>
@@ -1365,7 +1598,104 @@ function MentalModelDetailPanel({
       </div>
 
       <div className="space-y-6">
-        {/* Description */}
+        {/* Stats - compact row with status badge (same format as list view) */}
+        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+          <span>
+            <span className="font-medium text-foreground">{model.observations?.length || 0}</span>{" "}
+            observations
+          </span>
+          {model.subtype !== "directive" && (
+            <>
+              <span>
+                <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
+                source memories
+              </span>
+              <span>
+                Last refreshed:{" "}
+                <span className="font-medium text-foreground">
+                  {model.last_refresh_at
+                    ? new Date(model.last_refresh_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      }) +
+                      " " +
+                      new Date(model.last_refresh_at).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "Never"}
+                </span>
+              </span>
+              {model.freshness &&
+                !model.freshness.is_up_to_date &&
+                model.freshness.memories_since_refresh > 0 && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    {model.freshness.memories_since_refresh} new
+                  </span>
+                )}
+            </>
+          )}
+        </div>
+
+        {/* Trend Legend - shown when there are observations (not for directives) */}
+        {model.subtype !== "directive" && model.observations && model.observations.length > 0 && (
+          <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Trend Legend
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("new")}`}
+                >
+                  new
+                </span>
+                <span className="text-xs text-muted-foreground">Recently discovered</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("strengthening")}`}
+                >
+                  strengthening
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Mentioned more frequently recently
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("stable")}`}
+                >
+                  stable
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Consistently mentioned over time
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("weakening")}`}
+                >
+                  weakening
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Mentioned less frequently recently
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("stale")}`}
+                >
+                  stale
+                </span>
+                <span className="text-xs text-muted-foreground">Not mentioned recently</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Description - right before observations */}
         <div>
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Description
@@ -1374,47 +1704,6 @@ function MentalModelDetailPanel({
             <ReactMarkdown>{model.description}</ReactMarkdown>
           </div>
         </div>
-
-        {/* Trend Legend - shown when there are observations */}
-        {model.observations && model.observations.length > 0 && (
-          <div className="p-3 bg-muted/20 rounded-lg border border-border/30">
-            <div className="text-[10px] font-medium text-muted-foreground mb-2">Trend Legend</div>
-            <div className="grid grid-cols-5 gap-2 text-[10px]">
-              <div className="flex flex-col gap-1">
-                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("new")}`}>
-                  new
-                </span>
-                <span className="text-muted-foreground text-center">Recently discovered</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span
-                  className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("strengthening")}`}
-                >
-                  strengthening
-                </span>
-                <span className="text-muted-foreground text-center">Mentioned more recently</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("stable")}`}>
-                  stable
-                </span>
-                <span className="text-muted-foreground text-center">Consistently mentioned</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("weakening")}`}>
-                  weakening
-                </span>
-                <span className="text-muted-foreground text-center">Mentioned less recently</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("stale")}`}>
-                  stale
-                </span>
-                <span className="text-muted-foreground text-center">Not mentioned recently</span>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Observations */}
         {model.observations && model.observations.length > 0 && (
@@ -1433,31 +1722,33 @@ function MentalModelDetailPanel({
                       {observation.title}
                     </h4>
 
-                    {/* Trend and date badges */}
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      {observation.trend && (
-                        <span
-                          className={`text-xs px-1.5 py-0.5 rounded cursor-help ${getTrendColor(observation.trend)}`}
-                          title={getTrendDescription(observation.trend)}
-                        >
-                          {observation.trend}
-                        </span>
-                      )}
-                      {observation.evidence_span?.from && observation.evidence_span?.to && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(observation.evidence_span.from).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}{" "}
-                          -{" "}
-                          {new Date(observation.evidence_span.to).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                      )}
-                    </div>
+                    {/* Trend and date badges (not for directives) */}
+                    {model.subtype !== "directive" && (
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        {observation.trend && (
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded cursor-help ${getTrendColor(observation.trend)}`}
+                            title={getTrendDescription(observation.trend)}
+                          >
+                            {observation.trend}
+                          </span>
+                        )}
+                        {observation.evidence_span?.from && observation.evidence_span?.to && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(observation.evidence_span.from).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}{" "}
+                            -{" "}
+                            {new Date(observation.evidence_span.to).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Content */}
                     <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -1558,61 +1849,6 @@ function MentalModelDetailPanel({
           </div>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-4 bg-muted/50 rounded-lg">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Observations
-            </div>
-            <div className="text-2xl font-bold text-foreground">
-              {model.observations?.length || 0}
-            </div>
-          </div>
-          <div className="p-4 bg-muted/50 rounded-lg">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Source Memories
-            </div>
-            <div className="text-2xl font-bold text-foreground">{getTotalMemoryCount(model)}</div>
-          </div>
-          <div className="p-4 bg-muted/50 rounded-lg">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Last Refreshed
-            </div>
-            <div className="text-base font-medium text-foreground">
-              {model.last_refresh_at
-                ? new Date(model.last_refresh_at).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : "Never"}
-            </div>
-          </div>
-        </div>
-
-        {/* Freshness */}
-        {model.freshness && (
-          <div
-            className={`p-4 rounded-lg border ${model.freshness.is_up_to_date ? "bg-emerald-500/5 border-emerald-500/20" : "bg-amber-500/5 border-amber-500/20"}`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium text-foreground">
-                  {model.freshness.is_up_to_date ? "Up to date" : "Needs refresh"}
-                </div>
-                {!model.freshness.is_up_to_date && (
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {model.freshness.memories_since_refresh} new memories since last refresh
-                  </div>
-                )}
-              </div>
-              <div
-                className={`w-3 h-3 rounded-full ${model.freshness.is_up_to_date ? "bg-emerald-500" : "bg-amber-500"}`}
-              />
-            </div>
-          </div>
-        )}
-
         {/* ID */}
         <div className="p-4 bg-muted/50 rounded-lg">
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
@@ -1621,6 +1857,175 @@ function MentalModelDetailPanel({
           <code className="text-sm font-mono break-all text-muted-foreground">{model.id}</code>
         </div>
       </div>
+
+      {/* Version History Dialog */}
+      <Dialog open={showVersionHistory} onOpenChange={(open) => !open && handleCloseHistory()}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5" />
+              Version History - {model.name}
+            </DialogTitle>
+            <DialogDescription>
+              View previous versions of this mental model&apos;s observations.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto">
+            {loadingVersions ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : versions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <History className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No version history available yet.</p>
+                <p className="text-sm">Versions are created each time the model is refreshed.</p>
+              </div>
+            ) : selectedVersion !== null ? (
+              // Show selected version's observations
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-3 border-b">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedVersion(null);
+                      setVersionObservations([]);
+                    }}
+                    className="h-8"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-1" />
+                    Back to list
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Version {selectedVersion} -{" "}
+                    {versions.find((v) => v.version === selectedVersion)?.created_at
+                      ? new Date(
+                          versions.find((v) => v.version === selectedVersion)!.created_at!
+                        ).toLocaleString()
+                      : "Unknown date"}
+                  </span>
+                </div>
+
+                {loadingVersionData ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : versionObservations.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p>No observations in this version.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {versionObservations.map((obs, idx) => (
+                      <div key={idx} className="p-3 bg-muted/50 rounded-lg">
+                        <h4 className="font-medium text-sm mb-1">{obs.title}</h4>
+                        <p className="text-sm text-muted-foreground">{obs.content}</p>
+                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                          <span>{obs.evidence_count} evidence</span>
+                          {obs.trend && (
+                            <span className="px-1.5 py-0.5 rounded bg-muted">{obs.trend}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Diff with current version */}
+                {versionObservations.length > 0 &&
+                  model.observations &&
+                  model.observations.length > 0 && (
+                    <div className="mt-6 pt-4 border-t">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <ArrowRight className="w-4 h-4" />
+                        Changes from v{selectedVersion} to current
+                      </h4>
+                      <div className="space-y-2 text-sm">
+                        {/* Added observations */}
+                        {model.observations
+                          .filter(
+                            (current) =>
+                              !versionObservations.some((old) => old.title === current.title)
+                          )
+                          .map((obs, idx) => (
+                            <div
+                              key={`added-${idx}`}
+                              className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20"
+                            >
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                + Added:
+                              </span>{" "}
+                              {obs.title}
+                            </div>
+                          ))}
+                        {/* Removed observations */}
+                        {versionObservations
+                          .filter(
+                            (old) =>
+                              !model.observations?.some((current) => current.title === old.title)
+                          )
+                          .map((obs, idx) => (
+                            <div
+                              key={`removed-${idx}`}
+                              className="p-2 rounded bg-rose-500/10 border border-rose-500/20"
+                            >
+                              <span className="text-rose-600 dark:text-rose-400 font-medium">
+                                - Removed:
+                              </span>{" "}
+                              {obs.title}
+                            </div>
+                          ))}
+                        {/* Unchanged count */}
+                        {(() => {
+                          const unchanged = versionObservations.filter((old) =>
+                            model.observations?.some((current) => current.title === old.title)
+                          ).length;
+                          if (unchanged > 0) {
+                            return (
+                              <div className="p-2 rounded bg-muted text-muted-foreground">
+                                {unchanged} observation{unchanged !== 1 ? "s" : ""} unchanged
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            ) : (
+              // Show version list
+              <div className="space-y-2">
+                {versions.map((version) => (
+                  <button
+                    key={version.version}
+                    onClick={() => loadVersionData(version.version)}
+                    className="w-full p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left flex items-center justify-between group"
+                  >
+                    <div>
+                      <div className="font-medium">Version {version.version}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {version.created_at
+                          ? new Date(version.created_at).toLocaleString()
+                          : "Unknown date"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-muted-foreground">
+                        {version.observation_count} observation
+                        {version.observation_count !== 1 ? "s" : ""}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Memory Detail Modal */}
       <MemoryDetailModal memoryId={selectedMemoryId} onClose={() => setSelectedMemoryId(null)} />

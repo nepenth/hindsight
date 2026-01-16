@@ -3683,6 +3683,38 @@ class MemoryEngine(MemoryEngineInterface):
                         )
                 # List all models lookup - don't add to based_on (too verbose, just a listing)
 
+        # Add directives to mental_models list (they are mental models with subtype='directive')
+        for directive in directives:
+            # Extract summary from observations
+            summary_parts: list[str] = []
+            for obs in directive.get("observations", []):
+                # Support both Pydantic Observation objects and dicts
+                if hasattr(obs, "content"):
+                    content = obs.content
+                    title = obs.title
+                else:
+                    content = obs.get("content", "")
+                    title = obs.get("title", "")
+                if title and content:
+                    summary_parts.append(f"{title}: {content}")
+                elif content:
+                    summary_parts.append(content)
+
+            # Fallback to description if no observations
+            if not summary_parts and directive.get("description"):
+                summary_parts.append(directive["description"])
+
+            mental_models_result.append(
+                MentalModelRef(
+                    id=directive.get("id", ""),
+                    name=directive.get("name", ""),
+                    type="directive",
+                    subtype="directive",
+                    description=directive.get("description", ""),
+                    summary="; ".join(summary_parts) if summary_parts else None,
+                )
+            )
+
         # Return response (compatible with existing API)
         result = ReflectResult(
             text=agent_result.text,
@@ -4192,7 +4224,20 @@ class MemoryEngine(MemoryEngineInterface):
             Updated mental model dict, or (model, agent_result) tuple if _return_agent_result=True
         """
         await self._authenticate_tenant(request_context)
+
+        # Validate operation if validator is configured
+        if self._operation_validator:
+            from hindsight_api.extensions.operation_validator import RefreshMentalModelContext
+
+            ctx = RefreshMentalModelContext(
+                bank_id=bank_id,
+                model_id=model_id,
+                request_context=request_context,
+            )
+            await self._validate_operation(self._operation_validator.validate_refresh_mental_model(ctx))
+
         pool = await self._get_pool()
+        start_time = time.time()
 
         # Get the mental model
         model = await self.get_mental_model(bank_id, model_id, request_context=request_context)
@@ -4206,14 +4251,23 @@ class MemoryEngine(MemoryEngineInterface):
                 return (model, None)
             return model
 
-        # Import refresh state functions
-        from .reflect.mental_model_reflect import check_needs_refresh, compute_refresh_state
+        # Import refresh state functions and typed models
+        from .reflect.mental_model_reflect import (
+            BankProfile,
+            DirectiveMentalModel,
+            check_needs_refresh,
+            compute_refresh_state,
+        )
 
         # Check if refresh is actually needed by comparing state hashes
         # Get current state inputs
         total_memories = await self._count_memories_since(bank_id, None, pool)
-        bank_profile = await self.get_bank_profile(bank_id, request_context=request_context)
-        directives = await self.list_mental_models(bank_id, subtype="directive", request_context=request_context)
+        bank_profile_dict = await self.get_bank_profile(bank_id, request_context=request_context)
+        directives_dicts = await self.list_mental_models(bank_id, subtype="directive", request_context=request_context)
+
+        # Convert to typed models at the boundary
+        bank_profile = BankProfile.model_validate(bank_profile_dict)
+        directives = [DirectiveMentalModel.model_validate(d) for d in directives_dicts]
 
         # Get stored refresh_state from the model
         stored_refresh_state = model.get("refresh_state")
@@ -4375,6 +4429,30 @@ class MemoryEngine(MemoryEngineInterface):
             )
 
         model_result = self._row_to_mental_model(updated_row) if updated_row else None
+
+        # Call post-operation hook if validator is configured
+        if self._operation_validator:
+            from hindsight_api.extensions.operation_validator import RefreshMentalModelResult
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            result_ctx = RefreshMentalModelResult(
+                bank_id=bank_id,
+                model_id=model_id,
+                request_context=request_context,
+                model_name=model.get("name"),
+                observations_count=len(result.observations),
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                total_tokens=result.total_tokens,
+                duration_ms=duration_ms,
+                success=True,
+                error=None,
+            )
+            try:
+                await self._operation_validator.on_refresh_mental_model_complete(result_ctx)
+            except Exception as e:
+                logger.warning(f"Post-refresh-mental-model hook error (non-fatal): {e}")
+
         if _return_agent_result:
             return (model_result, result)
         return model_result
@@ -4700,7 +4778,7 @@ class MemoryEngine(MemoryEngineInterface):
                 f"""
                 INSERT INTO {fq_table("mental_models")}
                 (id, bank_id, subtype, name, description, observations, tags, last_updated)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
                 RETURNING id, bank_id, subtype, name, description, observations,
                           entity_id, links, tags, last_updated, created_at
                 """,
@@ -4773,8 +4851,8 @@ class MemoryEngine(MemoryEngineInterface):
                 return None
 
             query = f"""
-                UPDATE {fq_table('mental_models')}
-                SET {', '.join(updates)}
+                UPDATE {fq_table("mental_models")}
+                SET {", ".join(updates)}
                 WHERE bank_id = $1 AND id = $2
                 RETURNING id, bank_id, subtype, name, description, observations, entity_id, links, tags, last_updated, created_at
             """
@@ -4936,7 +5014,7 @@ class MemoryEngine(MemoryEngineInterface):
 
         return {
             "version": row["version"],
-            "observations": self._parse_observations_with_trends(observations),
+            "observations": self._parse_observations(observations),
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         }
 
@@ -4967,8 +5045,8 @@ class MemoryEngine(MemoryEngineInterface):
         else:
             observations_raw = []
 
-        # Parse observations with trend computation
-        observations = self._parse_observations_with_trends(observations_raw)
+        # Parse observations into typed models
+        observations = self._parse_observations(observations_raw)
 
         return {
             "id": row["id"],
@@ -4987,106 +5065,38 @@ class MemoryEngine(MemoryEngineInterface):
             "created_at": row["created_at"].isoformat(),
         }
 
-    def _parse_observations_with_trends(self, observations_raw: list) -> list[dict]:
-        """Parse observations and compute trends from evidence timestamps.
+    def _parse_observations(self, observations_raw: list):
+        """Parse raw observation dicts into typed Observation models.
 
-        Handles both new format (title, content, evidence) and legacy format (title, text, memory_ids).
+        Returns list of Observation models with computed trend/evidence_span/evidence_count.
         """
-        from datetime import datetime, timezone
+        from .reflect.observations import Observation, ObservationEvidence
 
-        from .reflect.observations import ObservationEvidence, Trend, compute_trend
-
-        observations = []
+        observations: list[Observation] = []
         for obs in observations_raw:
             if not isinstance(obs, dict):
                 continue
 
-            # Check if new format (content, evidence) or legacy (title, text, memory_ids)
-            if "evidence" in obs and isinstance(obs.get("evidence"), list):
-                # New format with evidence-grounded observations
-                title = obs.get("title", "")
-                content = obs.get("content", "")
-                evidence_data = obs.get("evidence", [])
-                created_at = obs.get("created_at")
-
-                # Parse evidence and compute trend
-                evidence_items = []
-                for ev in evidence_data:
-                    try:
-                        timestamp = ev.get("timestamp")
-                        if isinstance(timestamp, str):
-                            timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-                        elif timestamp is None:
-                            timestamp = datetime.now(timezone.utc)
-
-                        evidence_items.append(
-                            ObservationEvidence(
-                                memory_id=ev.get("memory_id", ""),
-                                quote=ev.get("quote", ""),
-                                relevance=ev.get("relevance", ""),
-                                timestamp=timestamp,
-                            )
+            try:
+                parsed = Observation(
+                    title=obs.get("title", ""),
+                    content=obs.get("content", ""),
+                    evidence=[
+                        ObservationEvidence(
+                            memory_id=ev.get("memory_id", ""),
+                            quote=ev.get("quote", ""),
+                            relevance=ev.get("relevance", ""),
+                            timestamp=ev.get("timestamp"),
                         )
-                    except Exception:
-                        pass
-
-                # Compute trend from evidence timestamps
-                trend = compute_trend(evidence_items)
-
-                # Calculate evidence span
-                if evidence_items:
-                    timestamps = [e.timestamp for e in evidence_items]
-                    evidence_span = {
-                        "from": min(timestamps).isoformat(),
-                        "to": max(timestamps).isoformat(),
-                    }
-                else:
-                    evidence_span = {"from": None, "to": None}
-
-                # Ensure created_at is a proper ISO string
-                if isinstance(created_at, datetime):
-                    created_at_str = created_at.isoformat()
-                elif isinstance(created_at, str):
-                    created_at_str = created_at
-                else:
-                    created_at_str = datetime.now(timezone.utc).isoformat()
-
-                observations.append(
-                    {
-                        "title": title,
-                        "content": content,
-                        "evidence": [
-                            {
-                                "memory_id": e.memory_id,
-                                "quote": e.quote,
-                                "relevance": e.relevance,
-                                "timestamp": e.timestamp.isoformat(),
-                            }
-                            for e in evidence_items
-                        ],
-                        "trend": trend.value,
-                        "evidence_span": evidence_span,
-                        "evidence_count": len(evidence_items),
-                        "created_at": created_at_str,
-                    }
+                        for ev in obs.get("evidence", [])
+                        if isinstance(ev, dict)
+                    ],
+                    created_at=obs.get("created_at"),
                 )
-            else:
-                # Legacy format: convert to compatible output
-                title = obs.get("title", "")
-                text = obs.get("text", "")
-                based_on = obs.get("memory_ids") or obs.get("fact_ids") or obs.get("based_on") or []
-
-                observations.append(
-                    {
-                        "title": title,
-                        "content": text,
-                        "evidence": [],
-                        "trend": Trend.STALE.value,  # Legacy observations are considered stale
-                        "evidence_span": {"from": None, "to": None},
-                        "evidence_count": len(based_on),
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
+                observations.append(parsed)
+            except Exception as e:
+                logger.warning(f"Failed to parse observation: {e}")
+                continue
 
         return observations
 

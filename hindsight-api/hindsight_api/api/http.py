@@ -36,6 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from hindsight_api import MemoryEngine
 from hindsight_api.engine.db_utils import acquire_with_retry
 from hindsight_api.engine.memory_engine import Budget, fq_table
+from hindsight_api.engine.reflect.observations import Observation
 from hindsight_api.engine.response_models import VALID_RECALL_FACT_TYPES, TokenUsage
 from hindsight_api.engine.search.tags import TagsMatch
 from hindsight_api.extensions import HttpExtension, OperationValidationError, load_extension
@@ -578,6 +579,10 @@ class ReflectTrace(BaseModel):
 
     tool_calls: list[ReflectToolCall] = Field(default_factory=list, description="Tool calls made during reflection")
     llm_calls: list[ReflectLLMCall] = Field(default_factory=list, description="LLM calls made during reflection")
+    mental_models: list[ReflectMentalModel] = Field(
+        default_factory=list,
+        description="Mental models used during reflection (includes directives with subtype='directive')",
+    )
 
 
 class CreatedMentalModel(BaseModel):
@@ -1153,6 +1158,39 @@ class MentalModelListResponse(BaseModel):
     items: list[MentalModelResponse]
 
 
+def _observation_to_response(obs: Observation) -> MentalModelObservationResponse:
+    """Convert internal Observation model to API response model."""
+    return MentalModelObservationResponse(
+        title=obs.title,
+        content=obs.content,
+        evidence=[
+            ObservationEvidenceResponse(
+                memory_id=ev.memory_id,
+                quote=ev.quote,
+                relevance=ev.relevance,
+                timestamp=ev.timestamp.isoformat(),
+            )
+            for ev in obs.evidence
+        ],
+        created_at=obs.created_at.isoformat(),
+        trend=obs.trend.value,
+        evidence_count=obs.evidence_count,
+        evidence_span=obs.evidence_span,
+    )
+
+
+def _prepare_mental_model_response(model: dict[str, Any]) -> MentalModelResponse:
+    """Convert internal mental model dict to API response model.
+
+    Handles conversion of Observation models to MentalModelObservationResponse.
+    """
+    observations = model.get("observations", [])
+    converted_observations = [
+        _observation_to_response(obs) if isinstance(obs, Observation) else obs for obs in observations
+    ]
+    return MentalModelResponse(**{**model, "observations": converted_observations})
+
+
 class RefreshMentalModelsRequest(BaseModel):
     """Request model for refresh mental models endpoint."""
 
@@ -1169,7 +1207,7 @@ class ObservationInput(BaseModel):
     """Input model for a single observation."""
 
     title: str = Field(description="Short title/header for the observation")
-    text: str = Field(description="Content of the observation")
+    content: str = Field(description="Content of the observation")
 
 
 class CreateMentalModelRequest(BaseModel):
@@ -1187,7 +1225,7 @@ class CreateMentalModelRequest(BaseModel):
                     "name": "Meeting Rules",
                     "description": "Rules about scheduling meetings",
                     "subtype": "directive",
-                    "observations": [{"title": "Morning meetings", "text": "Never schedule meetings before 10am"}],
+                    "observations": [{"title": "Morning meetings", "content": "Never schedule meetings before 10am"}],
                 },
             ]
         }
@@ -1846,7 +1884,7 @@ def _register_routes(app: FastAPI):
                 ]
                 based_on_result = ReflectBasedOn(memories=memories, mental_models=mental_models)
 
-            # Build trace (tool_calls + llm_calls) if tool_calls is requested
+            # Build trace (tool_calls + llm_calls + mental_models) if tool_calls is requested
             trace_result: ReflectTrace | None = None
             if request.include.tool_calls is not None:
                 include_output = request.include.tool_calls.output
@@ -1861,7 +1899,21 @@ def _register_routes(app: FastAPI):
                     for tc in core_result.tool_trace
                 ]
                 llm_calls = [ReflectLLMCall(scope=lc.scope, duration_ms=lc.duration_ms) for lc in core_result.llm_trace]
-                trace_result = ReflectTrace(tool_calls=tool_calls, llm_calls=llm_calls)
+                # Include all mental models (including directives with subtype='directive')
+                trace_mental_models = [
+                    ReflectMentalModel(
+                        id=mm.id,
+                        name=mm.name,
+                        type=mm.type,
+                        subtype=mm.subtype,
+                        description=mm.description,
+                        summary=mm.summary,
+                    )
+                    for mm in core_result.mental_models
+                ]
+                trace_result = ReflectTrace(
+                    tool_calls=tool_calls, llm_calls=llm_calls, mental_models=trace_mental_models
+                )
 
             # Build mental_models_created from tool trace (learn tool outputs)
             created_models: list[CreatedMentalModel] = []
@@ -2176,11 +2228,18 @@ def _register_routes(app: FastAPI):
 
             # Add freshness to each model (skip for directives)
             # Get data needed for freshness computation (once for all models)
-            from hindsight_api.engine.reflect.mental_model_reflect import check_needs_refresh
+            from hindsight_api.engine.reflect.mental_model_reflect import (
+                BankProfile,
+                DirectiveMentalModel,
+                check_needs_refresh,
+            )
 
             total_memories = await app.state.memory._count_memories_since(bank_id, None)
-            bank_profile = await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
-            directives = [m for m in models if m.get("subtype") == "directive"]
+            bank_profile_dict = await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
+
+            # Convert to typed models at the boundary
+            bank_profile = BankProfile.model_validate(bank_profile_dict)
+            directives = [DirectiveMentalModel.model_validate(m) for m in models if m.get("subtype") == "directive"]
 
             for model in models:
                 if model.get("subtype") != "directive":
@@ -2205,7 +2264,7 @@ def _register_routes(app: FastAPI):
                 else:
                     model["freshness"] = None
 
-            return MentalModelListResponse(items=[MentalModelResponse(**m) for m in models])
+            return MentalModelListResponse(items=[_prepare_mental_model_response(m) for m in models])
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:
@@ -2237,7 +2296,7 @@ def _register_routes(app: FastAPI):
             # Convert observations to list of dicts if provided
             observations_list = None
             if body.observations:
-                observations_list = [{"title": obs.title, "text": obs.text} for obs in body.observations]
+                observations_list = [{"title": obs.title, "content": obs.content} for obs in body.observations]
 
             model = await app.state.memory.create_mental_model(
                 bank_id=bank_id,
@@ -2248,7 +2307,7 @@ def _register_routes(app: FastAPI):
                 tags=body.tags,
                 request_context=request_context,
             )
-            return MentalModelResponse(**model)
+            return _prepare_mental_model_response(model)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except (AuthenticationError, HTTPException):
@@ -2285,15 +2344,23 @@ def _register_routes(app: FastAPI):
 
             # Compute freshness for non-directive models
             if model.get("subtype") != "directive":
-                from hindsight_api.engine.reflect.mental_model_reflect import check_needs_refresh
+                from hindsight_api.engine.reflect.mental_model_reflect import (
+                    BankProfile,
+                    DirectiveMentalModel,
+                    check_needs_refresh,
+                )
 
                 last_refresh_at = model.get("last_refresh_at")
                 total_memories = await app.state.memory._count_memories_since(bank_id, None)
                 memories_since = await app.state.memory._count_memories_since(bank_id, last_refresh_at)
-                bank_profile = await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
-                directives = await app.state.memory.list_mental_models(
+                bank_profile_dict = await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
+                directives_dicts = await app.state.memory.list_mental_models(
                     bank_id, subtype="directive", request_context=request_context
                 )
+
+                # Convert to typed models at the boundary
+                bank_profile = BankProfile.model_validate(bank_profile_dict)
+                directives = [DirectiveMentalModel.model_validate(d) for d in directives_dicts]
 
                 # Use check_needs_refresh to get reasons
                 stored_refresh_state = model.get("refresh_state")
@@ -2314,7 +2381,7 @@ def _register_routes(app: FastAPI):
                 # Directives don't need freshness - they're static
                 model["freshness"] = None
 
-            return MentalModelResponse(**model)
+            return _prepare_mental_model_response(model)
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:
@@ -2427,7 +2494,7 @@ def _register_routes(app: FastAPI):
             )
             if not updated:
                 raise HTTPException(status_code=404, detail=f"Mental model '{model_id}' not found")
-            return MentalModelResponse(**updated)
+            return _prepare_mental_model_response(updated)
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:

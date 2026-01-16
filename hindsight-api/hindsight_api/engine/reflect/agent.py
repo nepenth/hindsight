@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from .models import LLMCall, MentalModelInput, ReflectAgentResult, ToolCall
-from .prompts import FINAL_SYSTEM_PROMPT, build_final_prompt, build_system_prompt_for_tools
+from .prompts import FINAL_SYSTEM_PROMPT, _extract_directive_rules, build_final_prompt, build_system_prompt_for_tools
 from .tools_schema import get_reflect_tools
 
 if TYPE_CHECKING:
@@ -167,10 +167,13 @@ async def run_reflect_agent(
     reflect_id = f"{bank_id[:8]}-{int(time.time() * 1000) % 100000}"
     start_time = time.time()
 
-    # Get tools for this agent
-    tools = get_reflect_tools(enable_learn=enable_learn)
+    # Extract directive rules for tool schema (if any)
+    directive_rules = _extract_directive_rules(directives) if directives else None
 
-    # Build initial messages (directives are injected into system prompt)
+    # Get tools for this agent (with directive compliance field if directives exist)
+    tools = get_reflect_tools(enable_learn=enable_learn, directive_rules=directive_rules)
+
+    # Build initial messages (directives are injected into system prompt at START and END)
     system_prompt = build_system_prompt_for_tools(bank_profile, context, directives=directives)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt},

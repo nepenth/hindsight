@@ -9,7 +9,7 @@ from memories, and trends are computed algorithmically from evidence timestamps.
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 
 class Trend(str, Enum):
@@ -39,8 +39,23 @@ class ObservationEvidence(BaseModel):
 
     memory_id: str = Field(description="ID of the memory unit this evidence comes from")
     quote: str = Field(description="Exact quote from the memory supporting the observation")
-    relevance: str = Field(description="Brief explanation of how this quote supports the observation")
+    relevance: str = Field(default="", description="Brief explanation of how this quote supports the observation")
     timestamp: datetime = Field(description="When the source memory was created")
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def ensure_timezone_aware(cls, v: datetime | str | None) -> datetime:
+        """Ensure timestamp is always timezone-aware UTC."""
+        if v is None:
+            return datetime.now(timezone.utc)
+        if isinstance(v, str):
+            # Parse ISO format string, handling 'Z' suffix
+            v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        if isinstance(v, datetime):
+            if v.tzinfo is None:
+                return v.replace(tzinfo=timezone.utc)
+            return v
+        raise ValueError(f"Invalid timestamp type: {type(v)}")
 
 
 class Observation(BaseModel):
@@ -57,6 +72,20 @@ class Observation(BaseModel):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), description="When this observation was first created"
     )
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def ensure_created_at_timezone_aware(cls, v: datetime | str | None) -> datetime:
+        """Ensure created_at is always timezone-aware UTC."""
+        if v is None:
+            return datetime.now(timezone.utc)
+        if isinstance(v, str):
+            v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        if isinstance(v, datetime):
+            if v.tzinfo is None:
+                return v.replace(tzinfo=timezone.utc)
+            return v
+        raise ValueError(f"Invalid created_at type: {type(v)}")
 
     @computed_field
     @property

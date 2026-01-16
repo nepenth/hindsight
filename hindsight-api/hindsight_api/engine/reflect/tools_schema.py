@@ -133,12 +133,66 @@ TOOL_DONE_ANSWER = {
 }
 
 
-def get_reflect_tools(enable_learn: bool = True) -> list[dict]:
+def _build_done_tool_with_directives(directive_rules: list[str]) -> dict:
+    """
+    Build the done tool schema with directive compliance field.
+
+    When directives are present, adds a required field that forces the agent
+    to confirm compliance with each directive before submitting.
+
+    Args:
+        directive_rules: List of directive rule strings
+    """
+    from typing import Any, cast
+
+    # Build rules list for description
+    rules_list = "\n".join(f"  {i + 1}. {rule}" for i, rule in enumerate(directive_rules))
+
+    # Build the tool with directive compliance field
+    return {
+        "type": "function",
+        "function": {
+            "name": "done",
+            "description": (
+                "Signal completion with your final answer. IMPORTANT: You must confirm directive compliance before submitting. "
+                "Your answer will be REJECTED if it violates any directive."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "answer": {
+                        "type": "string",
+                        "description": "Your response as plain text. Do NOT use markdown formatting. NEVER include memory IDs, UUIDs, or 'Memory references' in this text - put IDs only in memory_ids array.",
+                    },
+                    "memory_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Array of memory IDs that support your answer (put IDs here, NOT in answer text)",
+                    },
+                    "model_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Array of mental model IDs that support your answer",
+                    },
+                    "directive_compliance": {
+                        "type": "string",
+                        "description": f"REQUIRED: Confirm your answer complies with ALL directives. List each directive and how your answer follows it:\n{rules_list}\n\nFormat: 'Directive 1: [how answer complies]. Directive 2: [how answer complies]...'",
+                    },
+                },
+                "required": ["answer", "directive_compliance"],
+            },
+        },
+    }
+
+
+def get_reflect_tools(enable_learn: bool = True, directive_rules: list[str] | None = None) -> list[dict]:
     """
     Get the list of tools for the reflect agent.
 
     Args:
         enable_learn: Whether to include the learn tool
+        directive_rules: Optional list of directive rule strings. If provided,
+                        the done() tool will require directive compliance confirmation.
 
     Returns:
         List of tool definitions in OpenAI format
@@ -154,6 +208,11 @@ def get_reflect_tools(enable_learn: bool = True) -> list[dict]:
         tools.append(TOOL_LEARN)
 
     tools.append(TOOL_EXPAND)
-    tools.append(TOOL_DONE_ANSWER)
+
+    # Use directive-aware done tool if directives are present
+    if directive_rules:
+        tools.append(_build_done_tool_with_directives(directive_rules))
+    else:
+        tools.append(TOOL_DONE_ANSWER)
 
     return tools

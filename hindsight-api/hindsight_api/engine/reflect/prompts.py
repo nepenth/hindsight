@@ -6,6 +6,41 @@ import json
 from typing import Any
 
 
+def _extract_directive_rules(directives: list[dict[str, Any]]) -> list[str]:
+    """
+    Extract directive rules as a list of strings.
+
+    Args:
+        directives: List of directive mental models with observations
+
+    Returns:
+        List of directive rule strings
+    """
+    rules = []
+    for directive in directives:
+        directive_name = directive.get("name", "")
+        observations = directive.get("observations", [])
+        if observations:
+            for obs in observations:
+                # Support both Pydantic Observation objects and dicts
+                if hasattr(obs, "title"):
+                    title = obs.title
+                    content = obs.content
+                else:
+                    title = obs.get("title", "")
+                    content = obs.get("content", "")
+                if title and content:
+                    rules.append(f"**{title}**: {content}")
+                elif content:
+                    rules.append(content)
+        elif directive_name:
+            # Fallback to description if no observations
+            desc = directive.get("description", "")
+            if desc:
+                rules.append(f"**{directive_name}**: {desc}")
+    return rules
+
+
 def build_directives_section(directives: list[dict[str, Any]]) -> str:
     """
     Build the directives section for the system prompt.
@@ -18,30 +53,49 @@ def build_directives_section(directives: list[dict[str, Any]]) -> str:
     if not directives:
         return ""
 
+    rules = _extract_directive_rules(directives)
+    if not rules:
+        return ""
+
     parts = [
         "## DIRECTIVES (MANDATORY)",
         "These are hard rules you MUST follow in ALL responses:",
         "",
     ]
 
-    for directive in directives:
-        directive_name = directive.get("name", "")
-        observations = directive.get("observations", [])
-        if observations:
-            for obs in observations:
-                title = obs.get("title", "")
-                text = obs.get("text", "")
-                if title and text:
-                    parts.append(f"- **{title}**: {text}")
-                elif text:
-                    parts.append(f"- {text}")
-        elif directive_name:
-            # Fallback to description if no observations
-            desc = directive.get("description", "")
-            if desc:
-                parts.append(f"- **{directive_name}**: {desc}")
+    for rule in rules:
+        parts.append(f"- {rule}")
 
     parts.extend(["", "NEVER violate these directives, even if other context suggests otherwise.", ""])
+    return "\n".join(parts)
+
+
+def build_directives_reminder(directives: list[dict[str, Any]]) -> str:
+    """
+    Build a reminder section for directives to place at the end of the prompt.
+
+    Args:
+        directives: List of directive mental models with observations
+    """
+    if not directives:
+        return ""
+
+    rules = _extract_directive_rules(directives)
+    if not rules:
+        return ""
+
+    parts = [
+        "",
+        "## REMINDER: MANDATORY DIRECTIVES",
+        "Before responding, ensure your answer complies with ALL of these directives:",
+        "",
+    ]
+
+    for i, rule in enumerate(rules, 1):
+        parts.append(f"{i}. {rule}")
+
+    parts.append("")
+    parts.append("Your response will be REJECTED if it violates any directive above.")
     return "\n".join(parts)
 
 
@@ -67,14 +121,18 @@ def build_system_prompt_for_tools(
         "- Only say 'I don't have information' AFTER trying list_mental_models AND recall with no relevant results"
     )
 
-    parts = [
-        "You are a reflection agent that answers questions by reasoning over retrieved memories.",
-        "",
-    ]
+    parts = []
 
-    # Inject directives BEFORE CRITICAL RULES (if any)
+    # Inject directives at the VERY START for maximum prominence
     if directives:
         parts.append(build_directives_section(directives))
+
+    parts.extend(
+        [
+            "You are a reflection agent that answers questions by reasoning over retrieved memories.",
+            "",
+        ]
+    )
 
     parts.extend(
         [
@@ -158,6 +216,10 @@ def build_system_prompt_for_tools(
 
     if context:
         parts.append(f"\n## Additional Context\n{context}")
+
+    # Add directive reminder at the END for recency effect
+    if directives:
+        parts.append(build_directives_reminder(directives))
 
     return "\n".join(parts)
 

@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .observations import (
     CandidateObservation,
@@ -47,8 +47,75 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Refresh State Tracking
+# Typed Models for Refresh State Tracking
 # =============================================================================
+
+
+class DispositionTraits(BaseModel):
+    """Disposition traits for a memory bank."""
+
+    skepticism: int = Field(default=3, ge=1, le=5)
+    literalism: int = Field(default=3, ge=1, le=5)
+    empathy: int = Field(default=3, ge=1, le=5)
+
+
+class BankProfile(BaseModel):
+    """Bank profile with mission and disposition."""
+
+    bank_id: str = Field(default="")
+    name: str = Field(default="")
+    mission: str | None = Field(default=None)
+    disposition: DispositionTraits = Field(default_factory=DispositionTraits)
+
+    @field_validator("disposition", mode="before")
+    @classmethod
+    def parse_disposition(cls, v: DispositionTraits | dict | None) -> DispositionTraits:
+        """Parse disposition from various formats."""
+        if v is None:
+            return DispositionTraits()
+        if isinstance(v, DispositionTraits):
+            return v
+        if isinstance(v, dict):
+            return DispositionTraits.model_validate(v)
+        # Handle Pydantic v1 style models
+        if hasattr(v, "model_dump"):
+            return DispositionTraits.model_validate(v.model_dump())
+        return DispositionTraits()
+
+
+class DirectiveObservation(BaseModel):
+    """A single observation in a directive mental model."""
+
+    title: str = Field(default="")
+    content: str = Field(default="")
+    text: str = Field(default="")  # Legacy field
+
+    @property
+    def effective_content(self) -> str:
+        """Get content, falling back to text for legacy data."""
+        return self.content or self.text
+
+
+class DirectiveMentalModel(BaseModel):
+    """A directive mental model with its observations."""
+
+    id: str = Field(default="")
+    name: str = Field(default="")
+    observations: list[DirectiveObservation] = Field(default_factory=list)
+
+    @field_validator("observations", mode="before")
+    @classmethod
+    def parse_observations(cls, v: list | None) -> list[DirectiveObservation]:
+        """Parse observations from various formats."""
+        if not v:
+            return []
+        result = []
+        for obs in v:
+            if isinstance(obs, DirectiveObservation):
+                result.append(obs)
+            elif isinstance(obs, dict):
+                result.append(DirectiveObservation.model_validate(obs))
+        return result
 
 
 class RefreshState(BaseModel):
@@ -85,57 +152,33 @@ def _hash_mission(mission: str | None) -> str:
     return _hash_string(mission or "")
 
 
-def _hash_disposition(bank_profile: dict) -> str:
-    """Hash the bank disposition values.
-
-    Disposition affects how observations are formed (skepticism, literalism, empathy).
-    """
-    disposition = bank_profile.get("disposition", {})
-    if not disposition:
-        return ""
-
-    # Convert Pydantic model to dict if needed
-    if hasattr(disposition, "model_dump"):
-        disposition = disposition.model_dump()
-    elif hasattr(disposition, "dict"):
-        disposition = disposition.dict()
-
-    if not isinstance(disposition, dict):
-        return ""
-
+def _hash_disposition(disposition: DispositionTraits) -> str:
+    """Hash the bank disposition values."""
     # Create deterministic string from disposition values
-    parts = []
-    for key in sorted(disposition.keys()):
-        parts.append(f"{key}:{disposition[key]}")
-
-    return _hash_string("|".join(parts))
+    return _hash_string(
+        f"skepticism:{disposition.skepticism}|literalism:{disposition.literalism}|empathy:{disposition.empathy}"
+    )
 
 
-def _hash_directives(directives: list[dict]) -> str:
-    """Hash all directive observations.
-
-    Directives are user-provided rules that constrain the reflect agent.
-    """
+def _hash_directives(directives: list[DirectiveMentalModel]) -> str:
+    """Hash all directive observations."""
     if not directives:
         return ""
 
     # Create deterministic string from all directive observations
     parts = []
-    for directive in sorted(directives, key=lambda d: d.get("id", d.get("name", ""))):
-        directive_id = directive.get("id", directive.get("name", ""))
-        observations = directive.get("observations", [])
-        for obs in observations:
-            title = obs.get("title", "")
-            content = obs.get("content", obs.get("text", ""))
-            parts.append(f"{directive_id}:{title}:{content}")
+    for directive in sorted(directives, key=lambda d: d.id or d.name):
+        directive_id = directive.id or directive.name
+        for obs in directive.observations:
+            parts.append(f"{directive_id}:{obs.title}:{obs.effective_content}")
 
     return _hash_string("|".join(parts))
 
 
 def compute_refresh_state(
     memories_count: int,
-    bank_profile: dict,
-    directives: list[dict],
+    bank_profile: BankProfile,
+    directives: list[DirectiveMentalModel],
 ) -> RefreshState:
     """Compute the current refresh state from inputs.
 
@@ -147,8 +190,8 @@ def compute_refresh_state(
     return RefreshState(
         last_refresh_at=datetime.now(timezone.utc).isoformat(),
         memories_count=memories_count,
-        mission_hash=_hash_mission(bank_profile.get("mission")),
-        disposition_hash=_hash_disposition(bank_profile),
+        mission_hash=_hash_mission(bank_profile.mission),
+        disposition_hash=_hash_disposition(bank_profile.disposition),
         directives_hash=_hash_directives(directives),
     )
 
@@ -156,8 +199,8 @@ def compute_refresh_state(
 def check_needs_refresh(
     stored_state: dict | RefreshState | None,
     current_memories_count: int,
-    bank_profile: dict,
-    directives: list[dict],
+    bank_profile: BankProfile,
+    directives: list[DirectiveMentalModel],
 ) -> RefreshCheckResult:
     """Check if a mental model needs refresh by comparing states.
 
@@ -216,6 +259,52 @@ def check_needs_refresh(
     )
 
 
+class PhaseTokenUsage(BaseModel):
+    """Token usage from a phase's LLM calls."""
+
+    input_tokens: int = Field(default=0)
+    output_tokens: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+
+    def __add__(self, other: "PhaseTokenUsage") -> "PhaseTokenUsage":
+        """Allow aggregating token usage."""
+        return PhaseTokenUsage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            total_tokens=self.total_tokens + other.total_tokens,
+        )
+
+
+class SeedPhaseResult(BaseModel):
+    """Result from the seed phase."""
+
+    candidates: list[CandidateObservation] = Field(default_factory=list)
+    token_usage: PhaseTokenUsage = Field(default_factory=PhaseTokenUsage)
+
+
+class UpdateExistingResult(BaseModel):
+    """Result from the update existing phase."""
+
+    updated_observations: list[dict] = Field(default_factory=list)
+    contradicted_titles: list[str] = Field(default_factory=list)
+    token_usage: PhaseTokenUsage = Field(default_factory=PhaseTokenUsage)
+
+
+class ValidatePhaseResult(BaseModel):
+    """Result from the validate phase."""
+
+    verified_observations: list[dict] = Field(default_factory=list)
+    token_usage: PhaseTokenUsage = Field(default_factory=PhaseTokenUsage)
+
+
+class ComparePhaseResult(BaseModel):
+    """Result from the compare phase."""
+
+    observations: list[Observation] = Field(default_factory=list)
+    changes: dict = Field(default_factory=dict)
+    token_usage: PhaseTokenUsage = Field(default_factory=PhaseTokenUsage)
+
+
 class MentalModelReflectResult(BaseModel):
     """Result from the mental model reflect process."""
 
@@ -227,6 +316,10 @@ class MentalModelReflectResult(BaseModel):
     memories_analyzed: int = Field(default=0, description="Number of memories analyzed")
     candidates_generated: int = Field(default=0, description="Number of candidate observations generated")
     candidates_validated: int = Field(default=0, description="Number of candidates that passed validation")
+    # Token usage tracking
+    input_tokens: int = Field(default=0, description="Total input tokens used across all LLM calls")
+    output_tokens: int = Field(default=0, description="Total output tokens used across all LLM calls")
+    total_tokens: int = Field(default=0, description="Total tokens used (input + output)")
 
 
 class SeedPhaseOutput(BaseModel):
@@ -328,6 +421,7 @@ async def run_mental_model_reflect(
     phases_completed: list[str] = []
     updated_existing: list[dict] = []
     contradicted_observations: list[str] = []
+    total_usage = PhaseTokenUsage()  # Aggregate token usage across all phases
 
     logger.info(
         f"[MM-REFLECT {reflect_id}] Starting diff-based reflect for mental model '{mental_model_name}' "
@@ -341,12 +435,15 @@ async def run_mental_model_reflect(
         logger.info(f"[MM-REFLECT {reflect_id}] Phase 0: UPDATE EXISTING - Searching for new evidence")
         phase0_start = time.time()
 
-        updated_existing, contradicted_observations = await _run_update_existing_phase(
+        update_result = await _run_update_existing_phase(
             llm_config=llm_config,
             existing_observations=existing_observations,
             recall_fn=recall_fn,
             reflect_id=reflect_id,
         )
+        updated_existing = update_result.updated_observations
+        contradicted_observations = update_result.contradicted_titles
+        total_usage = total_usage + update_result.token_usage
 
         phase0_duration = int((time.time() - phase0_start) * 1000)
         logger.info(
@@ -387,7 +484,7 @@ async def run_mental_model_reflect(
         )
 
     # Generate NEW candidate observations (pass existing to avoid rediscovering them)
-    candidates = await _run_seed_phase(
+    seed_result = await _run_seed_phase(
         llm_config=llm_config,
         memories=seed_memories,
         topic=topic or mental_model_name,
@@ -395,6 +492,8 @@ async def run_mental_model_reflect(
         reflect_id=reflect_id,
         existing_observations=existing_observations,  # Pass existing to skip them
     )
+    candidates = seed_result.candidates
+    total_usage = total_usage + seed_result.token_usage
 
     phase1_duration = int((time.time() - phase1_start) * 1000)
     logger.info(
@@ -416,6 +515,9 @@ async def run_mental_model_reflect(
             phases_completed=phases_completed,
             duration_ms=int((time.time() - start_time) * 1000),
             memories_analyzed=len(seed_memories),
+            input_tokens=total_usage.input_tokens,
+            output_tokens=total_usage.output_tokens,
+            total_tokens=total_usage.total_tokens,
         )
 
     # If no candidates and no existing, return empty
@@ -428,6 +530,9 @@ async def run_mental_model_reflect(
             phases_completed=phases_completed,
             duration_ms=int((time.time() - start_time) * 1000),
             memories_analyzed=len(seed_memories),
+            input_tokens=total_usage.input_tokens,
+            output_tokens=total_usage.output_tokens,
+            total_tokens=total_usage.total_tokens,
         )
 
     # ==========================================================================
@@ -454,11 +559,13 @@ async def run_mental_model_reflect(
     logger.info(f"[MM-REFLECT {reflect_id}] Phase 3: VALIDATE - Validating candidates")
     phase3_start = time.time()
 
-    validated_observations = await _run_validate_phase(
+    validate_result = await _run_validate_phase(
         llm_config=llm_config,
         candidates_with_evidence=candidates_with_evidence,
         reflect_id=reflect_id,
     )
+    validated_observations = validate_result.verified_observations
+    total_usage = total_usage + validate_result.token_usage
 
     phase3_duration = int((time.time() - phase3_start) * 1000)
     logger.info(
@@ -475,12 +582,15 @@ async def run_mental_model_reflect(
     # Use updated existing (with new evidence) instead of original existing
     observations_for_compare = updated_existing if updated_existing else existing_observations
 
-    final_observations, changes = await _run_compare_phase(
+    compare_result = await _run_compare_phase(
         llm_config=llm_config,
         existing_observations=observations_for_compare,
         new_observations=validated_observations,
         reflect_id=reflect_id,
     )
+    final_observations = compare_result.observations
+    changes = compare_result.changes
+    total_usage = total_usage + compare_result.token_usage
 
     # Add contradiction info to changes
     if contradicted_observations:
@@ -514,6 +624,9 @@ async def run_mental_model_reflect(
         memories_analyzed=len(seed_memories),
         candidates_generated=len(candidates),
         candidates_validated=len(validated_observations),
+        input_tokens=total_usage.input_tokens,
+        output_tokens=total_usage.output_tokens,
+        total_tokens=total_usage.total_tokens,
     )
 
 
@@ -524,7 +637,7 @@ async def _run_seed_phase(
     max_candidates: int,
     reflect_id: str,
     existing_observations: list[dict] | None = None,
-) -> list[CandidateObservation]:
+) -> SeedPhaseResult:
     """Phase 1: Generate NEW candidate observations from diverse memories.
 
     If existing_observations are provided, the LLM will be instructed to skip
@@ -533,13 +646,20 @@ async def _run_seed_phase(
     prompt = build_seed_phase_prompt(memories, topic, existing_observations)
 
     try:
-        response = await llm_config.call(
+        response, token_usage = await llm_config.call(
             messages=[
                 {"role": "system", "content": SEED_PHASE_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
             response_format=SeedPhaseOutput,
             scope="mm_reflect_seed",
+            return_usage=True,
+        )
+
+        usage = PhaseTokenUsage(
+            input_tokens=token_usage.input_tokens if token_usage else 0,
+            output_tokens=token_usage.output_tokens if token_usage else 0,
+            total_tokens=token_usage.total_tokens if token_usage else 0,
         )
 
         # Parse response
@@ -568,11 +688,11 @@ async def _run_seed_phase(
                 logger.warning(f"[MM-REFLECT {reflect_id}] Failed to parse seed phase response")
                 candidates = []
 
-        return candidates
+        return SeedPhaseResult(candidates=candidates, token_usage=usage)
 
     except Exception as e:
         logger.error(f"[MM-REFLECT {reflect_id}] Seed phase failed: {e}")
-        return []
+        return SeedPhaseResult()
 
 
 def _parse_update_existing_response(response: Any, reflect_id: str) -> UpdateExistingPhaseOutput:
@@ -606,7 +726,7 @@ async def _run_update_existing_phase(
     existing_observations: list[dict],
     recall_fn: Callable[[str, int], Awaitable[dict[str, Any]]],
     reflect_id: str,
-) -> tuple[list[dict], list[str]]:
+) -> UpdateExistingResult:
     """Phase 0: Search for new evidence for existing observations.
 
     For each existing observation:
@@ -614,12 +734,9 @@ async def _run_update_existing_phase(
     2. Search for contradicting evidence
     3. Extract new quotes and add to the observation
     4. Flag observations with strong contradictions
-
-    Returns:
-        Tuple of (updated_observations, list_of_contradicted_observation_titles)
     """
     if not existing_observations:
-        return [], []
+        return UpdateExistingResult()
 
     # Search for evidence for all existing observations in parallel
     async def search_evidence_for_observation(obs: dict) -> ObservationWithEvidence:
@@ -673,7 +790,7 @@ async def _run_update_existing_phase(
 
     if not has_new_evidence:
         logger.info(f"[MM-REFLECT {reflect_id}] No new evidence found for existing observations")
-        return existing_observations, []
+        return UpdateExistingResult(updated_observations=existing_observations)
 
     # Build prompt data for LLM
     prompt_data = [
@@ -689,13 +806,20 @@ async def _run_update_existing_phase(
     try:
         prompt = build_update_existing_prompt(prompt_data)
 
-        response = await llm_config.call(
+        response, token_usage = await llm_config.call(
             messages=[
                 {"role": "system", "content": UPDATE_EXISTING_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
             response_format=UpdateExistingPhaseOutput,
             scope="mm_reflect_update_existing",
+            return_usage=True,
+        )
+
+        usage = PhaseTokenUsage(
+            input_tokens=token_usage.input_tokens if token_usage else 0,
+            output_tokens=token_usage.output_tokens if token_usage else 0,
+            total_tokens=token_usage.total_tokens if token_usage else 0,
         )
 
         # Parse response into typed model
@@ -703,7 +827,7 @@ async def _run_update_existing_phase(
 
         if not parsed_response.updated_observations:
             logger.info(f"[MM-REFLECT {reflect_id}] No updated observations in LLM response")
-            return existing_observations, []
+            return UpdateExistingResult(updated_observations=existing_observations, token_usage=usage)
 
         # Build memory content map for quote verification
         memory_content_map: dict[str, str] = {}
@@ -774,11 +898,15 @@ async def _run_update_existing_phase(
             f"added {total_new_evidence} new evidence items"
         )
 
-        return updated_observations, contradicted_titles
+        return UpdateExistingResult(
+            updated_observations=updated_observations,
+            contradicted_titles=contradicted_titles,
+            token_usage=usage,
+        )
 
     except Exception as e:
         logger.error(f"[MM-REFLECT {reflect_id}] Update existing phase failed: {e}", exc_info=True)
-        return existing_observations, []
+        return UpdateExistingResult(updated_observations=existing_observations)
 
 
 async def _run_evidence_hunt_phase(
@@ -830,7 +958,7 @@ async def _run_validate_phase(
     llm_config: "LLMProvider",
     candidates_with_evidence: list[CandidateWithEvidence],
     reflect_id: str,
-) -> list[dict]:
+) -> ValidatePhaseResult:
     """Phase 3: Validate candidates and extract exact quotes."""
     # Convert to dict format for prompt
     candidates_data = [
@@ -847,13 +975,20 @@ async def _run_validate_phase(
     prompt = build_validate_phase_prompt(candidates_data)
 
     try:
-        response = await llm_config.call(
+        response, token_usage = await llm_config.call(
             messages=[
                 {"role": "system", "content": VALIDATE_PHASE_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
             response_format=ValidatePhaseOutput,
             scope="mm_reflect_validate",
+            return_usage=True,
+        )
+
+        usage = PhaseTokenUsage(
+            input_tokens=token_usage.input_tokens if token_usage else 0,
+            output_tokens=token_usage.output_tokens if token_usage else 0,
+            total_tokens=token_usage.total_tokens if token_usage else 0,
         )
 
         # Parse response
@@ -904,11 +1039,11 @@ async def _run_validate_phase(
                     f"[MM-REFLECT {reflect_id}] Observation discarded - no verified evidence: {obs.get('content', '')[:50]}"
                 )
 
-        return verified_observations
+        return ValidatePhaseResult(verified_observations=verified_observations, token_usage=usage)
 
     except Exception as e:
         logger.error(f"[MM-REFLECT {reflect_id}] Validate phase failed: {e}")
-        return []
+        return ValidatePhaseResult()
 
 
 def _fuzzy_quote_match(quote: str, content: str, threshold: float = 0.8) -> bool:
@@ -932,7 +1067,7 @@ async def _run_compare_phase(
     existing_observations: list[dict],
     new_observations: list[dict],
     reflect_id: str,
-) -> tuple[list[Observation], dict]:
+) -> ComparePhaseResult:
     """Phase 4: Merge new observations with existing mental model."""
     # If no existing observations, just convert new ones
     if not existing_observations:
@@ -944,7 +1079,7 @@ async def _run_compare_phase(
             "removed": [],
             "merged": [],
         }
-        return final_obs, changes
+        return ComparePhaseResult(observations=final_obs, changes=changes)
 
     # If no new observations, keep existing
     if not new_observations:
@@ -956,18 +1091,25 @@ async def _run_compare_phase(
             "removed": [],
             "merged": [],
         }
-        return final_obs, changes
+        return ComparePhaseResult(observations=final_obs, changes=changes)
 
     prompt = build_compare_phase_prompt(existing_observations, new_observations)
 
     try:
-        response = await llm_config.call(
+        response, token_usage = await llm_config.call(
             messages=[
                 {"role": "system", "content": COMPARE_PHASE_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
             response_format=ComparePhaseOutput,
             scope="mm_reflect_compare",
+            return_usage=True,
+        )
+
+        usage = PhaseTokenUsage(
+            input_tokens=token_usage.input_tokens if token_usage else 0,
+            output_tokens=token_usage.output_tokens if token_usage else 0,
+            total_tokens=token_usage.total_tokens if token_usage else 0,
         )
 
         # Parse response
@@ -991,7 +1133,7 @@ async def _run_compare_phase(
 
         # Convert to Observation objects
         final_observations = [_dict_to_observation(obs) for obs in observations_data]
-        return final_observations, changes
+        return ComparePhaseResult(observations=final_observations, changes=changes, token_usage=usage)
 
     except Exception as e:
         logger.error(f"[MM-REFLECT {reflect_id}] Compare phase failed: {e}")
@@ -999,7 +1141,7 @@ async def _run_compare_phase(
         all_obs = existing_observations + new_observations
         final_obs = [_dict_to_observation(obs) for obs in all_obs]
         changes = {"note": f"Compare phase failed: {e}, keeping all observations"}
-        return final_obs, changes
+        return ComparePhaseResult(observations=final_obs, changes=changes)
 
 
 def _dict_to_observation(data: dict) -> Observation:
