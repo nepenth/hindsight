@@ -95,6 +95,8 @@ async def tool_lookup(
     else:
         # List mental models (compact: id, name, description only)
         # Full observations are retrieved via get_mental_model(model_id)
+        # NOTE: Directives (subtype='directive') are excluded from listing -
+        # they are injected into the system prompt, not discoverable via tools
         # Filter by tags if provided
         if tags:
             if tags_match == "all":
@@ -103,7 +105,7 @@ async def tool_lookup(
                     """
                     SELECT id, subtype, name, description
                     FROM mental_models
-                    WHERE bank_id = $1 AND tags @> $2::varchar[]
+                    WHERE bank_id = $1 AND tags @> $2::varchar[] AND subtype != 'directive'
                     ORDER BY last_updated DESC NULLS LAST, created_at DESC
                     """,
                     bank_id,
@@ -115,7 +117,7 @@ async def tool_lookup(
                     """
                     SELECT id, subtype, name, description
                     FROM mental_models
-                    WHERE bank_id = $1 AND tags && $2::varchar[]
+                    WHERE bank_id = $1 AND tags && $2::varchar[] AND subtype != 'directive'
                     ORDER BY last_updated DESC NULLS LAST, created_at DESC
                     """,
                     bank_id,
@@ -126,7 +128,7 @@ async def tool_lookup(
                 """
                 SELECT id, subtype, name, description
                 FROM mental_models
-                WHERE bank_id = $1
+                WHERE bank_id = $1 AND subtype != 'directive'
                 ORDER BY last_updated DESC NULLS LAST, created_at DESC
                 """,
                 bank_id,

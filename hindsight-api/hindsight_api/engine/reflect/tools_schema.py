@@ -4,8 +4,6 @@ Tool schema definitions for the reflect agent.
 These are OpenAI-format tool definitions used with native tool calling.
 """
 
-from typing import Literal
-
 # Tool definitions in OpenAI format
 TOOL_LIST_MENTAL_MODELS = {
     "type": "function",
@@ -134,79 +132,28 @@ TOOL_DONE_ANSWER = {
     },
 }
 
-TOOL_DONE_OBSERVATIONS = {
-    "type": "function",
-    "function": {
-        "name": "done",
-        "description": "Signal completion with MULTIPLE structured observations. Each observation must be a SEPARATE item in the array covering ONE theme. Do NOT combine all content into a single observation.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "observations": {
-                    "type": "array",
-                    "minItems": 3,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "title": {
-                                "type": "string",
-                                "description": "Short header for this observation's theme (e.g., 'Work Style', 'Technical Skills')",
-                            },
-                            "text": {
-                                "type": "string",
-                                "description": "Observation content about ONE theme. End with 'Key evidence:' containing text citations (summaries of what memories say), NOT memory IDs.",
-                            },
-                            "memory_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Full UUIDs of memories supporting this observation (put IDs here, not in text)",
-                            },
-                        },
-                        "required": ["title", "text", "memory_ids"],
-                    },
-                    "description": "Array of 3-8 observations, each covering a DIFFERENT aspect/theme. Do NOT put everything in one observation.",
-                },
-            },
-            "required": ["observations"],
-        },
-    },
-}
 
-
-def get_reflect_tools(
-    enable_learn: bool = True, output_mode: Literal["answer", "observations"] = "answer"
-) -> list[dict]:
+def get_reflect_tools(enable_learn: bool = True) -> list[dict]:
     """
     Get the list of tools for the reflect agent.
 
     Args:
         enable_learn: Whether to include the learn tool
-        output_mode: "answer" or "observations" - determines done tool format
-                     In observations mode, mental model tools are excluded to avoid
-                     using potentially outdated models during regeneration.
 
     Returns:
         List of tool definitions in OpenAI format
     """
     tools = []
 
-    # In answer mode, include mental model tools for lookup
-    # In observations mode (mental model generation), exclude them to avoid circular references
-    if output_mode == "answer":
-        tools.append(TOOL_LIST_MENTAL_MODELS)
-        tools.append(TOOL_GET_MENTAL_MODEL)
-
+    # Include mental model tools for lookup
+    tools.append(TOOL_LIST_MENTAL_MODELS)
+    tools.append(TOOL_GET_MENTAL_MODEL)
     tools.append(TOOL_RECALL)
 
     if enable_learn:
         tools.append(TOOL_LEARN)
 
     tools.append(TOOL_EXPAND)
-
-    # Add appropriate done tool based on output mode
-    if output_mode == "observations":
-        tools.append(TOOL_DONE_OBSERVATIONS)
-    else:
-        tools.append(TOOL_DONE_ANSWER)
+    tools.append(TOOL_DONE_ANSWER)
 
     return tools

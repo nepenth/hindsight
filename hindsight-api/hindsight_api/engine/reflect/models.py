@@ -87,21 +87,10 @@ class LLMCall(BaseModel):
     duration_ms: int = Field(description="Execution time in milliseconds")
 
 
-class Observation(BaseModel):
-    """A single observation with supporting memories."""
-
-    title: str = Field(description="Observation title/header")
-    text: str = Field(description="Observation content")
-    memory_ids: list[str] = Field(default_factory=list, description="Memory IDs supporting this observation")
-
-
 class ReflectAgentResult(BaseModel):
     """Result from the reflect agent."""
 
     text: str = Field(description="Final answer text")
-    observations: list[Observation] = Field(
-        default_factory=list, description="Structured observations (when output_mode=observations)"
-    )
     structured_output: dict[str, Any] | None = Field(
         default=None, description="Structured output parsed according to provided response_schema"
     )

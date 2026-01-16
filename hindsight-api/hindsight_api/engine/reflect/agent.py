@@ -6,9 +6,9 @@ import asyncio
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from .models import LLMCall, MentalModelInput, Observation, ReflectAgentResult, ToolCall
+from .models import LLMCall, MentalModelInput, ReflectAgentResult, ToolCall
 from .prompts import FINAL_SYSTEM_PROMPT, build_final_prompt, build_system_prompt_for_tools
 from .tools_schema import get_reflect_tools
 
@@ -136,7 +136,7 @@ async def run_reflect_agent(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_tokens: int | None = None,
     response_schema: dict | None = None,
-    output_mode: Literal["answer", "observations"] = "answer",
+    directives: list[dict[str, Any]] | None = None,
 ) -> ReflectAgentResult:
     """
     Execute the reflect agent loop using native tool calling.
@@ -158,7 +158,7 @@ async def run_reflect_agent(
         max_iterations: Maximum number of iterations before forcing response
         max_tokens: Maximum tokens for the final response
         response_schema: Optional JSON Schema for structured output in final response
-        output_mode: "answer" returns final text, "observations" returns structured observations
+        directives: Optional list of directive mental models to inject as hard rules
 
     Returns:
         ReflectAgentResult with final answer and metadata
@@ -168,10 +168,10 @@ async def run_reflect_agent(
     start_time = time.time()
 
     # Get tools for this agent
-    tools = get_reflect_tools(enable_learn=enable_learn, output_mode=output_mode)
+    tools = get_reflect_tools(enable_learn=enable_learn)
 
-    # Build initial messages
-    system_prompt = build_system_prompt_for_tools(bank_profile, context, output_mode=output_mode)
+    # Build initial messages (directives are injected into system prompt)
+    system_prompt = build_system_prompt_for_tools(bank_profile, context, directives=directives)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": query},
@@ -189,44 +189,43 @@ async def run_reflect_agent(
     available_memory_ids: set[str] = set()
     available_model_ids: set[str] = set()
 
-    # In answer mode, pre-fetch mental models so the agent always starts with this knowledge
-    if output_mode == "answer":
-        prefetch_start = time.time()
-        models_result = await lookup_fn(None)  # List all mental models
-        prefetch_duration = int((time.time() - prefetch_start) * 1000)
+    # Pre-fetch mental models so the agent always starts with this knowledge
+    prefetch_start = time.time()
+    models_result = await lookup_fn(None)  # List all mental models
+    prefetch_duration = int((time.time() - prefetch_start) * 1000)
 
-        # Track available model IDs
-        if isinstance(models_result, dict) and "models" in models_result:
-            for model in models_result["models"]:
-                if "id" in model:
-                    available_model_ids.add(model["id"])
+    # Track available model IDs
+    if isinstance(models_result, dict) and "models" in models_result:
+        for model in models_result["models"]:
+            if "id" in model:
+                available_model_ids.add(model["id"])
 
-        # Add to context history for the agent
-        context_history.append({"tool": "list_mental_models", "output": models_result})
+    # Add to context history for the agent
+    context_history.append({"tool": "list_mental_models", "output": models_result})
 
-        # Add to tool trace
-        tool_trace.append(
-            ToolCall(
-                tool="list_mental_models",
-                input={"tool": "list_mental_models"},
-                output=models_result,
-                duration_ms=prefetch_duration,
-                iteration=0,
-            )
+    # Add to tool trace
+    tool_trace.append(
+        ToolCall(
+            tool="list_mental_models",
+            input={"tool": "list_mental_models"},
+            output=models_result,
+            duration_ms=prefetch_duration,
+            iteration=0,
         )
-        tool_trace_summary.append(
-            {
-                "tool": "list_mental_models",
-                "input_summary": "(prefetch)",
-                "duration_ms": prefetch_duration,
-                "output_chars": len(json.dumps(models_result, default=str)),
-            }
-        )
-        total_tools_called += 1
+    )
+    tool_trace_summary.append(
+        {
+            "tool": "list_mental_models",
+            "input_summary": "(prefetch)",
+            "duration_ms": prefetch_duration,
+            "output_chars": len(json.dumps(models_result, default=str)),
+        }
+    )
+    total_tools_called += 1
 
-        # Include in the user message so the agent sees it
-        models_info = json.dumps(models_result, indent=2, default=str)
-        messages[1]["content"] = f"{query}\n\n## Available Mental Models (pre-fetched)\n```json\n{models_info}\n```"
+    # Include in the user message so the agent sees it
+    models_info = json.dumps(models_result, indent=2, default=str)
+    messages[1]["content"] = f"{query}\n\n## Available Mental Models (pre-fetched)\n```json\n{models_info}\n```"
 
     def _get_llm_trace() -> list[LLMCall]:
         return [LLMCall(scope=c["scope"], duration_ms=c["duration_ms"]) for c in llm_trace]
@@ -421,7 +420,6 @@ async def run_reflect_agent(
             # Process done tool
             return await _process_done_tool(
                 done_call,
-                output_mode,
                 available_memory_ids,
                 available_model_ids,
                 iteration + 1,
@@ -551,7 +549,6 @@ def _tool_call_to_dict(tc: "LLMToolCall") -> dict[str, Any]:
 
 async def _process_done_tool(
     done_call: "LLMToolCall",
-    output_mode: str,
     available_memory_ids: set[str],
     available_model_ids: set[str],
     iterations: int,
@@ -567,54 +564,6 @@ async def _process_done_tool(
     """Process the done tool call and return the result."""
     args = done_call.arguments
 
-    if output_mode == "observations" and "observations" in args:
-        # Process observations - handle both list and nested {"observations": [...]} format
-        observations: list[Observation] = []
-        used_memory_ids: list[str] = []
-
-        obs_list = args["observations"]
-        # Handle nested format where LLM outputs {"observations": [...]} instead of just [...]
-        if isinstance(obs_list, dict) and "observations" in obs_list:
-            obs_list = obs_list["observations"]
-
-        for obs_data in obs_list:
-            validated_mids = []
-            for mid in obs_data.get("memory_ids", []):
-                if mid in available_memory_ids:
-                    validated_mids.append(mid)
-                    if mid not in used_memory_ids:
-                        used_memory_ids.append(mid)
-
-            observations.append(
-                Observation(
-                    title=obs_data.get("title", ""),
-                    text=obs_data.get("text", ""),
-                    memory_ids=validated_mids,
-                )
-            )
-
-        # Build text from observations
-        text_parts = []
-        for obs in observations:
-            if obs.title:
-                text_parts.append(f"## {obs.title}\n{obs.text}")
-            else:
-                text_parts.append(obs.text)
-        answer = "\n\n".join(text_parts)
-
-        log_completion(answer, iterations)
-        return ReflectAgentResult(
-            text=answer,
-            observations=observations,
-            iterations=iterations,
-            tools_called=total_tools_called,
-            mental_models_created=mental_models_created,
-            tool_trace=tool_trace,
-            llm_trace=llm_trace,
-            used_memory_ids=used_memory_ids,
-        )
-
-    # Default: answer mode
     answer = args.get("answer", "").strip()
     if not answer:
         answer = "No answer provided."

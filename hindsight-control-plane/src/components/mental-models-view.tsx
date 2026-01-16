@@ -48,30 +48,37 @@ import {
   ChevronRight,
   Loader2,
   ExternalLink,
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
-import { DocumentChunkModal } from "./document-chunk-modal";
+import { MemoryDetailModal } from "./memory-detail-modal";
 
 type ViewMode = "dashboard" | "table";
 
-interface MentalModelObservation {
-  title: string;
-  text: string;
-  based_on: string[];
+interface ObservationEvidence {
+  memory_id: string;
+  quote: string;
+  relevance: string;
+  timestamp: string;
 }
 
-interface MemoryDetail {
-  id: string;
-  text: string;
-  context: string;
-  date: string;
-  type: string;
-  mentioned_at: string | null;
-  occurred_start: string | null;
-  occurred_end: string | null;
-  entities: string[];
-  document_id: string | null;
-  chunk_id: string | null;
-  tags: string[];
+interface MentalModelObservation {
+  title: string;
+  // 'content' is used for generated observations, 'text' for directives
+  content?: string;
+  text?: string;
+  evidence?: ObservationEvidence[];
+  based_on?: string[]; // For directives
+  created_at?: string;
+  trend?: "stable" | "strengthening" | "weakening" | "new" | "stale";
+  evidence_count?: number;
+  evidence_span?: { from: string | null; to: string | null };
+}
+
+interface MentalModelFreshness {
+  is_up_to_date: boolean;
+  last_refresh_at: string | null;
+  memories_since_refresh: number;
 }
 
 interface MentalModel {
@@ -85,12 +92,14 @@ interface MentalModel {
   links: string[];
   tags?: string[];
   last_updated: string | null;
+  last_refresh_at: string | null;
+  freshness?: MentalModelFreshness | null;
   created_at: string;
 }
 
 // Helper to count total source memories across all observations
 function getTotalMemoryCount(model: MentalModel): number {
-  return model.observations?.reduce((sum, obs) => sum + (obs.based_on?.length || 0), 0) || 0;
+  return model.observations?.reduce((sum, obs) => sum + (obs.evidence?.length || 0), 0) || 0;
 }
 
 export function MentalModelsView() {
@@ -117,11 +126,12 @@ export function MentalModelsView() {
 
   // Create mental model state
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createType, setCreateType] = useState<"pinned" | "directive">("pinned");
   const [creating, setCreating] = useState(false);
-  const [newModel, setNewModel] = useState({
-    name: "",
-    description: "",
-  });
+  const [newModel, setNewModel] = useState({ name: "", description: "" });
+
+  // Delete state
+  const [deletingModel, setDeletingModel] = useState<string | null>(null);
 
   // Auto-refresh interval (5 seconds)
   const AUTO_REFRESH_INTERVAL = 5000;
@@ -263,10 +273,12 @@ export function MentalModelsView() {
       await client.createMentalModel(currentBank, {
         name: newModel.name.trim(),
         description: newModel.description.trim(),
+        subtype: createType === "directive" ? "directive" : undefined,
       });
 
       // Reset form and reload
       setNewModel({ name: "", description: "" });
+      setCreateType("pinned");
       setShowCreateForm(false);
       await loadMentalModels();
     } catch (error) {
@@ -274,6 +286,24 @@ export function MentalModelsView() {
       alert("Error creating mental model: " + (error as Error).message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteModel = async (modelId: string) => {
+    if (!currentBank) return;
+
+    setDeletingModel(modelId);
+    try {
+      await client.deleteMentalModel(currentBank, modelId);
+      await loadMentalModels();
+      if (selectedModel?.id === modelId) {
+        setSelectedModel(null);
+      }
+    } catch (error) {
+      console.error("Error deleting mental model:", error);
+      alert("Error deleting mental model: " + (error as Error).message);
+    } finally {
+      setDeletingModel(null);
     }
   };
 
@@ -316,6 +346,7 @@ export function MentalModelsView() {
   const structuralModels = mentalModels.filter((m) => m.subtype === "structural");
   const emergentModels = mentalModels.filter((m) => m.subtype === "emergent");
   const learnedModels = mentalModels.filter((m) => m.subtype === "learned");
+  const directiveModels = mentalModels.filter((m) => m.subtype === "directive");
 
   const getSubtypeIcon = (subtype: string) => {
     switch (subtype) {
@@ -327,6 +358,8 @@ export function MentalModelsView() {
         return <Sparkles className="w-4 h-4 text-emerald-500" />;
       case "learned":
         return <Lightbulb className="w-4 h-4 text-violet-500" />;
+      case "directive":
+        return <AlertTriangle className="w-4 h-4 text-rose-500" />;
       default:
         return <Lightbulb className="w-4 h-4 text-slate-500" />;
     }
@@ -408,8 +441,8 @@ export function MentalModelsView() {
                   disabled={!!refreshing || !mission}
                   title={
                     !mission
-                      ? "Set a mission first to generate mental models"
-                      : "Regenerate mental models"
+                      ? "Set a mission first to refresh mental models"
+                      : "Refresh mental models"
                   }
                   className="h-8"
                 >
@@ -418,7 +451,7 @@ export function MentalModelsView() {
                   ) : (
                     <Sparkles className="w-4 h-4 mr-1" />
                   )}
-                  {refreshing ? "Regenerating..." : "Regenerate"}
+                  {refreshing ? "Refreshing..." : "Refresh"}
                   <ChevronDown className="w-3 h-3 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
@@ -492,7 +525,7 @@ export function MentalModelsView() {
               ? "bg-blue-500/10 border border-blue-500/20"
               : operationStatus.status === "completed"
                 ? "bg-emerald-500/10 border border-emerald-500/20"
-                : "bg-red-500/10 border border-red-500/20"
+                : "bg-rose-500/10 border border-rose-500/20"
           }`}
         >
           {operationStatus.status === "pending" ? (
@@ -500,20 +533,20 @@ export function MentalModelsView() {
           ) : operationStatus.status === "completed" ? (
             <Check className="w-4 h-4 text-emerald-500" />
           ) : (
-            <X className="w-4 h-4 text-red-500" />
+            <X className="w-4 h-4 text-rose-500" />
           )}
           <span className="text-sm font-medium text-foreground">
             {operationStatus.status === "pending"
-              ? `Regenerating ${operationStatus.type === "all" ? "all mental models" : `${operationStatus.type} models`}...`
+              ? `Refreshing ${operationStatus.type === "all" ? "all mental models" : `${operationStatus.type} models`}...`
               : operationStatus.status === "completed"
-                ? `Successfully regenerated ${operationStatus.type === "all" ? "all mental models" : `${operationStatus.type} models`}`
-                : `Failed to regenerate ${operationStatus.type === "all" ? "all mental models" : `${operationStatus.type} models`}`}
+                ? `Successfully refreshed ${operationStatus.type === "all" ? "all mental models" : `${operationStatus.type} models`}`
+                : `Failed to refresh ${operationStatus.type === "all" ? "all mental models" : `${operationStatus.type} models`}`}
           </span>
           {operationStatus.status === "pending" && (
             <span className="text-xs text-muted-foreground">Running in background...</span>
           )}
           {operationStatus.errorMessage && (
-            <span className="text-xs text-red-500">{operationStatus.errorMessage}</span>
+            <span className="text-xs text-rose-500">{operationStatus.errorMessage}</span>
           )}
           <Button
             variant="ghost"
@@ -527,34 +560,88 @@ export function MentalModelsView() {
       )}
 
       {/* Create Mental Model Dialog */}
-      <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
-        <DialogContent className="sm:max-w-md border-2 border-primary">
+      <Dialog
+        open={showCreateForm}
+        onOpenChange={(open) => {
+          setShowCreateForm(open);
+          if (!open) {
+            setNewModel({ name: "", description: "" });
+            setCreateType("pinned");
+          }
+        }}
+      >
+        <DialogContent
+          className={`sm:max-w-lg border-2 ${createType === "directive" ? "border-rose-500" : "border-primary"}`}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Pin className="w-5 h-5 text-primary" />
-              Create Pinned Mental Model
+              {createType === "directive" ? (
+                <>
+                  <AlertTriangle className="w-5 h-5 text-rose-500" />
+                  Create Directive
+                </>
+              ) : (
+                <>
+                  <Pin className="w-5 h-5 text-primary" />
+                  Create Pinned Mental Model
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Pinned models persist across regeneration and help organize your memory bank.
+              {createType === "directive"
+                ? "Directives are hard rules that the agent MUST follow in all responses."
+                : "Pinned models persist across regeneration and help organize your memory bank."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Type selector */}
+            <div className="flex gap-2">
+              <Button
+                variant={createType === "pinned" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCreateType("pinned")}
+                className="flex-1"
+              >
+                <Pin className="w-4 h-4 mr-1" />
+                Pinned Model
+              </Button>
+              <Button
+                variant={createType === "directive" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCreateType("directive")}
+                className={`flex-1 ${createType === "directive" ? "bg-rose-500 hover:bg-rose-600" : ""}`}
+              >
+                <AlertTriangle className="w-4 h-4 mr-1" />
+                Directive
+              </Button>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Name *</label>
               <Input
                 value={newModel.name}
                 onChange={(e) => setNewModel({ ...newModel, name: e.target.value })}
-                placeholder="e.g., Product Roadmap, Team Structure, Q1 Goals"
+                placeholder={
+                  createType === "directive"
+                    ? "e.g., Competitor Policy, Response Guidelines"
+                    : "e.g., Product Roadmap, Team Structure, Q1 Goals"
+                }
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Description *</label>
+              <label className="text-sm font-medium text-foreground">
+                {createType === "directive" ? "Rule *" : "Description *"}
+              </label>
               <Textarea
                 value={newModel.description}
                 onChange={(e) => setNewModel({ ...newModel, description: e.target.value })}
-                placeholder="What should this mental model track? e.g., Key product priorities and upcoming features"
-                className="min-h-[100px]"
+                placeholder={
+                  createType === "directive"
+                    ? "e.g., Never mention competitor products. When asked about competitors, redirect to our features instead."
+                    : "What should this mental model track?"
+                }
+                className={createType === "directive" ? "min-h-[120px]" : "min-h-[60px]"}
               />
             </div>
           </div>
@@ -565,6 +652,7 @@ export function MentalModelsView() {
               onClick={() => {
                 setShowCreateForm(false);
                 setNewModel({ name: "", description: "" });
+                setCreateType("pinned");
               }}
             >
               Cancel
@@ -572,6 +660,7 @@ export function MentalModelsView() {
             <Button
               onClick={handleCreateModel}
               disabled={creating || !newModel.name.trim() || !newModel.description.trim()}
+              className={createType === "directive" ? "bg-rose-500 hover:bg-rose-600" : ""}
             >
               {creating ? "Creating..." : "Create"}
             </Button>
@@ -625,7 +714,9 @@ export function MentalModelsView() {
                                 ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
                                 : model.subtype === "learned"
                                   ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
-                                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  : model.subtype === "directive"
+                                    ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                           }`}
                         >
                           {model.subtype}
@@ -642,18 +733,27 @@ export function MentalModelsView() {
                       <TableCell className="py-2 text-center text-sm text-foreground">
                         {getTotalMemoryCount(model)}
                       </TableCell>
-                      <TableCell className="py-2 text-xs text-muted-foreground">
-                        {model.last_updated
-                          ? new Date(model.last_updated).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                            }) +
-                            " " +
-                            new Date(model.last_updated).toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })
-                          : "-"}
+                      <TableCell className="py-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          {model.freshness && !model.freshness.is_up_to_date && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px]">
+                              {model.freshness.memories_since_refresh} new
+                            </span>
+                          )}
+                          <span className="text-muted-foreground">
+                            {model.last_refresh_at
+                              ? new Date(model.last_refresh_at).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                }) +
+                                " " +
+                                new Date(model.last_refresh_at).toLocaleTimeString("en-US", {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })
+                              : "-"}
+                          </span>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -726,7 +826,10 @@ export function MentalModelsView() {
                   Pinned Models
                   <span className="text-sm font-normal text-muted-foreground">(User-defined)</span>
                   <Button
-                    onClick={() => setShowCreateForm(true)}
+                    onClick={() => {
+                      setCreateType("pinned");
+                      setShowCreateForm(true);
+                    }}
                     variant="outline"
                     size="sm"
                     className="ml-auto h-7 text-xs"
@@ -738,11 +841,13 @@ export function MentalModelsView() {
                 {pinnedModels.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3">
                     {pinnedModels.map((model) => (
-                      <ModelListCard
+                      <PinnedModelCard
                         key={model.id}
                         model={model}
                         selected={selectedModel?.id === model.id}
                         onClick={() => setSelectedModel(model)}
+                        onDelete={() => handleDeleteModel(model.id)}
+                        deleting={deletingModel === model.id}
                       />
                     ))}
                   </div>
@@ -781,6 +886,48 @@ export function MentalModelsView() {
                     <Lightbulb className="w-6 h-6 mx-auto mb-2 text-violet-500/50" />
                     <p className="text-sm text-muted-foreground">
                       No learned models yet. Models are created automatically during reflection.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Directives Section - Always show */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-rose-500" />
+                  Directives
+                  <span className="text-sm font-normal text-muted-foreground">(Hard rules)</span>
+                  <Button
+                    onClick={() => {
+                      setCreateType("directive");
+                      setShowCreateForm(true);
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto h-7 text-xs"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add
+                  </Button>
+                </h3>
+                {directiveModels.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {directiveModels.map((model) => (
+                      <DirectiveCard
+                        key={model.id}
+                        model={model}
+                        selected={selectedModel?.id === model.id}
+                        onClick={() => setSelectedModel(model)}
+                        onDelete={() => handleDeleteModel(model.id)}
+                        deleting={deletingModel === model.id}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 border border-dashed border-rose-500/30 rounded-lg text-center">
+                    <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-rose-500/50" />
+                    <p className="text-sm text-muted-foreground">
+                      No directives yet. Directives are hard rules that the agent must follow.
                     </p>
                   </div>
                 )}
@@ -846,15 +993,16 @@ function ModelListCard({
               <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
               memories
             </span>
-            {model.last_updated && (
+            {model.freshness && !model.freshness.is_up_to_date && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                {model.freshness.memories_since_refresh} new
+              </span>
+            )}
+            {model.last_refresh_at && (
               <span>
-                {new Date(model.last_updated).toLocaleDateString("en-US", {
+                {new Date(model.last_refresh_at).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
-                })}{" "}
-                {new Date(model.last_updated).toLocaleTimeString("en-US", {
-                  hour: "numeric",
-                  minute: "2-digit",
                 })}
               </span>
             )}
@@ -878,6 +1026,135 @@ function ModelListCard({
   );
 }
 
+// Card for pinned models with delete button
+function PinnedModelCard({
+  model,
+  selected,
+  onClick,
+  onDelete,
+  deleting,
+}: {
+  model: MentalModel;
+  selected: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <Card
+      className={`cursor-pointer transition-colors ${
+        selected ? "bg-primary/10 border-primary" : "hover:bg-muted/50"
+      }`}
+      onClick={onClick}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <Pin className="w-4 h-4 text-amber-500 shrink-0" />
+              <span className="font-medium text-sm text-foreground">{model.name}</span>
+            </div>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{model.description}</p>
+            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+              <span>
+                <span className="font-medium text-foreground">
+                  {model.observations?.length || 0}
+                </span>{" "}
+                obs
+              </span>
+              <span>
+                <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
+                memories
+              </span>
+              {model.freshness && !model.freshness.is_up_to_date && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  {model.freshness.memories_since_refresh} new
+                </span>
+              )}
+              {model.last_refresh_at && (
+                <span>
+                  {new Date(model.last_refresh_at).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Card for directives with delete button
+function DirectiveCard({
+  model,
+  selected,
+  onClick,
+  onDelete,
+  deleting,
+}: {
+  model: MentalModel;
+  selected: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <Card
+      className={`cursor-pointer transition-colors border-rose-500/30 ${
+        selected ? "bg-rose-500/10 border-rose-500" : "hover:bg-rose-500/5"
+      }`}
+      onClick={onClick}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+              <span className="font-medium text-sm text-foreground">{model.name}</span>
+            </div>
+            <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{model.description}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // Detail panel for mental model (like MemoryDetailPanel)
 function MentalModelDetailPanel({
   model,
@@ -890,45 +1167,26 @@ function MentalModelDetailPanel({
 }) {
   const { currentBank } = useBank();
   const [expandedObservation, setExpandedObservation] = useState<number | null>(null);
-  const [loadingFacts, setLoadingFacts] = useState<Record<string, boolean>>({});
-  const [factDetails, setFactDetails] = useState<Record<string, MemoryDetail>>({});
-  const [factErrors, setFactErrors] = useState<Record<string, string>>({});
   const [regenerateStatus, setRegenerateStatus] = useState<{
     status: "scheduling" | "pending" | "completed" | "failed";
     errorMessage?: string | null;
   } | null>(null);
 
-  // Document/Chunk modal state
-  const [modalType, setModalType] = useState<"document" | "chunk" | null>(null);
-  const [modalId, setModalId] = useState<string | null>(null);
-
-  const openDocumentModal = (docId: string) => {
-    setModalType("document");
-    setModalId(docId);
-  };
-
-  const openChunkModal = (chunkId: string) => {
-    setModalType("chunk");
-    setModalId(chunkId);
-  };
-
-  const closeModal = () => {
-    setModalType(null);
-    setModalId(null);
-  };
+  // Memory detail modal state
+  const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
 
   const handleRegenerate = async () => {
     if (!currentBank) return;
 
     setRegenerateStatus({ status: "scheduling" });
     try {
-      const result = await client.generateMentalModel(currentBank, model.id);
+      const result = await client.refreshMentalModel(currentBank, model.id);
       if (result.operation_id) {
         setRegenerateStatus({ status: "pending" });
         pollRegenerateStatus(result.operation_id);
       }
     } catch (error) {
-      console.error("Error regenerating mental model:", error);
+      console.error("Error refreshing mental model:", error);
       setRegenerateStatus({ status: "failed", errorMessage: (error as Error).message });
       setTimeout(() => setRegenerateStatus(null), 5000);
     }
@@ -951,52 +1209,12 @@ function MentalModelDetailPanel({
           setTimeout(() => setRegenerateStatus(null), 5000);
         }
       } catch (error) {
-        console.error("Error polling regenerate status:", error);
+        console.error("Error polling refresh status:", error);
         setRegenerateStatus(null);
       }
     };
 
     poll();
-  };
-
-  const loadFactDetails = async (factIds: string[]) => {
-    if (!currentBank) return;
-
-    // Filter out already loaded facts
-    const toLoad = factIds.filter((id) => !factDetails[id] && !loadingFacts[id]);
-    if (toLoad.length === 0) return;
-
-    // Mark as loading
-    setLoadingFacts((prev) => {
-      const next = { ...prev };
-      toLoad.forEach((id) => (next[id] = true));
-      return next;
-    });
-
-    // Load each fact
-    for (const factId of toLoad) {
-      try {
-        const memory = await client.getMemory(factId, currentBank);
-        setFactDetails((prev) => ({ ...prev, [factId]: memory }));
-      } catch (error) {
-        console.error(`Error loading fact ${factId}:`, error);
-        setFactErrors((prev) => ({ ...prev, [factId]: "Failed to load" }));
-      } finally {
-        setLoadingFacts((prev) => ({ ...prev, [factId]: false }));
-      }
-    }
-  };
-
-  const toggleObservation = (idx: number, factIds: string[]) => {
-    if (expandedObservation === idx) {
-      setExpandedObservation(null);
-    } else {
-      setExpandedObservation(idx);
-      // Load facts when expanding
-      if (factIds.length > 0) {
-        loadFactDetails(factIds);
-      }
-    }
   };
 
   const getSubtypeIcon = (subtype: string) => {
@@ -1009,6 +1227,8 @@ function MentalModelDetailPanel({
         return <Sparkles className="w-5 h-5 text-emerald-500" />;
       case "learned":
         return <Lightbulb className="w-5 h-5 text-violet-500" />;
+      case "directive":
+        return <AlertTriangle className="w-5 h-5 text-rose-500" />;
       default:
         return <Lightbulb className="w-5 h-5 text-slate-500" />;
     }
@@ -1024,6 +1244,40 @@ function MentalModelDetailPanel({
         return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
       default:
         return "bg-slate-500/10 text-slate-600 dark:text-slate-400";
+    }
+  };
+
+  const getTrendColor = (trend: string) => {
+    switch (trend) {
+      case "stable":
+        return "bg-blue-500/10 text-blue-600 dark:text-blue-400";
+      case "strengthening":
+        return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+      case "weakening":
+        return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+      case "new":
+        return "bg-violet-500/10 text-violet-600 dark:text-violet-400";
+      case "stale":
+        return "bg-slate-500/10 text-slate-600 dark:text-slate-400";
+      default:
+        return "bg-slate-500/10 text-slate-600 dark:text-slate-400";
+    }
+  };
+
+  const getTrendDescription = (trend: string) => {
+    switch (trend) {
+      case "stable":
+        return "Consistently mentioned over time";
+      case "strengthening":
+        return "Mentioned more frequently recently";
+      case "weakening":
+        return "Mentioned less frequently recently";
+      case "new":
+        return "Recently discovered";
+      case "stale":
+        return "Not mentioned recently";
+      default:
+        return "";
     }
   };
 
@@ -1044,7 +1298,9 @@ function MentalModelDetailPanel({
                       ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
                       : model.subtype === "learned"
                         ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
-                        : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : model.subtype === "directive"
+                          ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                          : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                 }`}
               >
                 {model.subtype}
@@ -1079,7 +1335,7 @@ function MentalModelDetailPanel({
               regenerateStatus?.status === "completed"
                 ? "bg-emerald-500 hover:bg-emerald-600"
                 : regenerateStatus?.status === "failed"
-                  ? "border-red-500 text-red-500"
+                  ? "border-rose-500 text-rose-500"
                   : ""
             }`}
           >
@@ -1095,12 +1351,12 @@ function MentalModelDetailPanel({
             {regenerateStatus?.status === "scheduling"
               ? "Scheduling..."
               : regenerateStatus?.status === "pending"
-                ? "Regenerating..."
+                ? "Refreshing..."
                 : regenerateStatus?.status === "completed"
                   ? "Done!"
                   : regenerateStatus?.status === "failed"
                     ? "Failed"
-                    : "Regenerate"}
+                    : "Refresh"}
           </Button>
           <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
             <X className="h-4 w-4" />
@@ -1119,6 +1375,47 @@ function MentalModelDetailPanel({
           </div>
         </div>
 
+        {/* Trend Legend - shown when there are observations */}
+        {model.observations && model.observations.length > 0 && (
+          <div className="p-3 bg-muted/20 rounded-lg border border-border/30">
+            <div className="text-[10px] font-medium text-muted-foreground mb-2">Trend Legend</div>
+            <div className="grid grid-cols-5 gap-2 text-[10px]">
+              <div className="flex flex-col gap-1">
+                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("new")}`}>
+                  new
+                </span>
+                <span className="text-muted-foreground text-center">Recently discovered</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span
+                  className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("strengthening")}`}
+                >
+                  strengthening
+                </span>
+                <span className="text-muted-foreground text-center">Mentioned more recently</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("stable")}`}>
+                  stable
+                </span>
+                <span className="text-muted-foreground text-center">Consistently mentioned</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("weakening")}`}>
+                  weakening
+                </span>
+                <span className="text-muted-foreground text-center">Mentioned less recently</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className={`px-1.5 py-0.5 rounded text-center ${getTrendColor("stale")}`}>
+                  stale
+                </span>
+                <span className="text-muted-foreground text-center">Not mentioned recently</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Observations */}
         {model.observations && model.observations.length > 0 && (
           <div>
@@ -1126,168 +1423,137 @@ function MentalModelDetailPanel({
               Observations ({model.observations.length})
             </div>
             <div className="space-y-4">
-              {model.observations.map((observation, idx) => (
-                <div key={idx} className="p-4 bg-muted/50 rounded-lg">
-                  {observation.title && (
-                    <h4 className="text-base font-semibold mb-2 text-foreground">
+              {model.observations.map((observation, idx) => {
+                const hasEvidence = observation.evidence && observation.evidence.length > 0;
+
+                return (
+                  <div key={idx} className="p-4 bg-muted/50 rounded-lg">
+                    {/* Title */}
+                    <h4 className="text-base font-semibold mb-1 text-foreground break-words">
                       {observation.title}
                     </h4>
-                  )}
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown
-                      components={{
-                        p: ({ children }) => (
-                          <p className="text-sm leading-relaxed my-2 text-foreground">{children}</p>
-                        ),
-                        ul: ({ children }) => <ul className="my-2 pl-5 list-disc">{children}</ul>,
-                        ol: ({ children }) => (
-                          <ol className="my-2 pl-5 list-decimal">{children}</ol>
-                        ),
-                        li: ({ children }) => (
-                          <li className="my-1 text-sm text-foreground">{children}</li>
-                        ),
-                        code: ({ children }) => (
-                          <code className="text-sm bg-muted px-1.5 py-0.5 rounded">{children}</code>
-                        ),
-                        strong: ({ children }) => (
-                          <strong className="font-semibold text-foreground">{children}</strong>
-                        ),
-                      }}
-                    >
-                      {observation.text}
-                    </ReactMarkdown>
-                  </div>
-                  {observation.based_on && observation.based_on.length > 0 && (
-                    <div className="mt-3 pt-2 border-t border-border/50">
-                      <button
-                        onClick={() => toggleObservation(idx, observation.based_on)}
-                        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors group"
-                      >
-                        <ChevronRight
-                          className={`w-3 h-3 transition-transform ${expandedObservation === idx ? "rotate-90" : ""}`}
-                        />
-                        <FileText className="w-3 h-3" />
-                        <span>
-                          {observation.based_on.length} source memor
-                          {observation.based_on.length !== 1 ? "ies" : "y"}
-                        </span>
-                        <span className="text-muted-foreground/50 group-hover:text-muted-foreground">
-                          {expandedObservation === idx ? "Hide" : "Show"}
-                        </span>
-                      </button>
 
-                      {expandedObservation === idx && (
-                        <div className="mt-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
-                          {observation.based_on.map((factId) => {
-                            const fact = factDetails[factId];
-                            const isLoading = loadingFacts[factId];
-                            const error = factErrors[factId];
-
-                            return (
-                              <div
-                                key={factId}
-                                className="p-3 bg-background rounded-md border border-border"
-                              >
-                                {isLoading ? (
-                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Loading...
-                                  </div>
-                                ) : error ? (
-                                  <div className="text-sm text-red-500">{error}</div>
-                                ) : fact ? (
-                                  <div className="space-y-2">
-                                    <p className="text-sm text-foreground">{fact.text}</p>
-                                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                                      <span
-                                        className={`px-1.5 py-0.5 rounded ${getTypeColor(fact.type)}`}
-                                      >
-                                        {fact.type}
-                                      </span>
-                                      {fact.date && (
-                                        <span className="flex items-center gap-1 text-muted-foreground">
-                                          <Calendar className="w-3 h-3" />
-                                          {new Date(fact.date).toLocaleDateString("en-US", {
-                                            month: "short",
-                                            day: "numeric",
-                                            year: "numeric",
-                                          })}
-                                        </span>
-                                      )}
-                                      {fact.entities && fact.entities.length > 0 && (
-                                        <span className="flex items-center gap-1 text-muted-foreground">
-                                          <Users className="w-3 h-3" />
-                                          {fact.entities.slice(0, 3).join(", ")}
-                                          {fact.entities.length > 3 &&
-                                            ` +${fact.entities.length - 3}`}
-                                        </span>
-                                      )}
-                                      {fact.tags && fact.tags.length > 0 && (
-                                        <span className="flex items-center gap-1 text-muted-foreground">
-                                          <Tag className="w-3 h-3" />
-                                          {fact.tags.slice(0, 2).join(", ")}
-                                          {fact.tags.length > 2 && ` +${fact.tags.length - 2}`}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {fact.context && (
-                                      <div className="pt-2 mt-2 border-t border-border/50">
-                                        <span className="text-xs text-muted-foreground">
-                                          Context:{" "}
-                                        </span>
-                                        <span className="text-xs text-foreground/80">
-                                          {fact.context}
-                                        </span>
-                                      </div>
-                                    )}
-                                    <div className="pt-1 flex items-center gap-2">
-                                      <code className="text-[10px] font-mono text-muted-foreground/60">
-                                        {factId}
-                                      </code>
-                                      {(fact.document_id || fact.chunk_id) && (
-                                        <div className="flex gap-1 ml-auto">
-                                          {fact.document_id && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                openDocumentModal(fact.document_id!);
-                                              }}
-                                              className="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                                            >
-                                              <ExternalLink className="w-2.5 h-2.5" />
-                                              Doc
-                                            </button>
-                                          )}
-                                          {fact.chunk_id && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                openChunkModal(fact.chunk_id!);
-                                              }}
-                                              className="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                                            >
-                                              <ExternalLink className="w-2.5 h-2.5" />
-                                              Chunk
-                                            </button>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <code className="text-xs font-mono text-muted-foreground">
-                                    {factId}
-                                  </code>
-                                )}
-                              </div>
-                            );
+                    {/* Trend and date badges */}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      {observation.trend && (
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded cursor-help ${getTrendColor(observation.trend)}`}
+                          title={getTrendDescription(observation.trend)}
+                        >
+                          {observation.trend}
+                        </span>
+                      )}
+                      {observation.evidence_span?.from && observation.evidence_span?.to && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(observation.evidence_span.from).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}{" "}
+                          -{" "}
+                          {new Date(observation.evidence_span.to).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
                           })}
-                        </div>
+                        </span>
                       )}
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* Content */}
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      <ReactMarkdown
+                        components={{
+                          p: ({ children }) => (
+                            <p className="text-sm leading-relaxed my-2 text-foreground">
+                              {children}
+                            </p>
+                          ),
+                          ul: ({ children }) => <ul className="my-2 pl-5 list-disc">{children}</ul>,
+                          ol: ({ children }) => (
+                            <ol className="my-2 pl-5 list-decimal">{children}</ol>
+                          ),
+                          li: ({ children }) => (
+                            <li className="my-1 text-sm text-foreground">{children}</li>
+                          ),
+                          code: ({ children }) => (
+                            <code className="text-sm bg-muted px-1.5 py-0.5 rounded">
+                              {children}
+                            </code>
+                          ),
+                          strong: ({ children }) => (
+                            <strong className="font-semibold text-foreground">{children}</strong>
+                          ),
+                        }}
+                      >
+                        {observation.text || observation.content}
+                      </ReactMarkdown>
+                    </div>
+
+                    {/* Evidence section */}
+                    {hasEvidence && (
+                      <div className="mt-3 pt-2 border-t border-border/50">
+                        <button
+                          onClick={() =>
+                            setExpandedObservation(expandedObservation === idx ? null : idx)
+                          }
+                          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors group"
+                        >
+                          <ChevronRight
+                            className={`w-3 h-3 transition-transform ${expandedObservation === idx ? "rotate-90" : ""}`}
+                          />
+                          <FileText className="w-3 h-3" />
+                          <span>
+                            {observation.evidence!.length} evidence quote
+                            {observation.evidence!.length !== 1 ? "s" : ""}
+                          </span>
+                          <span className="text-muted-foreground/50 group-hover:text-muted-foreground">
+                            {expandedObservation === idx ? "Hide" : "Show"}
+                          </span>
+                        </button>
+
+                        {expandedObservation === idx && (
+                          <div className="mt-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
+                            {observation.evidence!.map((ev, evIdx) => (
+                              <div
+                                key={evIdx}
+                                className="p-3 bg-background rounded-md border border-border flex items-start justify-between gap-3"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-foreground italic">
+                                    &ldquo;{ev.quote}&rdquo;
+                                  </p>
+                                  {ev.timestamp && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                      <Calendar className="w-3 h-3" />
+                                      {new Date(ev.timestamp).toLocaleDateString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        year: "numeric",
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs shrink-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedMemoryId(ev.memory_id);
+                                  }}
+                                >
+                                  <ExternalLink className="w-3 h-3 mr-1" />
+                                  View
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1310,11 +1576,11 @@ function MentalModelDetailPanel({
           </div>
           <div className="p-4 bg-muted/50 rounded-lg">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Last Updated
+              Last Refreshed
             </div>
             <div className="text-base font-medium text-foreground">
-              {model.last_updated
-                ? new Date(model.last_updated).toLocaleDateString("en-US", {
+              {model.last_refresh_at
+                ? new Date(model.last_refresh_at).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
                     year: "numeric",
@@ -1323,6 +1589,29 @@ function MentalModelDetailPanel({
             </div>
           </div>
         </div>
+
+        {/* Freshness */}
+        {model.freshness && (
+          <div
+            className={`p-4 rounded-lg border ${model.freshness.is_up_to_date ? "bg-emerald-500/5 border-emerald-500/20" : "bg-amber-500/5 border-amber-500/20"}`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-foreground">
+                  {model.freshness.is_up_to_date ? "Up to date" : "Needs refresh"}
+                </div>
+                {!model.freshness.is_up_to_date && (
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {model.freshness.memories_since_refresh} new memories since last refresh
+                  </div>
+                )}
+              </div>
+              <div
+                className={`w-3 h-3 rounded-full ${model.freshness.is_up_to_date ? "bg-emerald-500" : "bg-amber-500"}`}
+              />
+            </div>
+          </div>
+        )}
 
         {/* ID */}
         <div className="p-4 bg-muted/50 rounded-lg">
@@ -1333,10 +1622,8 @@ function MentalModelDetailPanel({
         </div>
       </div>
 
-      {/* Document/Chunk Modal */}
-      {modalType && modalId && (
-        <DocumentChunkModal type={modalType} id={modalId} onClose={closeModal} />
-      )}
+      {/* Memory Detail Modal */}
+      <MemoryDetailModal memoryId={selectedMemoryId} onClose={() => setSelectedMemoryId(null)} />
     </div>
   );
 }
