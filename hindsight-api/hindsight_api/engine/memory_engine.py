@@ -3568,9 +3568,12 @@ class MemoryEngine(MemoryEngineInterface):
 
         # Load directives (mental models with subtype='directive')
         # Directives are hard rules that must be followed in all responses
+        # Filter by tags if provided (same logic as other mental models)
         directives = await self.list_mental_models(
             bank_id=bank_id,
             subtype="directive",
+            tags=tags,
+            tags_match=tags_match,
             request_context=request_context,
         )
         if directives:
@@ -4139,7 +4142,7 @@ class MemoryEngine(MemoryEngineInterface):
 
         query = f"""
             SELECT id, bank_id, subtype, name, description, observations,
-                   entity_id, links, tags, last_updated, created_at
+                   version, entity_id, links, tags, last_updated, created_at
             FROM {fq_table("mental_models")}
             WHERE bank_id = $1
         """
@@ -4159,6 +4162,12 @@ class MemoryEngine(MemoryEngineInterface):
             elif tags_match == "all":
                 # AND match: model has no tags OR model has all specified tags
                 query += f" AND (tags = '{{}}' OR tags @> ${len(params) + 1})"
+            elif tags_match == "any_strict":
+                # OR match, strict: model must have at least one matching tag (no untagged)
+                query += f" AND tags && ${len(params) + 1}"
+            elif tags_match == "all_strict":
+                # AND match, strict: model must have all specified tags (no untagged)
+                query += f" AND tags @> ${len(params) + 1}"
             else:  # exact
                 # Exact match: model has no tags OR model has exactly the specified tags
                 query += f" AND (tags = '{{}}' OR tags = ${len(params) + 1})"
@@ -4186,7 +4195,7 @@ class MemoryEngine(MemoryEngineInterface):
             row = await conn.fetchrow(
                 f"""
                 SELECT id, bank_id, subtype, name, description, observations,
-                       entity_id, links, tags, last_updated, created_at
+                       version, entity_id, links, tags, last_updated, created_at
                 FROM {fq_table("mental_models")}
                 WHERE bank_id = $1 AND id = $2
                 """,
@@ -4301,8 +4310,11 @@ class MemoryEngine(MemoryEngineInterface):
 
         metrics = get_metrics_collector()
 
-        # Get existing observations (in raw format for comparison)
-        existing_observations = model.get("observations", [])
+        # Get existing observations (convert Observation models to dicts for the reflect loop)
+        from .reflect.observations import Observation
+
+        raw_observations = model.get("observations", [])
+        existing_observations = [obs.model_dump() if isinstance(obs, Observation) else obs for obs in raw_observations]
 
         # Create callback for getting diverse memories
         async def get_diverse_memories() -> list[dict]:

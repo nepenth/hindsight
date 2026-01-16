@@ -55,6 +55,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { MemoryDetailModal } from "./memory-detail-modal";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type ViewMode = "dashboard" | "table";
 
@@ -82,6 +83,7 @@ interface MentalModelFreshness {
   is_up_to_date: boolean;
   last_refresh_at: string | null;
   memories_since_refresh: number;
+  reasons: string[];
 }
 
 interface MentalModelVersion {
@@ -121,6 +123,30 @@ function getTotalMemoryCount(model: MentalModel): number {
   return model.observations?.reduce((sum, obs) => sum + (obs.evidence?.length || 0), 0) || 0;
 }
 
+// Helper to format freshness reasons for display
+function formatFreshnessReason(freshness: MentalModelFreshness): string {
+  if (freshness.is_up_to_date) return "Up to date";
+  if (!freshness.reasons || freshness.reasons.length === 0) {
+    // Fallback to memory count if no reasons
+    return freshness.memories_since_refresh > 0
+      ? `${freshness.memories_since_refresh} new`
+      : "Stale";
+  }
+
+  // Map reason codes to human-readable labels
+  const reasonLabels: Record<string, string> = {
+    never_refreshed: "Never refreshed",
+    new_memories: `${freshness.memories_since_refresh} new`,
+    mission_changed: "Mission changed",
+    disposition_changed: "Disposition changed",
+    directives_changed: "Directives changed",
+  };
+
+  // Return the first reason (most important)
+  const primaryReason = freshness.reasons[0];
+  return reasonLabels[primaryReason] || primaryReason;
+}
+
 export function MentalModelsView() {
   const { currentBank } = useBank();
   const [mentalModels, setMentalModels] = useState<MentalModel[]>([]);
@@ -147,7 +173,7 @@ export function MentalModelsView() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createType, setCreateType] = useState<"pinned" | "directive">("pinned");
   const [creating, setCreating] = useState(false);
-  const [newModel, setNewModel] = useState({ name: "", description: "" });
+  const [newModel, setNewModel] = useState({ name: "", description: "", tags: "" });
 
   // Delete state
   const [deletingModel, setDeletingModel] = useState<string | null>(null);
@@ -294,14 +320,25 @@ export function MentalModelsView() {
 
     setCreating(true);
     try {
+      // Parse comma-separated tags
+      const tags = newModel.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
       await client.createMentalModel(currentBank, {
         name: newModel.name.trim(),
         description: newModel.description.trim(),
         subtype: createType === "directive" ? "directive" : undefined,
+        tags: tags.length > 0 ? tags : undefined,
+        observations:
+          createType === "directive"
+            ? [{ title: newModel.name.trim(), content: newModel.description.trim() }]
+            : undefined,
       });
 
       // Reset form and reload
-      setNewModel({ name: "", description: "" });
+      setNewModel({ name: "", description: "", tags: "" });
       setCreateType("pinned");
       setShowCreateForm(false);
       await loadMentalModels();
@@ -613,13 +650,13 @@ export function MentalModelsView() {
         onOpenChange={(open) => {
           setShowCreateForm(open);
           if (!open) {
-            setNewModel({ name: "", description: "" });
+            setNewModel({ name: "", description: "", tags: "" });
             setCreateType("pinned");
           }
         }}
       >
         <DialogContent
-          className={`sm:max-w-lg border-2 ${createType === "directive" ? "border-rose-500" : "border-primary"}`}
+          className={`sm:max-w-lg border-2 ${createType === "directive" ? "border-rose-500" : "border-amber-500"}`}
         >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -630,7 +667,7 @@ export function MentalModelsView() {
                 </>
               ) : (
                 <>
-                  <Pin className="w-5 h-5 text-primary" />
+                  <Pin className="w-5 h-5 text-amber-500" />
                   Create Pinned Mental Model
                 </>
               )}
@@ -649,7 +686,7 @@ export function MentalModelsView() {
                 variant={createType === "pinned" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setCreateType("pinned")}
-                className="flex-1"
+                className={`flex-1 ${createType === "pinned" ? "bg-amber-500 hover:bg-amber-600" : ""}`}
               >
                 <Pin className="w-4 h-4 mr-1" />
                 Pinned Model
@@ -692,6 +729,19 @@ export function MentalModelsView() {
                 className={createType === "directive" ? "min-h-[120px]" : "min-h-[60px]"}
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Tags <span className="text-muted-foreground font-normal">(optional)</span>
+              </label>
+              <Input
+                value={newModel.tags}
+                onChange={(e) => setNewModel({ ...newModel, tags: e.target.value })}
+                placeholder="e.g., project-x, team-alpha (comma-separated)"
+              />
+              <p className="text-xs text-muted-foreground">
+                This model is used during reflect only when the request includes matching tags.
+              </p>
+            </div>
           </div>
 
           <DialogFooter>
@@ -699,7 +749,7 @@ export function MentalModelsView() {
               variant="outline"
               onClick={() => {
                 setShowCreateForm(false);
-                setNewModel({ name: "", description: "" });
+                setNewModel({ name: "", description: "", tags: "" });
                 setCreateType("pinned");
               }}
             >
@@ -708,7 +758,11 @@ export function MentalModelsView() {
             <Button
               onClick={handleCreateModel}
               disabled={creating || !newModel.name.trim() || !newModel.description.trim()}
-              className={createType === "directive" ? "bg-rose-500 hover:bg-rose-600" : ""}
+              className={
+                createType === "directive"
+                  ? "bg-rose-500 hover:bg-rose-600"
+                  : "bg-amber-500 hover:bg-amber-600"
+              }
             >
               {creating ? "Creating..." : "Create"}
             </Button>
@@ -719,7 +773,7 @@ export function MentalModelsView() {
       {/* Edit Mental Model Dialog */}
       <Dialog open={!!editingModel} onOpenChange={(open) => !open && setEditingModel(null)}>
         <DialogContent
-          className={`sm:max-w-lg border-2 ${editingModel?.subtype === "directive" ? "border-rose-500" : "border-primary"}`}
+          className={`sm:max-w-lg border-2 ${editingModel?.subtype === "directive" ? "border-rose-500" : "border-amber-500"}`}
         >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -730,7 +784,7 @@ export function MentalModelsView() {
                 </>
               ) : (
                 <>
-                  <Pin className="w-5 h-5 text-primary" />
+                  <Pin className="w-5 h-5 text-amber-500" />
                   Edit Pinned Model
                 </>
               )}
@@ -770,7 +824,9 @@ export function MentalModelsView() {
               onClick={handleSaveEdit}
               disabled={saving || !editForm.name.trim() || !editForm.description.trim()}
               className={
-                editingModel?.subtype === "directive" ? "bg-rose-500 hover:bg-rose-600" : ""
+                editingModel?.subtype === "directive"
+                  ? "bg-rose-500 hover:bg-rose-600"
+                  : "bg-amber-500 hover:bg-amber-600"
               }
             >
               {saving ? "Saving..." : "Save"}
@@ -846,14 +902,12 @@ export function MentalModelsView() {
                       </TableCell>
                       <TableCell className="py-2 text-xs">
                         <div className="flex items-center gap-2">
-                          {model.freshness &&
-                            !model.freshness.is_up_to_date &&
-                            model.freshness.memories_since_refresh > 0 && (
-                              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                {model.freshness.memories_since_refresh} new
-                              </span>
-                            )}
+                          {model.freshness && !model.freshness.is_up_to_date && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              {formatFreshnessReason(model.freshness)}
+                            </span>
+                          )}
                           <span className="text-muted-foreground">
                             {model.last_refresh_at
                               ? new Date(model.last_refresh_at).toLocaleDateString("en-US", {
@@ -1033,9 +1087,6 @@ export function MentalModelsView() {
                         model={model}
                         selected={selectedModel?.id === model.id}
                         onClick={() => setSelectedModel(model)}
-                        onEdit={() => handleStartEdit(model)}
-                        onDelete={() => handleDeleteModel(model.id)}
-                        deleting={deletingModel === model.id}
                       />
                     ))}
                   </div>
@@ -1072,6 +1123,8 @@ export function MentalModelsView() {
             model={selectedModel}
             onClose={() => setSelectedModel(null)}
             onRegenerated={silentRefreshModels}
+            onDelete={() => handleDeleteModel(selectedModel.id)}
+            deleting={deletingModel === selectedModel.id}
           />
         </div>
       )}
@@ -1109,14 +1162,12 @@ function ModelListCard({
               <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
               memories
             </span>
-            {model.freshness &&
-              !model.freshness.is_up_to_date &&
-              model.freshness.memories_since_refresh > 0 && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                  {model.freshness.memories_since_refresh} new
-                </span>
-              )}
+            {model.freshness && !model.freshness.is_up_to_date && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                {formatFreshnessReason(model.freshness)}
+              </span>
+            )}
             {model.last_refresh_at && (
               <span>
                 {new Date(model.last_refresh_at).toLocaleDateString("en-US", {
@@ -1187,14 +1238,12 @@ function PinnedModelCard({
                 <span className="font-medium text-foreground">{getTotalMemoryCount(model)}</span>{" "}
                 memories
               </span>
-              {model.freshness &&
-                !model.freshness.is_up_to_date &&
-                model.freshness.memories_since_refresh > 0 && (
-                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    {model.freshness.memories_since_refresh} new
-                  </span>
-                )}
+              {model.freshness && !model.freshness.is_up_to_date && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  {formatFreshnessReason(model.freshness)}
+                </span>
+              )}
               {model.last_refresh_at && (
                 <span>
                   {new Date(model.last_refresh_at).toLocaleDateString("en-US", {
@@ -1204,6 +1253,19 @@ function PinnedModelCard({
                 </span>
               )}
             </div>
+            {model.tags && model.tags.length > 0 && (
+              <div className="flex items-center gap-1 mt-2 flex-wrap">
+                <Tag className="w-3 h-3 text-muted-foreground" />
+                {model.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button
@@ -1242,21 +1304,15 @@ function PinnedModelCard({
   );
 }
 
-// Card for directives with edit and delete buttons
+// Card for directives (no action buttons - actions are in the detail panel)
 function DirectiveCard({
   model,
   selected,
   onClick,
-  onEdit,
-  onDelete,
-  deleting,
 }: {
   model: MentalModel;
   selected: boolean;
   onClick: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  deleting: boolean;
 }) {
   return (
     <Card
@@ -1266,46 +1322,11 @@ function DirectiveCard({
       onClick={onClick}
     >
       <CardContent className="p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
-              <span className="font-medium text-sm text-foreground">{model.name}</span>
-            </div>
-            <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{model.description}</p>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit();
-              }}
-              title="Edit"
-            >
-              <Pencil className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              disabled={deleting}
-              title="Delete"
-            >
-              {deleting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4" />
-              )}
-            </Button>
-          </div>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+          <span className="font-medium text-sm text-foreground">{model.name}</span>
         </div>
+        <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{model.description}</p>
       </CardContent>
     </Card>
   );
@@ -1316,10 +1337,14 @@ function MentalModelDetailPanel({
   model,
   onClose,
   onRegenerated,
+  onDelete,
+  deleting,
 }: {
   model: MentalModel;
   onClose: () => void;
   onRegenerated?: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
 }) {
   const { currentBank } = useBank();
   const [expandedObservation, setExpandedObservation] = useState<number | null>(null);
@@ -1507,22 +1532,6 @@ function MentalModelDetailPanel({
               >
                 {model.subtype}
               </span>
-              {model.subtype !== "directive" && model.freshness && (
-                <span
-                  className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                    model.freshness.is_up_to_date
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${model.freshness.is_up_to_date ? "bg-emerald-500" : "bg-amber-500"}`}
-                  />
-                  {model.freshness.is_up_to_date
-                    ? "Up to date"
-                    : `${model.freshness.memories_since_refresh} new memories`}
-                </span>
-              )}
               {model.tags && model.tags.length > 0 && (
                 <>
                   {model.tags.map((tag) => (
@@ -1626,74 +1635,15 @@ function MentalModelDetailPanel({
                     : "Never"}
                 </span>
               </span>
-              {model.freshness &&
-                !model.freshness.is_up_to_date &&
-                model.freshness.memories_since_refresh > 0 && (
-                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    {model.freshness.memories_since_refresh} new
-                  </span>
-                )}
+              {model.freshness && !model.freshness.is_up_to_date && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  {formatFreshnessReason(model.freshness)}
+                </span>
+              )}
             </>
           )}
         </div>
-
-        {/* Trend Legend - shown when there are observations (not for directives) */}
-        {model.subtype !== "directive" && model.observations && model.observations.length > 0 && (
-          <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Trend Legend
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("new")}`}
-                >
-                  new
-                </span>
-                <span className="text-xs text-muted-foreground">Recently discovered</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("strengthening")}`}
-                >
-                  strengthening
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Mentioned more frequently recently
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("stable")}`}
-                >
-                  stable
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Consistently mentioned over time
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("weakening")}`}
-                >
-                  weakening
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Mentioned less frequently recently
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium min-w-[90px] text-center ${getTrendColor("stale")}`}
-                >
-                  stale
-                </span>
-                <span className="text-xs text-muted-foreground">Not mentioned recently</span>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Description - right before observations */}
         <div>
@@ -1726,12 +1676,56 @@ function MentalModelDetailPanel({
                     {model.subtype !== "directive" && (
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         {observation.trend && (
-                          <span
-                            className={`text-xs px-1.5 py-0.5 rounded cursor-help ${getTrendColor(observation.trend)}`}
-                            title={getTrendDescription(observation.trend)}
-                          >
-                            {observation.trend}
-                          </span>
+                          <TooltipProvider delayDuration={100}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className={`text-xs px-1.5 py-0.5 rounded cursor-help ${getTrendColor(observation.trend)}`}
+                                >
+                                  {observation.trend}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="top"
+                                className="p-0 bg-popover border border-border shadow-lg"
+                              >
+                                <div className="p-3 space-y-1.5">
+                                  <div className="text-xs font-semibold text-foreground mb-2">
+                                    Trend Legend
+                                  </div>
+                                  {(
+                                    [
+                                      "new",
+                                      "strengthening",
+                                      "stable",
+                                      "weakening",
+                                      "stale",
+                                    ] as const
+                                  ).map((trend) => (
+                                    <div
+                                      key={trend}
+                                      className={`flex items-center gap-2 px-2 py-1 rounded ${
+                                        observation.trend === trend
+                                          ? "bg-primary/10 ring-1 ring-primary/30"
+                                          : ""
+                                      }`}
+                                    >
+                                      <span
+                                        className={`text-xs px-1.5 py-0.5 rounded font-medium min-w-[80px] text-center ${getTrendColor(trend)}`}
+                                      >
+                                        {trend}
+                                      </span>
+                                      <span
+                                        className={`text-xs ${observation.trend === trend ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                                      >
+                                        {getTrendDescription(trend)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                         {observation.evidence_span?.from && observation.evidence_span?.to && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -1856,22 +1850,43 @@ function MentalModelDetailPanel({
           </div>
           <code className="text-sm font-mono break-all text-muted-foreground">{model.id}</code>
         </div>
+
+        {/* Delete button for user-managed models */}
+        {(model.subtype === "pinned" || model.subtype === "directive") && onDelete && (
+          <div className="pt-4 border-t border-border">
+            <Button
+              variant="outline"
+              onClick={onDelete}
+              disabled={deleting}
+              className="w-full text-muted-foreground hover:text-rose-500 hover:border-rose-500 hover:bg-rose-500/10"
+            >
+              {deleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete this {model.subtype === "directive" ? "directive" : "mental model"}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Version History Dialog */}
       <Dialog open={showVersionHistory} onOpenChange={(open) => !open && handleCloseHistory()}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-[90vw] max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="w-5 h-5" />
               Version History - {model.name}
             </DialogTitle>
             <DialogDescription>
-              View previous versions of this mental model&apos;s observations.
+              {selectedVersion !== null
+                ? "Side-by-side comparison of observations"
+                : "Select a version to compare with current"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             {loadingVersions ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -1883,9 +1898,10 @@ function MentalModelDetailPanel({
                 <p className="text-sm">Versions are created each time the model is refreshed.</p>
               </div>
             ) : selectedVersion !== null ? (
-              // Show selected version's observations
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 pb-3 border-b">
+              // Side-by-side diff view
+              <div className="flex flex-col min-h-0 flex-1">
+                {/* Header with back button and stats */}
+                <div className="flex items-center justify-between pb-3 border-b mb-4">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1896,108 +1912,243 @@ function MentalModelDetailPanel({
                     className="h-8"
                   >
                     <ArrowLeft className="w-4 h-4 mr-1" />
-                    Back to list
+                    Back
                   </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Version {selectedVersion} -{" "}
-                    {versions.find((v) => v.version === selectedVersion)?.created_at
-                      ? new Date(
-                          versions.find((v) => v.version === selectedVersion)!.created_at!
-                        ).toLocaleString()
-                      : "Unknown date"}
-                  </span>
+                  <div className="flex items-center gap-4 text-sm">
+                    {(() => {
+                      const currentObs = model.observations || [];
+                      const added = currentObs.filter(
+                        (c) => !versionObservations.some((o) => o.title === c.title)
+                      ).length;
+                      const removed = versionObservations.filter(
+                        (o) => !currentObs.some((c) => c.title === o.title)
+                      ).length;
+                      // Modified: same title but different content or evidence count
+                      const modified = versionObservations.filter((old) => {
+                        const current = currentObs.find((c) => c.title === old.title);
+                        if (!current) return false;
+                        const oldContent = old.content || "";
+                        const currentContent = current.content || current.text || "";
+                        const oldEvCount = old.evidence_count || 0;
+                        const currentEvCount = current.evidence?.length || 0;
+                        return oldContent !== currentContent || oldEvCount !== currentEvCount;
+                      }).length;
+                      const unchanged = versionObservations.filter((old) => {
+                        const current = currentObs.find((c) => c.title === old.title);
+                        if (!current) return false;
+                        const oldContent = old.content || "";
+                        const currentContent = current.content || current.text || "";
+                        const oldEvCount = old.evidence_count || 0;
+                        const currentEvCount = current.evidence?.length || 0;
+                        return oldContent === currentContent && oldEvCount === currentEvCount;
+                      }).length;
+                      return (
+                        <>
+                          {added > 0 && (
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              +{added} added
+                            </span>
+                          )}
+                          {removed > 0 && (
+                            <span className="text-rose-600 dark:text-rose-400">
+                              -{removed} removed
+                            </span>
+                          )}
+                          {modified > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              ~{modified} modified
+                            </span>
+                          )}
+                          {unchanged > 0 && (
+                            <span className="text-muted-foreground">{unchanged} unchanged</span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 {loadingVersionData ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                   </div>
-                ) : versionObservations.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p>No observations in this version.</p>
-                  </div>
                 ) : (
-                  <div className="space-y-3">
-                    {versionObservations.map((obs, idx) => (
-                      <div key={idx} className="p-3 bg-muted/50 rounded-lg">
-                        <h4 className="font-medium text-sm mb-1">{obs.title}</h4>
-                        <p className="text-sm text-muted-foreground">{obs.content}</p>
-                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                          <span>{obs.evidence_count} evidence</span>
-                          {obs.trend && (
-                            <span className="px-1.5 py-0.5 rounded bg-muted">{obs.trend}</span>
-                          )}
-                        </div>
+                  // Two-column layout
+                  <div className="grid grid-cols-2 gap-4 flex-1 min-h-0 overflow-hidden">
+                    {/* Left column - Old version */}
+                    <div className="flex flex-col min-h-0 overflow-hidden">
+                      <div className="flex items-center gap-2 pb-2 border-b mb-3">
+                        <div className="w-3 h-3 rounded-full bg-rose-500/50" />
+                        <span className="font-medium text-sm">Version {selectedVersion}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {versions.find((v) => v.version === selectedVersion)?.created_at
+                            ? new Date(
+                                versions.find((v) => v.version === selectedVersion)!.created_at!
+                              ).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })
+                            : ""}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {versionObservations.length} observations
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="overflow-y-auto space-y-2 pr-2" style={{ maxHeight: "calc(85vh - 220px)" }}>
+                        {versionObservations.length === 0 ? (
+                          <div className="text-center py-4 text-muted-foreground text-sm">
+                            No observations
+                          </div>
+                        ) : (
+                          versionObservations.map((obs, idx) => {
+                            const currentMatch = model.observations?.find(
+                              (c) => c.title === obs.title
+                            );
+                            const existsInCurrent = !!currentMatch;
+                            // Check if modified (same title but different content/evidence)
+                            const isModified =
+                              existsInCurrent &&
+                              (() => {
+                                const oldContent = obs.content || "";
+                                const currentContent =
+                                  currentMatch.content || currentMatch.text || "";
+                                const oldEvCount = obs.evidence_count || 0;
+                                const currentEvCount = currentMatch.evidence?.length || 0;
+                                return (
+                                  oldContent !== currentContent || oldEvCount !== currentEvCount
+                                );
+                              })();
 
-                {/* Diff with current version */}
-                {versionObservations.length > 0 &&
-                  model.observations &&
-                  model.observations.length > 0 && (
-                    <div className="mt-6 pt-4 border-t">
-                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <ArrowRight className="w-4 h-4" />
-                        Changes from v{selectedVersion} to current
-                      </h4>
-                      <div className="space-y-2 text-sm">
-                        {/* Added observations */}
-                        {model.observations
-                          .filter(
-                            (current) =>
-                              !versionObservations.some((old) => old.title === current.title)
-                          )
-                          .map((obs, idx) => (
-                            <div
-                              key={`added-${idx}`}
-                              className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20"
-                            >
-                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                                + Added:
-                              </span>{" "}
-                              {obs.title}
-                            </div>
-                          ))}
-                        {/* Removed observations */}
-                        {versionObservations
-                          .filter(
-                            (old) =>
-                              !model.observations?.some((current) => current.title === old.title)
-                          )
-                          .map((obs, idx) => (
-                            <div
-                              key={`removed-${idx}`}
-                              className="p-2 rounded bg-rose-500/10 border border-rose-500/20"
-                            >
-                              <span className="text-rose-600 dark:text-rose-400 font-medium">
-                                - Removed:
-                              </span>{" "}
-                              {obs.title}
-                            </div>
-                          ))}
-                        {/* Unchanged count */}
-                        {(() => {
-                          const unchanged = versionObservations.filter((old) =>
-                            model.observations?.some((current) => current.title === old.title)
-                          ).length;
-                          if (unchanged > 0) {
+                            // Determine styling: removed (rose), modified (amber), unchanged (muted)
+                            const cardStyle = !existsInCurrent
+                              ? "bg-rose-500/10 border-rose-500/30"
+                              : isModified
+                                ? "bg-amber-500/10 border-amber-500/30"
+                                : "bg-muted/30 border-border";
+
                             return (
-                              <div className="p-2 rounded bg-muted text-muted-foreground">
-                                {unchanged} observation{unchanged !== 1 ? "s" : ""} unchanged
+                              <div
+                                key={idx}
+                                className={`p-3 rounded-lg border text-sm ${cardStyle}`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  {!existsInCurrent && (
+                                    <span className="text-rose-500 font-bold shrink-0">−</span>
+                                  )}
+                                  {isModified && (
+                                    <span className="text-amber-500 font-bold shrink-0">~</span>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-foreground">{obs.title}</h4>
+                                    <p className="text-muted-foreground text-xs mt-1 line-clamp-3">
+                                      {obs.content}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                      <span>{obs.evidence_count} evidence</span>
+                                      {obs.trend && (
+                                        <span className="px-1.5 py-0.5 rounded bg-muted">
+                                          {obs.trend}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             );
-                          }
-                          return null;
-                        })()}
+                          })
+                        )}
                       </div>
                     </div>
-                  )}
+
+                    {/* Right column - Current version */}
+                    <div className="flex flex-col min-h-0 overflow-hidden">
+                      <div className="flex items-center gap-2 pb-2 border-b mb-3">
+                        <div className="w-3 h-3 rounded-full bg-emerald-500/50" />
+                        <span className="font-medium text-sm">Current</span>
+                        <span className="text-xs text-muted-foreground">
+                          {model.last_refresh_at
+                            ? new Date(model.last_refresh_at).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })
+                            : ""}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {model.observations?.length || 0} observations
+                        </span>
+                      </div>
+                      <div className="overflow-y-auto space-y-2 pr-2" style={{ maxHeight: "calc(85vh - 220px)" }}>
+                        {!model.observations || model.observations.length === 0 ? (
+                          <div className="text-center py-4 text-muted-foreground text-sm">
+                            No observations
+                          </div>
+                        ) : (
+                          model.observations.map((obs, idx) => {
+                            const oldMatch = versionObservations.find((o) => o.title === obs.title);
+                            const existsInOld = !!oldMatch;
+                            // Check if modified (same title but different content/evidence)
+                            const isModified =
+                              existsInOld &&
+                              (() => {
+                                const oldContent = oldMatch.content || "";
+                                const currentContent = obs.content || obs.text || "";
+                                const oldEvCount = oldMatch.evidence_count || 0;
+                                const currentEvCount = obs.evidence?.length || 0;
+                                return (
+                                  oldContent !== currentContent || oldEvCount !== currentEvCount
+                                );
+                              })();
+
+                            // Determine styling: added (emerald), modified (amber), unchanged (muted)
+                            const cardStyle = !existsInOld
+                              ? "bg-emerald-500/10 border-emerald-500/30"
+                              : isModified
+                                ? "bg-amber-500/10 border-amber-500/30"
+                                : "bg-muted/30 border-border";
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`p-3 rounded-lg border text-sm ${cardStyle}`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  {!existsInOld && (
+                                    <span className="text-emerald-500 font-bold shrink-0">+</span>
+                                  )}
+                                  {isModified && (
+                                    <span className="text-amber-500 font-bold shrink-0">~</span>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-foreground">{obs.title}</h4>
+                                    <p className="text-muted-foreground text-xs mt-1 line-clamp-3">
+                                      {obs.content || obs.text}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                      <span>{obs.evidence?.length || 0} evidence</span>
+                                      {obs.trend && (
+                                        <span className="px-1.5 py-0.5 rounded bg-muted">
+                                          {obs.trend}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               // Show version list
-              <div className="space-y-2">
+              <div className="space-y-2 overflow-y-auto max-h-[60vh]">
                 {versions.map((version) => (
                   <button
                     key={version.version}

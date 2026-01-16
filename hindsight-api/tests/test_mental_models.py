@@ -1067,6 +1067,165 @@ class TestDirectivesInReflect:
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
 
+class TestMentalModelTagsFiltering:
+    """Test tags filtering for mental models (all types)."""
+
+    async def test_tags_match_any_includes_untagged(self, memory: MemoryEngine, request_context):
+        """Test that 'any' tags_match mode includes untagged mental models."""
+        bank_id = f"test-mm-tags-any-{uuid.uuid4().hex[:8]}"
+
+        # Ensure bank exists
+        await memory.get_bank_profile(bank_id, request_context=request_context)
+
+        # Create an UNTAGGED pinned model
+        await memory.create_mental_model(
+            bank_id=bank_id,
+            name="Global Model",
+            description="A global mental model",
+            subtype="pinned",
+            tags=[],  # No tags - should be included with "any" mode
+            request_context=request_context,
+        )
+
+        # Test 1: list_mental_models with tags and tags_match="any" should include untagged
+        models_any = await memory.list_mental_models(
+            bank_id=bank_id,
+            tags=["some-tag"],
+            tags_match="any",  # Should include untagged
+            request_context=request_context,
+        )
+        assert len(models_any) == 1, f"Expected untagged model with 'any' mode, got {len(models_any)}"
+
+        # Test 2: list_mental_models with tags and tags_match="any_strict" should exclude untagged
+        models_strict = await memory.list_mental_models(
+            bank_id=bank_id,
+            tags=["some-tag"],
+            tags_match="any_strict",  # Should exclude untagged
+            request_context=request_context,
+        )
+        assert len(models_strict) == 0, f"Expected no models with 'any_strict' mode, got {len(models_strict)}"
+
+        # Cleanup
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+    async def test_tags_match_strict_modes(self, memory: MemoryEngine, request_context):
+        """Test that strict modes only include mental models with matching tags."""
+        bank_id = f"test-mm-tags-strict-{uuid.uuid4().hex[:8]}"
+
+        # Ensure bank exists
+        await memory.get_bank_profile(bank_id, request_context=request_context)
+
+        # Create a TAGGED pinned model
+        await memory.create_mental_model(
+            bank_id=bank_id,
+            name="Tagged Model",
+            description="A tagged mental model",
+            subtype="pinned",
+            tags=["project-a"],
+            request_context=request_context,
+        )
+
+        # Create an UNTAGGED pinned model
+        await memory.create_mental_model(
+            bank_id=bank_id,
+            name="Untagged Model",
+            description="An untagged mental model",
+            subtype="pinned",
+            tags=[],  # No tags
+            request_context=request_context,
+        )
+
+        # Test 1: any_strict with matching tag - should get ONLY the tagged model
+        models_match = await memory.list_mental_models(
+            bank_id=bank_id,
+            tags=["project-a"],
+            tags_match="any_strict",
+            request_context=request_context,
+        )
+        assert len(models_match) == 1, f"Expected 1 model with matching tag, got {len(models_match)}"
+        assert models_match[0]["name"] == "Tagged Model"
+
+        # Test 2: any_strict with different tag - should get NO models
+        models_no_match = await memory.list_mental_models(
+            bank_id=bank_id,
+            tags=["project-b"],
+            tags_match="any_strict",
+            request_context=request_context,
+        )
+        assert len(models_no_match) == 0, f"Expected no models with non-matching tag, got {len(models_no_match)}"
+
+        # Test 3: any (non-strict) with any tag - should get BOTH models
+        models_any = await memory.list_mental_models(
+            bank_id=bank_id,
+            tags=["project-a"],
+            tags_match="any",
+            request_context=request_context,
+        )
+        assert len(models_any) == 2, f"Expected 2 models with 'any' mode, got {len(models_any)}"
+
+        # Cleanup
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+    async def test_tags_match_all_strict(self, memory: MemoryEngine, request_context):
+        """Test that 'all_strict' requires ALL tags to be present."""
+        bank_id = f"test-mm-tags-all-{uuid.uuid4().hex[:8]}"
+
+        # Ensure bank exists
+        await memory.get_bank_profile(bank_id, request_context=request_context)
+
+        # Create a model with multiple tags
+        await memory.create_mental_model(
+            bank_id=bank_id,
+            name="Multi-Tag Model",
+            description="Has project-a and project-b tags",
+            subtype="pinned",
+            tags=["project-a", "project-b"],
+            request_context=request_context,
+        )
+
+        # Create a model with only one tag
+        await memory.create_mental_model(
+            bank_id=bank_id,
+            name="Single-Tag Model",
+            description="Has only project-a tag",
+            subtype="pinned",
+            tags=["project-a"],
+            request_context=request_context,
+        )
+
+        # Test 1: all_strict with both tags - should get ONLY the multi-tag model
+        models_all = await memory.list_mental_models(
+            bank_id=bank_id,
+            tags=["project-a", "project-b"],
+            tags_match="all_strict",
+            request_context=request_context,
+        )
+        assert len(models_all) == 1, f"Expected 1 model with all tags, got {len(models_all)}"
+        assert models_all[0]["name"] == "Multi-Tag Model"
+
+        # Test 2: all (non-strict) with both tags - should include untagged too
+        # Add an untagged model
+        await memory.create_mental_model(
+            bank_id=bank_id,
+            name="Untagged Model",
+            description="No tags",
+            subtype="pinned",
+            tags=[],
+            request_context=request_context,
+        )
+
+        models_all_non_strict = await memory.list_mental_models(
+            bank_id=bank_id,
+            tags=["project-a", "project-b"],
+            tags_match="all",
+            request_context=request_context,
+        )
+        # Should get Multi-Tag Model + Untagged Model
+        assert len(models_all_non_strict) == 2, f"Expected 2 models with 'all' mode, got {len(models_all_non_strict)}"
+
+        # Cleanup
+        await memory.delete_bank(bank_id, request_context=request_context)
+
 
 class TestDirectivesPromptInjection:
     """Test that directives are properly injected into the system prompt."""

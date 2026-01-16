@@ -477,7 +477,7 @@ async def run_mental_model_reflect(
             )
         return MentalModelReflectResult(
             observations=[_dict_to_observation(obs) for obs in existing_observations],
-            version=current_version,
+            version=current_version + 1,  # Always increment version when refresh runs
             changes={"note": "No memories available for analysis"},
             phases_completed=["seed_empty"],
             duration_ms=int((time.time() - start_time) * 1000),
@@ -525,7 +525,7 @@ async def run_mental_model_reflect(
         logger.warning(f"[MM-REFLECT {reflect_id}] No candidates generated in seed phase")
         return MentalModelReflectResult(
             observations=[_dict_to_observation(obs) for obs in existing_observations],
-            version=current_version,
+            version=current_version + 1,  # Always increment version when refresh runs
             changes={"note": "No candidate observations could be generated"},
             phases_completed=phases_completed,
             duration_ms=int((time.time() - start_time) * 1000),
