@@ -716,15 +716,15 @@ async def test_list_tags_with_wildcard_suffix(api_client):
     """Test that list_tags filters with suffix wildcard pattern (*-admin)."""
     bank_id = f"list_tags_suffix_test_{datetime.now().timestamp()}"
 
-    # Store memories with various tags
+    # Store memories with various tags - use meaningful content for reliable fact extraction
     response = await api_client.post(
         f"/v1/default/banks/{bank_id}/memories",
         json={
             "items": [
-                {"content": "Admin role memory for super admin.", "tags": ["role-admin"]},
-                {"content": "Super admin memory about permissions.", "tags": ["super-admin"]},
-                {"content": "User memory for standard users.", "tags": ["role-user"]},
-                {"content": "Guest memory for visitors.", "tags": ["role-guest"]},
+                {"content": "John has the role-admin permission and can manage user accounts.", "tags": ["role-admin"]},
+                {"content": "Sarah has super-admin access and can modify system settings.", "tags": ["super-admin"]},
+                {"content": "Mike is a standard role-user who can only view content.", "tags": ["role-user"]},
+                {"content": "Alice is a role-guest visitor with limited read access.", "tags": ["role-guest"]},
             ]
         }
     )
