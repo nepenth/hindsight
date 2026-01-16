@@ -198,6 +198,8 @@ class Hindsight:
         max_entity_tokens: int = 500,
         include_chunks: bool = False,
         max_chunk_tokens: int = 8192,
+        tags: Optional[List[str]] = None,
+        tags_match: str = "any",
     ) -> RecallResponse:
         """
         Recall memories using semantic similarity.
@@ -214,6 +216,9 @@ class Hindsight:
             max_entity_tokens: Maximum tokens for entity observations (default: 500)
             include_chunks: Include raw text chunks in results (default: False)
             max_chunk_tokens: Maximum tokens for chunks (default: 8192)
+            tags: Optional list of tags to filter memories by
+            tags_match: How to match tags: 'any' (OR, includes untagged), 'all' (AND, includes untagged),
+                'any_strict' (OR, excludes untagged), 'all_strict' (AND, excludes untagged). Default: 'any'
 
         Returns:
             RecallResponse with results, optional entities, optional chunks, and optional trace
@@ -233,6 +238,8 @@ class Hindsight:
             trace=trace,
             query_timestamp=query_timestamp,
             include=include_opts,
+            tags=tags,
+            tags_match=tags_match,
         )
 
         return _run_async(self._memory_api.recall_memories(bank_id, request_obj))

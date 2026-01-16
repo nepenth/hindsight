@@ -192,6 +192,10 @@ export class HindsightClient {
             maxEntityTokens?: number;
             includeChunks?: boolean;
             maxChunkTokens?: number;
+            /** Optional list of tags to filter memories by */
+            tags?: string[];
+            /** How to match tags: 'any' (OR, includes untagged), 'all' (AND, includes untagged), 'any_strict' (OR, excludes untagged), 'all_strict' (AND, excludes untagged). Default: 'any' */
+            tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
         }
     ): Promise<RecallResponse> {
         const response = await sdk.recallMemories({
@@ -208,6 +212,8 @@ export class HindsightClient {
                     entities: options?.includeEntities ? { max_tokens: options?.maxEntityTokens ?? 500 } : undefined,
                     chunks: options?.includeChunks ? { max_tokens: options?.maxChunkTokens ?? 8192 } : undefined,
                 },
+                tags: options?.tags,
+                tags_match: options?.tagsMatch,
             },
         });
 
