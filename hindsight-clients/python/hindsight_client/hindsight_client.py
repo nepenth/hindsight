@@ -252,6 +252,8 @@ class Hindsight:
         context: Optional[str] = None,
         max_tokens: Optional[int] = None,
         response_schema: Optional[Dict[str, Any]] = None,
+        tags: Optional[List[str]] = None,
+        tags_match: str = "any",
     ) -> ReflectResponse:
         """
         Generate a contextual answer based on bank identity and memories.
@@ -265,6 +267,9 @@ class Hindsight:
             response_schema: Optional JSON Schema for structured output. When provided,
                 the response will include a 'structured_output' field with the LLM
                 response parsed according to this schema.
+            tags: Optional list of tags to filter memories by
+            tags_match: How to match tags: 'any' (OR, includes untagged), 'all' (AND, includes untagged),
+                'any_strict' (OR, excludes untagged), 'all_strict' (AND, excludes untagged). Default: 'any'
 
         Returns:
             ReflectResponse with answer text, optionally facts used, and optionally
@@ -276,6 +281,8 @@ class Hindsight:
             context=context,
             max_tokens=max_tokens,
             response_schema=response_schema,
+            tags=tags,
+            tags_match=tags_match,
         )
 
         return _run_async(self._memory_api.reflect(bank_id, request_obj))

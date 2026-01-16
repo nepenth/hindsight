@@ -226,7 +226,14 @@ export class HindsightClient {
     async reflect(
         bankId: string,
         query: string,
-        options?: { context?: string; budget?: Budget }
+        options?: {
+            context?: string;
+            budget?: Budget;
+            /** Optional list of tags to filter memories by */
+            tags?: string[];
+            /** How to match tags: 'any' (OR, includes untagged), 'all' (AND, includes untagged), 'any_strict' (OR, excludes untagged), 'all_strict' (AND, excludes untagged). Default: 'any' */
+            tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
+        }
     ): Promise<ReflectResponse> {
         const response = await sdk.reflect({
             client: this.client,
@@ -235,6 +242,8 @@ export class HindsightClient {
                 query,
                 context: options?.context,
                 budget: options?.budget || 'low',
+                tags: options?.tags,
+                tags_match: options?.tagsMatch,
             },
         });
 
