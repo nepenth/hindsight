@@ -201,14 +201,13 @@ Use this tool PROACTIVELY to:
 EMBEDDING_DIMENSION = DEFAULT_EMBEDDING_DIMENSION
 
 
-class GCPJsonFormatter(logging.Formatter):
-    """JSON formatter compatible with GCP Cloud Logging.
+class JsonFormatter(logging.Formatter):
+    """JSON formatter for structured logging.
 
-    Outputs logs in JSON format with a 'severity' field that GCP can parse
-    to correctly categorize log levels.
+    Outputs logs in JSON format with a 'severity' field that cloud logging
+    systems (GCP, AWS CloudWatch, etc.) can parse to correctly categorize log levels.
     """
 
-    # Map Python log levels to GCP severity levels
     SEVERITY_MAP = {
         logging.DEBUG: "DEBUG",
         logging.INFO: "INFO",
@@ -465,7 +464,7 @@ class HindsightConfig:
         handler.setLevel(self.get_python_log_level())
 
         if self.log_format == "json":
-            handler.setFormatter(GCPJsonFormatter())
+            handler.setFormatter(JsonFormatter())
         else:
             handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
 
