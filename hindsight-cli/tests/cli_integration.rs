@@ -45,9 +45,10 @@ fn hindsight_binary() -> String {
         })
 }
 
-/// Test bank ID for integration tests
-fn test_bank_id() -> String {
-    format!("cli-test-{}", std::process::id())
+/// Test bank ID for integration tests - each test needs a unique bank ID
+/// to avoid parallel test interference
+fn test_bank_id(test_name: &str) -> String {
+    format!("cli-test-{}-{}", test_name, std::process::id())
 }
 
 /// Run a hindsight CLI command
@@ -73,8 +74,9 @@ fn test_health_check() {
 
     // Either succeeded with "healthy" output or has a reasonable error
     if output.status.success() {
+        // Note: output may contain ANSI color codes, so check for key text
         assert!(
-            stdout.contains("Health Check") || stdout.contains("status"),
+            stdout.contains("healthy") || stdout.contains("Health") || stdout.contains("status"),
             "Expected health check output, got: {} / {}",
             stdout,
             stderr
@@ -135,7 +137,7 @@ fn test_bank_list_json_output() {
 fn test_bank_create_and_delete() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("create-delete");
 
     // Create a bank
     let output = run_hindsight(&[
@@ -179,13 +181,13 @@ fn test_bank_create_and_delete() {
 fn test_memory_list() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("memory-list");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
 
     // List memories (should be empty for new bank)
-    let output = run_hindsight(&["memory", "list", "-b", &bank_id]);
+    let output = run_hindsight(&["memory", "list", &bank_id]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -206,13 +208,13 @@ fn test_memory_list() {
 fn test_mental_model_list() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("mm-list");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
 
     // List mental models
-    let output = run_hindsight(&["mental-model", "list", "-b", &bank_id]);
+    let output = run_hindsight(&["mental-model", "list", &bank_id]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -233,8 +235,7 @@ fn test_mental_model_list() {
 fn test_mental_model_create_and_delete() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
-    let model_id = format!("test-model-{}", std::process::id());
+    let bank_id = test_bank_id("mm-create");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
@@ -242,31 +243,40 @@ fn test_mental_model_create_and_delete() {
     // Create a mental model
     let output = run_hindsight(&[
         "mental-model", "create",
-        "-b", &bank_id,
-        "--name", "Test Model",
-        "--description", "A test mental model",
-        "--subtype", "pinned",
+        &bank_id,
+        "Test Model",
+        "A test mental model",
     ]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    if output.status.success() {
-        // Model was created, verify it's in the list
-        let output = run_hindsight(&["mental-model", "list", "-b", &bank_id, "-o", "json"]);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+    // The create command should succeed
+    assert!(
+        output.status.success(),
+        "Mental model create failed: stdout={}, stderr={}",
+        stdout,
+        stderr
+    );
 
-        if output.status.success() {
-            // Should have at least one model
-            let result: serde_json::Value = serde_json::from_str(&stdout)
-                .expect(&format!("Expected valid JSON output, got: {}", stdout));
+    // Verify it's in the list
+    let output = run_hindsight(&["mental-model", "list", &bank_id, "-o", "json"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
-            if let Some(items) = result.get("items") {
-                assert!(
-                    items.as_array().map(|a| !a.is_empty()).unwrap_or(false),
-                    "Expected at least one mental model"
-                );
-            }
+    assert!(
+        output.status.success(),
+        "Mental model list failed: {}",
+        stdout
+    );
+
+    // Parse JSON and verify model exists
+    if let Ok(result) = serde_json::from_str::<serde_json::Value>(&stdout) {
+        if let Some(items) = result.get("items").and_then(|v| v.as_array()) {
+            // Check if any model has the name "Test Model"
+            let found = items.iter().any(|item| {
+                item.get("name").and_then(|v| v.as_str()) == Some("Test Model")
+            });
+            assert!(found, "Expected to find 'Test Model' in mental models list: {}", stdout);
         }
     }
 
@@ -278,13 +288,13 @@ fn test_mental_model_create_and_delete() {
 fn test_tag_list() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("tag-list");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
 
     // List tags
-    let output = run_hindsight(&["tag", "list", "-b", &bank_id]);
+    let output = run_hindsight(&["tag", "list", &bank_id]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -305,13 +315,13 @@ fn test_tag_list() {
 fn test_entity_list() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("entity-list");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
 
     // List entities
-    let output = run_hindsight(&["entity", "list", "-b", &bank_id]);
+    let output = run_hindsight(&["entity", "list", &bank_id]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -332,13 +342,13 @@ fn test_entity_list() {
 fn test_operation_list() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("op-list");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
 
     // List operations
-    let output = run_hindsight(&["operation", "list", "-b", &bank_id]);
+    let output = run_hindsight(&["operation", "list", &bank_id]);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -359,7 +369,7 @@ fn test_operation_list() {
 fn test_bank_stats() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("bank-stats");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
@@ -386,7 +396,7 @@ fn test_bank_stats() {
 fn test_bank_graph() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("bank-graph");
 
     // Create the bank first
     let _ = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
@@ -413,7 +423,7 @@ fn test_bank_graph() {
 fn test_bank_update() {
     skip_if_no_server!();
 
-    let bank_id = test_bank_id();
+    let bank_id = test_bank_id("bank-update");
 
     // Create the bank first
     let output = run_hindsight(&["bank", "create", &bank_id, "--name", "Test Bank"]);
