@@ -51,6 +51,9 @@ import type {
   GetMentalModelData,
   GetMentalModelErrors,
   GetMentalModelResponses,
+  GetMentalModelVersionData,
+  GetMentalModelVersionErrors,
+  GetMentalModelVersionResponses,
   GetOperationStatusData,
   GetOperationStatusErrors,
   GetOperationStatusResponses,
@@ -71,6 +74,9 @@ import type {
   ListMentalModelsData,
   ListMentalModelsErrors,
   ListMentalModelsResponses,
+  ListMentalModelVersionsData,
+  ListMentalModelVersionsErrors,
+  ListMentalModelVersionsResponses,
   ListOperationsData,
   ListOperationsErrors,
   ListOperationsResponses,
@@ -103,6 +109,9 @@ import type {
   UpdateBankDispositionResponses,
   UpdateBankErrors,
   UpdateBankResponses,
+  UpdateMentalModelData,
+  UpdateMentalModelErrors,
+  UpdateMentalModelResponses,
 } from "./types.gen";
 
 export type Options<
@@ -343,7 +352,9 @@ export const listMentalModels = <ThrowOnError extends boolean = false>(
 /**
  * Create mental model
  *
- * Create a pinned mental model. Pinned models are user-defined and persist across refreshes.
+ * Create a mental model. Supports two subtypes:
+ * - 'pinned' (default): User-defined topic, observations are LLM-generated on refresh
+ * - 'directive': User-defined hard rules, observations are provided at creation and never regenerated
  */
 export const createMentalModel = <ThrowOnError extends boolean = false>(
   options: Options<CreateMentalModelData, ThrowOnError>,
@@ -396,6 +407,27 @@ export const getMentalModel = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Update mental model
+ *
+ * Update a mental model's name and/or description. Useful for editing directives.
+ */
+export const updateMentalModel = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateMentalModelData, ThrowOnError>,
+) =>
+  (options.client ?? client).patch<
+    UpdateMentalModelResponses,
+    UpdateMentalModelErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
  * Refresh mental models (async)
  *
  * Submit a background job to refresh mental models for a bank. By default refreshes all subtypes. Optionally specify 'subtype' to only refresh 'structural' (from mission) or 'emergent' (from entities) models. Optionally pass tags to apply to newly created models. Use GET /banks/{bank_id}/operations to check progress.
@@ -430,6 +462,40 @@ export const refreshMentalModel = <ThrowOnError extends boolean = false>(
     ThrowOnError
   >({
     url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/refresh",
+    ...options,
+  });
+
+/**
+ * List mental model version history
+ *
+ * List all saved versions of a mental model's observations, ordered by version descending.
+ */
+export const listMentalModelVersions = <ThrowOnError extends boolean = false>(
+  options: Options<ListMentalModelVersionsData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    ListMentalModelVersionsResponses,
+    ListMentalModelVersionsErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions",
+    ...options,
+  });
+
+/**
+ * Get specific mental model version
+ *
+ * Get observations from a specific version of a mental model.
+ */
+export const getMentalModelVersion = <ThrowOnError extends boolean = false>(
+  options: Options<GetMentalModelVersionData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    GetMentalModelVersionResponses,
+    GetMentalModelVersionErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions/{version}",
     ...options,
   });
 
