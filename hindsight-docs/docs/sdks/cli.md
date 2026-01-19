@@ -74,7 +74,7 @@ hindsight memory recall <bank_id> "hiking recommendations" \
   --max-tokens 8192
 
 # Filter by fact type
-hindsight memory recall <bank_id> "query" --fact-type world,opinion
+hindsight memory recall <bank_id> "query" --fact-type world,experience
 
 # Show trace information
 hindsight memory recall <bank_id> "query" --trace
@@ -209,7 +209,7 @@ The explorer provides an interactive terminal interface to:
 - **Browse memory banks** — View all banks and their statistics
 - **Search memories** — Run recall queries with real-time results
 - **Inspect entities** — Explore the knowledge graph and entity relationships
-- **View facts** — Browse world facts, experiences, and opinions
+- **View facts** — Browse world facts and experiences
 - **Navigate documents** — See source documents and their extracted memories
 
 ### Keyboard Shortcuts

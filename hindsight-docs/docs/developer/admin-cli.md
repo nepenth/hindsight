@@ -78,7 +78,7 @@ The backup includes:
 - Memory banks and their configuration
 - Documents and chunks
 - Entities and their relationships
-- Memory units (facts, experiences, opinions, observations)
+- Memory units (world facts, experiences)
 - Entity cooccurrences and memory links
 
 :::note Consistency

@@ -108,7 +108,7 @@ hindsight_litellm.configure(
     bank_id="my-agent",
     use_reflect=False,  # Default
 )
-# Injects: "1. [WORLD] User prefers Python\n2. [OPINION] User dislikes Java..."
+# Injects: "1. [WORLD] User prefers Python\n2. [EXPERIENCE] Discussed Java alternatives..."
 
 # Reflect mode - synthesized context
 hindsight_litellm.configure(

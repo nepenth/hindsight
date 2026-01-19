@@ -108,7 +108,7 @@ messages = [
 messages = [
     {
         "role": "system",
-        "content": "Relevant context from your memory:\n\n1. User prefers Python for its simplicity\n   (Date: 2024-01-15)\n   (Type: opinion)"
+        "content": "Relevant context from your memory:\n\n1. User prefers Python for its simplicity\n   (Date: 2024-01-15)\n   (Type: world)"
     },
     {"role": "user", "content": "What's my favorite programming language?"}
 ]

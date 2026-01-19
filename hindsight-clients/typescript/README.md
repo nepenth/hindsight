@@ -23,7 +23,7 @@ await client.retain('my-bank', 'Alice works at Google in Mountain View.');
 // Recall memories
 const results = await client.recall('my-bank', 'Where does Alice work?');
 
-// Reflect and get an opinion
+// Reflect with reasoning and mental models
 const response = await client.reflect('my-bank', 'What do you think about Alice\'s career?');
 ```
 

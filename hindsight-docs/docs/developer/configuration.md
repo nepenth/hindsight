@@ -346,7 +346,7 @@ export HINDSIGHT_API_MCP_INSTRUCTIONS="Also store every action you take, includi
 
 ### Background Tasks
 
-Controls background task processing for async operations like opinion formation and entity observations.
+Controls background task processing for async operations like mental model refresh and entity observations.
 
 | Variable | Description | Default |
 |----------|-------------|---------|

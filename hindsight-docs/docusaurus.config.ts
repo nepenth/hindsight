@@ -68,8 +68,32 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/vectorize-io/hindsight/tree/main/hindsight-docs/',
           routeBasePath: '/',
+          // Hide "next" (current) version in production, show only released versions
+          onlyIncludeVersions:
+            process.env.NODE_ENV === 'development' || process.env.INCLUDE_CURRENT_VERSION === 'true'
+              ? undefined
+              : (() => {
+                  try {
+                    return require('./versions.json');
+                  } catch {
+                    return undefined; // No versions yet, show current
+                  }
+                })(),
         },
-        blog: false,
+        blog: {
+          path: 'blog',
+          routeBasePath: 'blog',
+          blogTitle: 'Hindsight Blog',
+          blogDescription: 'Updates and announcements from the Hindsight team',
+          showReadingTime: true,
+          blogSidebarTitle: 'Recent Posts',
+          blogSidebarCount: 'ALL',
+          editUrl: 'https://github.com/vectorize-io/hindsight/tree/main/hindsight-docs/',
+          feedOptions: {
+            type: 'all',
+          },
+          onInlineAuthors: 'ignore',
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -123,7 +147,7 @@ const config: Config = {
       {
         hashed: true,
         docsRouteBasePath: '/',
-        indexBlog: false,
+        indexBlog: true,
         highlightSearchTermsOnTargetPage: false,
       },
     ],
@@ -186,6 +210,12 @@ const config: Config = {
           className: 'navbar-item-changelog',
         },
         {
+          to: '/blog',
+          position: 'left',
+          label: 'Blog',
+          className: 'navbar-item-blog',
+        },
+        {
           href: 'https://vectorize.io/hindsight/cloud',
           position: 'right',
           label: 'Hindsight Cloud',
@@ -206,30 +236,55 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {
-              label: 'Introduction',
-              to: '/',
-            },
-            {
-              label: 'SDKs',
-              to: '/sdks/python',
+              label: 'Developer Guide',
+              to: '/developer',
             },
             {
               label: 'API Reference',
               to: '/api-reference/',
             },
+            {
+              label: 'Cookbook',
+              to: '/cookbook',
+            },
           ],
         },
         {
-          title: 'More',
+          title: 'SDKs',
+          items: [
+            {
+              label: 'Python',
+              to: '/sdks/python',
+            },
+            {
+              label: 'Node.js',
+              to: '/sdks/nodejs',
+            },
+            {
+              label: 'CLI',
+              to: '/sdks/cli',
+            },
+          ],
+        },
+        {
+          title: 'Community',
           items: [
             {
               label: 'GitHub',
               href: 'https://github.com/vectorize-io/hindsight',
             },
+            {
+              label: 'Blog',
+              to: '/blog',
+            },
+            {
+              label: 'Changelog',
+              to: '/changelog',
+            },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Hindsight.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Vectorize, Inc.`,
     },
     prism: {
       theme: prismThemes.github,

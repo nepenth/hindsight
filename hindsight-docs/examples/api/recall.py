@@ -74,16 +74,6 @@ experience = client.recall(
 # [/docs:recall-experience-only]
 
 
-# [docs:recall-opinions-only]
-# Only opinions (formed beliefs)
-opinions = client.recall(
-    bank_id="my-bank",
-    query="What do I think about Python?",
-    types=["opinion"]
-)
-# [/docs:recall-opinions-only]
-
-
 # [docs:recall-token-budget]
 # Fill up to 4K tokens of context with relevant memories
 results = client.recall(bank_id="my-bank", query="What do I know about Alice?", max_tokens=4096)

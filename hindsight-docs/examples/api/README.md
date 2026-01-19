@@ -18,7 +18,7 @@ This directory contains runnable example scripts that serve as the source of tru
 | `reflect.py/mjs/sh` | reflect.md | AI reflection examples |
 | `memory-banks.py/mjs` | memory-banks.md | Bank management examples |
 | `documents.py/mjs` | documents.md | Document CRUD examples |
-| `opinions.py` | opinions.md | Opinion management examples |
+| `mental-models.py/sh` | mental-models.md | Mental models API examples |
 | `main-methods.py` | main-methods.md | Core method examples |
 | `cli-reference.sh` | cli.md | CLI command examples |
 

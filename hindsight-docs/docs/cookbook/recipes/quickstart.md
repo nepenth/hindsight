@@ -127,7 +127,7 @@ for r in results.results:
 
 ## Reflect: Generate Insights
 
-The `reflect` operation performs a more thorough analysis of existing memories. This allows the agent to form new connections between memories which are then persisted as opinions and/or observations.
+The `reflect` operation runs an agentic reasoning loop over memories and mental models. The agent explores structured knowledge, searches memories, and may create new mental models when it discovers important patterns.
 
 Example use cases:
 - An AI Project Manager reflecting on what risks need to be mitigated
@@ -142,12 +142,12 @@ print(response)
 
 ## Memory Types
 
-Hindsight organizes memory into four networks to mimic human memory:
+Hindsight organizes memory into two types:
 
 - **World**: Facts about the world ("The stove gets hot")
-- **Experiences**: Agent's own experiences ("I touched the stove and it really hurt")
-- **Opinion**: Beliefs with confidence scores ("I shouldn't touch the stove again" - .99 confidence)
-- **Observation**: Complex mental models derived by reflecting on facts and experiences
+- **Experience**: Agent's own experiences and conversations ("I touched the stove and it really hurt")
+
+For structured knowledge, Hindsight uses **mental models**—organized containers with evidence-grounded observations. See [Mental Models](/developer/mental-models) for details.
 
 ## Cleanup
 

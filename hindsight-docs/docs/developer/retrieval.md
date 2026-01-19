@@ -112,9 +112,9 @@ After the four strategies run, results are **fused together**:
 
 Consider the query: **"What did Alice think about Python last spring?"**
 
-- **Semantic** finds facts about Alice's opinions on programming
+- **Semantic** finds facts about Alice's views on programming
 - **Keyword** ensures "Python" is actually mentioned
-- **Graph** connects Alice → opinions → programming languages
+- **Graph** connects Alice → preferences → programming languages
 - **Temporal** filters to "last spring" timeframe
 
 The **fusion** of all four gives you exactly what you're looking for, even though no single strategy would suffice.
@@ -133,7 +133,7 @@ Hindsight is built for AI agents, not humans. Traditional search systems return 
 **Parameters you control:**
 - `max_tokens`: How much memory content to return (default: 4096 tokens)
 - `budget`: Search depth level (low, mid, high)
-- `types`: Filter by world, experience, opinion, or all
+- `types`: Filter by world, experience, or all
 - `tags`: Filter memories by visibility tags
 - `tags_match`: How to match tags (see [Recall API](./api/recall) for all options)
 

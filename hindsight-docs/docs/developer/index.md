@@ -13,7 +13,7 @@ AI agents forget everything between sessions. Every conversation starts from zer
 
 - **Simple vector search isn't enough** — "What did Alice do last spring?" requires temporal reasoning, not just semantic similarity
 - **Facts get disconnected** — Knowing "Alice works at Google" and "Google is in Mountain View" should let you answer "Where does Alice work?" even if you never stored that directly
-- **AI Agents needs to form opinions** — A coding assistant that remembers "the user prefers functional programming" should weigh that when making recommendations
+- **AI Agents need to learn and reason** — A coding assistant that remembers "the user prefers functional programming" should weigh that when making recommendations
 - **Context matters** — The same information means different things to different memory banks with different personalities
 
 Hindsight solves these problems with a memory system designed specifically for AI agents.
@@ -49,15 +49,14 @@ graph TB
 
 ## Key Components
 
-### Three Memory Types
+### Two Memory Types
 
 Hindsight separates memories by type for epistemic clarity:
 
 | Type | What it stores | Example |
 |------|----------------|---------|
 | **World** | Objective facts received | "Alice works at Google" |
-| **Bank** | Bank's own actions | "I recommended Python to Bob" |
-| **Opinion** | Formed beliefs + confidence | "Python is best for ML" (0.85) |
+| **Experience** | Bank's own actions and conversations | "I recommended Python to Bob" |
 
 ### Multi-Strategy Retrieval (TEMPR)
 
@@ -88,7 +87,7 @@ graph LR
 
 ### Disposition Traits
 
-Memory banks have disposition traits that influence how opinions are formed during Reflect:
+Memory banks have disposition traits that influence reasoning during Reflect:
 
 | Trait | Scale | Low (1) | High (5) |
 |-------|-------|---------|----------|
@@ -107,7 +106,7 @@ These traits only affect the `reflect` operation, not `recall`.
 ### Core Concepts
 - [**Retain**](/developer/retain) — How memories are stored with multi-dimensional facts
 - [**Recall**](/developer/retrieval) — How TEMPR's 4-way search retrieves memories
-- [**Reflect**](/developer/reflect) — How disposition influences reasoning and opinion formation
+- [**Reflect**](/developer/reflect) — How mental models and disposition influence reasoning
 
 ### API Methods
 - [**Retain**](/developer/api/retain) — Store information in memory banks

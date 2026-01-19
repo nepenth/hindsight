@@ -1,0 +1,281 @@
+---
+sidebar_position: 6
+---
+
+# Mental Models
+
+Manage mental models—structured knowledge containers that give agents broader understanding of important topics.
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import CodeSnippet from '@site/src/components/CodeSnippet';
+
+{/* Import raw source files */}
+import mentalModelsPy from '!!raw-loader!@site/examples/api/mental-models.py';
+import mentalModelsSh from '!!raw-loader!@site/examples/api/mental-models.sh';
+
+:::info How Mental Models Work
+Learn about the different types, observations, and refresh process in the [Mental Models Architecture](/developer/mental-models) guide.
+:::
+
+:::tip Prerequisites
+Make sure you've completed the [Quick Start](./quickstart) and set a mission for your bank.
+:::
+
+## Set mission
+
+A mission is required before using mental models. It defines what the agent should track:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-set-mission" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-set-mission" language="bash" />
+</TabItem>
+</Tabs>
+
+---
+
+## List mental models
+
+List all mental models for a bank, optionally filtered by subtype or tags:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-list" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-list" language="bash" />
+</TabItem>
+</Tabs>
+
+### Response fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier |
+| `name` | string | Human-readable name |
+| `description` | string | One-liner description |
+| `subtype` | string | One of: structural, emergent, pinned, learned, directive |
+| `observations` | array | List of observations with evidence |
+| `tags` | array | Tags for scoping |
+| `version` | int | Current version number |
+| `freshness` | object | Freshness status (null for directives) |
+| `created_at` | string | ISO timestamp |
+| `last_updated` | string | ISO timestamp of last change |
+
+---
+
+## Get mental model
+
+Get a specific mental model by ID:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-get" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-get" language="bash" />
+</TabItem>
+</Tabs>
+
+### Observation structure
+
+Each observation contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Short summary (5-10 words) |
+| `content` | string | Detailed explanation |
+| `evidence` | array | Supporting quotes from memories |
+| `trend` | string | new, strengthening, stable, weakening, stale |
+| `created_at` | string | When observation was formed |
+
+### Evidence structure
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `memory_id` | string | Source memory ID |
+| `quote` | string | Exact quote from memory |
+| `relevance` | string | Why this supports the observation |
+| `timestamp` | string | When the memory was created |
+
+---
+
+## Create mental model
+
+Create a pinned or directive mental model:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-create" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-create" language="bash" />
+</TabItem>
+</Tabs>
+
+### Request fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Human-readable name |
+| `description` | string | Yes | One-liner description |
+| `subtype` | string | No | "pinned" (default) or "directive" |
+| `tags` | array | No | Tags for scoping |
+| `observations` | array | Directive only | Required for directives, ignored for pinned |
+
+---
+
+## Delete mental model
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-delete" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-delete" language="bash" />
+</TabItem>
+</Tabs>
+
+---
+
+## Refresh mental models
+
+Refresh operations run asynchronously and return an operation ID:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-refresh" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-refresh" language="bash" />
+</TabItem>
+</Tabs>
+
+### Refresh a single model
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-refresh-single" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-refresh-single" language="bash" />
+</TabItem>
+</Tabs>
+
+Use the [Operations API](./operations) to check progress.
+
+---
+
+## Freshness check
+
+The `freshness` field on each mental model indicates whether it needs refresh:
+
+<CodeSnippet code={mentalModelsPy} section="mm-freshness" language="python" />
+
+### Freshness fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_up_to_date` | bool | Whether model is current |
+| `last_refresh_at` | string | ISO timestamp of last refresh |
+| `memories_since_refresh` | int | New memories since last refresh |
+| `reasons` | array | Why refresh is needed |
+
+### Refresh reasons
+
+| Reason | Description |
+|--------|-------------|
+| `never_refreshed` | Model was just created |
+| `new_memories` | New memories retained since last refresh |
+| `mission_changed` | Bank's mission was updated |
+| `disposition_changed` | Bank's disposition traits changed |
+| `directives_changed` | Directive mental models were modified |
+
+---
+
+## Version history
+
+Every refresh creates a new version:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-versions" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-versions" language="bash" />
+</TabItem>
+</Tabs>
+
+---
+
+## Tags and scoping
+
+Tags enable multi-user scenarios where a single bank serves multiple users with personalized mental models.
+
+### Which types support tags
+
+| Type | How tags are applied |
+|------|---------------------|
+| **Structural** | Applied during refresh via `tags` parameter |
+| **Emergent** | Applied during refresh via `tags` parameter |
+| **Pinned** | Set at creation time |
+| **Learned** | Inherited from the reflect call that created them |
+| **Directive** | Set at creation time |
+
+### Applying tags during refresh
+
+When refreshing, pass tags to apply them to newly created structural and emergent models:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-tags-refresh" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-tags-refresh" language="bash" />
+</TabItem>
+</Tabs>
+
+### Filtering by tags
+
+List mental models matching specific tags:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-tags-filter" language="python" />
+</TabItem>
+<TabItem value="curl" label="cURL">
+<CodeSnippet code={mentalModelsSh} section="mm-tags-filter" language="bash" />
+</TabItem>
+</Tabs>
+
+### tags_match options
+
+| Option | Description |
+|--------|-------------|
+| `any` | Match models with any of the specified tags, including untagged models |
+| `all` | Match models with all of the specified tags, including untagged models |
+| `any_strict` | Match models with any of the specified tags, excluding untagged models |
+| `all_strict` | Match models with all of the specified tags, excluding untagged models |
+
+---
+
+## Using mental models in reflect
+
+Mental models are automatically available to the reflect agent. Use tags to scope which mental models and memories are considered:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="mm-reflect" language="python" />
+</TabItem>
+</Tabs>
+
+The reflect agent can:
+- List available mental models
+- Read observations and evidence
+- Drill down to source memories
+- Create new "learned" mental models when it discovers important patterns
+
+See [Reflect API](./reflect) for more options.

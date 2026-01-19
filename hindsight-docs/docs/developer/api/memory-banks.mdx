@@ -56,17 +56,17 @@ hindsight bank disposition my-bank \
 </TabItem>
 </Tabs>
 
-## Background and Disposition
+## Mission and Disposition
 
-Background and disposition are optional settings that influence how the bank forms opinions during [reflect](./reflect) operations.
+Mission and disposition are optional settings that influence how the bank reasons during [reflect](./reflect) operations.
 
 :::info
-Background and disposition only affect the `reflect` operation (opinion formation). They do not impact `retain`, `recall`, or other memory operations.
+Mission and disposition only affect the `reflect` operation. They do not impact `retain`, `recall`, or other memory operations.
 :::
 
-### Background
+### Mission
 
-The background is a first-person narrative providing context for opinion formation:
+The mission is a natural language description of what the agent is for. It's required for using [mental models](./mental-models):
 
 <Tabs>
 <TabItem value="python" label="Python">
@@ -79,7 +79,7 @@ The background is a first-person narrative providing context for opinion formati
 
 ### Disposition Traits
 
-Disposition traits influence how opinions are formed during reflection. Each trait is scored 1 to 5:
+Disposition traits influence how the agent reasons during reflection. Each trait is scored 1 to 5:
 
 | Trait | Low (1) | High (5) |
 |-------|---------|----------|

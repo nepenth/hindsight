@@ -25,10 +25,8 @@ Support for external streaming platforms like Kafka for scale-out processing is 
 | Operation | Trigger | Description |
 |-----------|---------|-------------|
 | **batch_retain** | `retain_batch` with `async=True` | Processes large content batches in the background |
-| **form_opinion** | After each `reflect` call | Extracts and stores new opinions formed during reflection |
-| **reinforce_opinion** | After `retain` | Updates opinion confidence based on new supporting evidence |
+| **refresh_mental_models** | `refresh_mental_models` call | Updates mental model observations based on new memories |
 | **access_count_update** | After `recall` | Tracks which memories are accessed for relevance scoring |
-| **regenerate_observations** | Bank profile update | Regenerates entity observations when disposition changes |
 
 ## Async Retain Example
 

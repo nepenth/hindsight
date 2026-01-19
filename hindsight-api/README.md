@@ -2,7 +2,7 @@
 
 **Memory System for AI Agents** — Temporal + Semantic + Entity Memory Architecture using PostgreSQL with pgvector.
 
-Hindsight gives AI agents persistent memory that works like human memory: it stores facts, tracks entities and relationships, handles temporal reasoning ("what happened last spring?"), and forms opinions based on configurable disposition traits.
+Hindsight gives AI agents persistent memory that works like human memory: it stores facts, tracks entities and relationships, handles temporal reasoning ("what happened last spring?"), and builds mental models based on configurable disposition traits.
 
 ## Installation
 
@@ -120,8 +120,8 @@ This runs a stdio-based MCP server that can be used directly with MCP-compatible
 - **Multi-Strategy Retrieval (TEMPR)** — Semantic, keyword, graph, and temporal search combined with RRF fusion
 - **Entity Graph** — Automatic entity extraction and relationship tracking
 - **Temporal Reasoning** — Native support for time-based queries
-- **Disposition Traits** — Configurable skepticism, literalism, and empathy influence opinion formation
-- **Three Memory Types** — World facts, bank actions, and formed opinions with confidence scores
+- **Disposition Traits** — Configurable skepticism, literalism, and empathy influence reasoning
+- **Two Memory Types** — World facts and experience facts with mental models for higher-level understanding
 
 ## Documentation
 

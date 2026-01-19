@@ -2,59 +2,99 @@
 sidebar_position: 4
 ---
 
-# Reflect: How Hindsight Reasons with Disposition
+# Reflect: How Hindsight Reasons
 
-When you call `reflect()`, Hindsight doesn't just retrieve facts — it **reasons** about them through the lens of the bank's unique disposition, forming new opinions and generating contextual responses.
+When you call `reflect()`, Hindsight doesn't just retrieve facts — it **reasons** about them through the lens of mental models and disposition, generating contextual responses.
 
 ```mermaid
 graph LR
-    A[Query] --> B[Recall Memories]
-    B --> C[Load Disposition]
-    C --> D[Reason]
-    D --> E[Form Opinions]
-    E --> F[Response]
+    Q[Query] --> A[Reflect Agent]
+    A <--> MM[Mental Models]
+    A <--> M[Memories]
+    A --> R[Response]
 ```
+
+The reflect agent is **agentic**—it runs a reasoning loop, deciding which tools to use based on the query. It can explore mental models, search memories, drill into documents, or create new mental models when it discovers important patterns.
 
 ---
 
-## Why Reflect?
+## Why reflect?
 
-Most AI systems can retrieve facts, but they can't **reason** about them in a consistent way. Every response is generated fresh without a stable perspective or evolving beliefs.
+Hindsight provides two ways to query memories: `recall()` returns raw facts, while `reflect()` reasons about them.
 
-### The Problem
+### recall() vs reflect()
 
-Without reflect:
-- **No consistent character**: "Should we adopt remote work?" gets a different answer each time based on the LLM's randomness
-- **No opinion formation**: The system never develops beliefs based on accumulated evidence
-- **No reasoning context**: Responses don't reflect what the bank has learned or its perspective
-- **Generic responses**: Every AI sounds the same — no disposition, no point of view
+**recall()** is a retrieval operation. It returns ranked facts matching your query—you get raw data and build your own reasoning on top.
 
-### The Value
+**reflect()** is a reasoning operation. It runs an agentic loop that:
+- Explores **mental models** for structured understanding of key topics
+- Searches **memories** for specific evidence
+- **Learns** by creating new mental models when it discovers important patterns
+- Reasons through evidence to form grounded responses
 
-With reflect:
-- **Consistent character**: A bank configured as "detail-oriented, cautious" will consistently emphasize risks and thorough planning
-- **Evolving opinions**: As the bank learns more about a topic, its opinions strengthen, weaken, or change — just like a real expert
-- **Contextual reasoning**: Responses reflect the bank's accumulated knowledge and perspective: "Based on what I know about your team's remote work success..."
-- **Differentiated behavior**: Customer support bots sound diplomatic, code reviewers sound direct, creative assistants sound open-minded
+The key difference: recall gives you facts, reflect gives you understanding. When the agent reasons, it draws on everything the bank has learned—not just matching facts, but synthesized knowledge about people, projects, and concepts.
 
-### When to Use Reflect
+### When to use reflect
 
 | Use `recall()` when... | Use `reflect()` when... |
 |------------------------|-------------------------|
 | You need raw facts | You need reasoned interpretation |
-| You're building your own reasoning | You want disposition-consistent responses |
-| You need maximum control | You want the bank to "think" for itself |
-| Simple fact lookup | Forming recommendations or opinions |
+| You're building your own reasoning | You want the bank to "think" for itself |
+| You need maximum control | Forming recommendations or judgments |
+| Simple fact lookup | Complex questions requiring synthesis |
 
 **Example:**
 - `recall("Alice")` → Returns all Alice facts
-- `reflect("Should we hire Alice?")` → Reasons about Alice's fit based on accumulated knowledge, weighs evidence, forms opinion
+- `reflect("Should we hire Alice?")` → Reasons about Alice's fit based on accumulated knowledge and mental models
 
 ---
 
-## Disposition Traits
+## Mental models
 
-When you create a memory bank, you can configure its disposition using three traits. These traits influence how the bank interprets information and forms opinions during `reflect()`:
+When a bank has a mission set, mental models provide structured knowledge that the reflect agent can draw on. A **mission** is a natural language description of what the agent is for:
+
+```python
+client.set_mission(
+    bank_id="pm-agent",
+    mission="Be a PM for the engineering team, tracking sprint progress, team capacity, and technical decisions"
+)
+```
+
+The mission tells the agent what topics are important and what kind of mental models to build. Mental models are then created automatically (structural and emergent) or manually (pinned and directive).
+
+**Note:** A mission is required to use mental models, but mental models are optional for reflect. Without a mission, the agent reasons over raw memories.
+
+### Available tools
+
+During reflect, the agent has access to:
+
+| Tool | Purpose |
+|------|---------|
+| `list_mental_models()` | See available mental models |
+| `get_mental_model(id)` | Read observations and evidence |
+| `recall(query)` | Search raw memories |
+| `expand(memory_ids)` | Load full document context |
+| `learn(name, description)` | Create a new mental model to track a pattern |
+
+The agent decides how deep to go based on the query—simple questions may only need mental model summaries, while complex decisions may require drilling down to source documents.
+
+### Creating learned mental models
+
+If the agent discovers an important pattern during reasoning, it can create a "learned" mental model to track it going forward:
+
+> User: "What are customers saying about our new pricing?"
+>
+> Agent thinks: "I found scattered feedback about pricing across many memories. This seems like something I should track systematically."
+>
+> Agent creates: Mental model "Pricing Feedback" for future tracking
+
+See [Mental Models](./mental-models) for more on types, observations, and refresh.
+
+---
+
+## Disposition
+
+Disposition configures the bank's character—how it interprets information during reflect. Three traits shape reasoning:
 
 | Trait | Scale | Low (1) | High (5) |
 |-------|-------|---------|----------|
@@ -62,35 +102,18 @@ When you create a memory bank, you can configure its disposition using three tra
 | **Literalism** | 1-5 | Flexible interpretation, reads between the lines | Literal interpretation, takes things at face value |
 | **Empathy** | 1-5 | Detached, focuses on facts | Empathetic, considers emotional context |
 
-### Background: Natural Language Identity
-
-Beyond numeric traits, you can provide a natural language **background** that describes the bank's identity:
-
 ```python
-client.create_bank(
+client.update_disposition(
     bank_id="my-bank",
-    background="I am a senior software architect with 15 years of distributed "
-               "systems experience. I prefer simplicity over cutting-edge technology.",
     disposition={
-        "skepticism": 4,   # Questions new technologies
+        "skepticism": 4,   # Questions claims
         "literalism": 4,   # Focuses on concrete specs
         "empathy": 2       # Prioritizes technical facts
     }
 )
 ```
 
-The background provides context that shapes how disposition traits are applied:
-- "I prefer simplicity" + high skepticism → questions complex solutions
-- "15 years experience" → responses reference this expertise
-- First-person perspective → creates consistent voice
-
----
-
-## Opinion Formation
-
-When `reflect()` encounters a question that warrants forming an opinion, disposition shapes the response.
-
-### Same Facts, Different Opinions
+### Same facts, different conclusions
 
 Two banks with different dispositions, given identical facts about remote work:
 
@@ -102,34 +125,7 @@ Two banks with different dispositions, given identical facts about remote work:
 
 **Same facts → Different conclusions** because disposition shapes interpretation.
 
----
-
-## Opinion Evolution
-
-Opinions aren't static — they evolve as new evidence arrives. Here's a real-world example with a database library:
-
-| Event | What the bank learns | Opinion formed |
-|-------|---------------------|----------------|
-| **Day 1** | "Redis is open source under BSD license" | "Redis is excellent for caching — fast, reliable, and OSS-friendly" (confidence: 0.85) |
-| **Day 2** | "Redis has great community support and documentation" | Opinion reinforced (confidence: 0.90) |
-| **Day 30** | "Redis changed license to SSPL, restricting cloud usage" | "Redis is still technically strong, but license concerns for cloud deployments" (confidence: 0.65) |
-| **Day 45** | "Valkey forked Redis under BSD license with Linux Foundation backing" | "Consider Valkey for new projects requiring true OSS; Redis for existing deployments" (confidence: 0.80) |
-
-**Before the license change:**
-> "Should we use Redis for our caching layer?"
-> → "Yes, Redis is the industry standard — fast, battle-tested, and fully open source."
-
-**After the license change:**
-> "Should we use Redis for our caching layer?"
-> → "It depends. For cloud deployments, consider Valkey (the BSD-licensed fork). For on-premise, Redis remains excellent technically."
-
-This **continuous learning** ensures recommendations stay current with real-world changes.
-
----
-
-## Disposition Presets by Use Case
-
-Different use cases benefit from different disposition configurations:
+### Presets by use case
 
 | Use Case | Recommended Traits | Why |
 |----------|-------------------|-----|
@@ -141,13 +137,13 @@ Different use cases benefit from different disposition configurations:
 
 ---
 
-## What You Get from Reflect
+## What you get from reflect
 
 When you call `reflect()`:
 
 **Returns:**
-- **Response text** — Disposition-influenced answer
-- **Based on** — Which memories were used (with relevance scores)
+- **Response text** — Reasoned answer informed by mental models and disposition
+- **Based on** — Which memories and mental models were used
 
 **Example:**
 ```json
@@ -157,30 +153,19 @@ When you call `reflect()`:
     "world": [
       {"text": "Alice works at Google...", "weight": 0.95},
       {"text": "Alice specializes in ML...", "weight": 0.88}
+    ],
+    "mental_models": [
+      {"id": "alice", "name": "Alice"}
     ]
   }
 }
 ```
 
-**Note:** New opinions are formed asynchronously in the background. They'll influence future `reflect()` calls but aren't returned directly.
-
 ---
 
-## Why Disposition Matters
+## Next steps
 
-Without disposition, all AI assistants sound the same. With disposition:
-
-- **Customer support bots** can be diplomatic and empathetic
-- **Code review assistants** can be direct and thorough
-- **Creative assistants** can be open to unconventional ideas
-- **Risk analysts** can be appropriately cautious
-
-Disposition creates **consistent character** across conversations while allowing opinions to **evolve with evidence**.
-
----
-
-## Next Steps
-
+- [**Mental Models**](./mental-models) — How structured knowledge is organized
 - [**Retain**](./retain) — How rich facts are stored
 - [**Recall**](./retrieval) — How multi-strategy search works
 - [**Reflect API**](./api/reflect) — Code examples, parameters, and tag filtering

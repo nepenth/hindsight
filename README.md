@@ -33,8 +33,9 @@ Most agent memory implementation rely on basic vector search or sometimes use a 
 
 - **World:** Facts about the world ("The stove gets hot")
 - **Experiences:** Agent's own experiences ("I touched the stove and it really hurt")
-- **Opinion:** Beliefs with confidence scores ("I shouldn't touch the stove again" - .99 confidence)
-- **Observation:** Complex mental models derived by reflecting on facts and experiences ("Curling irons, ovens, and fire are also hot. I shouldn't touch those either.")
+- **Mental Models:** Structured knowledge containers derived by reflecting on facts and experiences ("Curling irons, ovens, and fire are also hot. I shouldn't touch those either.")
+
+Mental models are evidence-grounded—every observation links back to the exact quotes from memories that support it.
 
 Memories in Hindsight are stored in banks (i.e. memory banks). When memories are added to Hindsight, they are pushed into either the world facts or experiences memory pathway. They are then represented as a combination of entities, relationships, and time series with sparse/dense vector representations to aid in later recall.
 
@@ -208,7 +209,7 @@ The final output is trimmed as needed to fit within the token limit.
 
 ### Reflect
 
-The reflect operation is used to perform a more thorough analysis of existing memories. This allows the agent to form new connections between memories which are then persisted as opinions and/or observations. When building agents, the reflect operation is a key capability to enable the agent to learn from its experiences. 
+The reflect operation is used to perform a more thorough analysis of existing memories. This allows the agent to form new connections between memories which are then persisted as mental models. When building agents, the reflect operation is a key capability to enable the agent to learn from its experiences. 
 
 For example, the `reflect` operation can be used to support use cases such as:
 

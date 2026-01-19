@@ -14,7 +14,7 @@ Traditional RAG (Retrieval-Augmented Generation) retrieves documents similar to 
 | **Multi-hop reasoning** | Limited to retrieved chunks | Graph traversal across entity relationships |
 | **Temporal queries** | Keyword matching ("spring") | Date parsing and range filtering |
 | **Entity understanding** | None | Entity resolution, observations, co-occurrence |
-| **Belief formation** | Stateless | Opinions with confidence scores that evolve |
+| **Structured knowledge** | Stateless | Mental models with evidence-grounded observations |
 | **Disposition** | None | 3 traits (skepticism, literalism, empathy) influence interpretation |
 
 ## Architecture Comparison
@@ -96,7 +96,7 @@ Multiple retrieval strategies. Persistent state across sessions.
 | System | Behavior |
 |--------|----------|
 | RAG | No memory of progression |
-| Hindsight | Forms opinion "user prefers sync" (0.7) → updates to "user growing comfortable with async" (0.6) |
+| Hindsight | Builds mental model tracking user's coding patterns, observations evolve as evidence changes |
 
 ## When to Use Each
 

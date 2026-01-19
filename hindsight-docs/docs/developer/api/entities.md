@@ -91,18 +91,18 @@ This means:
 - Observations stay up-to-date as new information is retained
 - The system prioritizes entities that matter most to your memory bank
 
-### Observations vs Opinions
+### Entity observations vs mental models
 
-Observations are **objective summaries**—they synthesize facts without any bias or perspective. This is different from [opinions](./opinions), which are influenced by the memory bank's disposition.
+Entity observations are **brief summaries** attached to specific entities. [Mental models](./mental-models) are richer structured knowledge containers with evidence-grounded observations.
 
-| | Observations | Opinions |
+| | Entity Observations | Mental Models |
 |---|---|---|
-| **Purpose** | Summarize what's known about an entity | Express the bank's perspective on a topic |
-| **Disposition influence** | No | Yes |
-| **Scope** | Per-entity | Any topic |
-| **Generation** | Automatic (top entities) | On-demand via reflect |
+| **Purpose** | Quick entity context | Structured understanding of topics |
+| **Evidence** | No | Yes (exact quotes from memories) |
+| **Scope** | Per-entity | Any topic (people, projects, concepts) |
+| **Generation** | Automatic (top entities) | Manual refresh or agent-created |
 
-### Using Observations
+### Using observations
 
 Observations are included in recall results when you set `include_entities=True`. They provide quick context about key entities without retrieving all underlying facts.
 

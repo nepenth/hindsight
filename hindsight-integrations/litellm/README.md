@@ -78,7 +78,7 @@ Here's what happens under the hood when you call `completion()`:
 │          # Relevant Memories                                                │
 │          1. [WORLD] User prefers pytest for testing                         │
 │          2. [WORLD] User is building a FastAPI app                          │
-│          3. [OPINION] User likes type hints                                 │
+│          3. [WORLD] User likes type hints                                 │
 │      """},                                                                  │
 │      {"role": "user", "content": "Help me with my Python project"}          │
 │  ]                                                                          │
@@ -137,7 +137,7 @@ hindsight_litellm.configure(
     max_memories=None,             # Maximum memories to inject (None = unlimited)
     max_memory_tokens=4096,        # Maximum tokens for memory context
     recall_budget="mid",           # Recall budget: "low", "mid", "high"
-    fact_types=["world", "agent"], # Filter fact types to inject
+    fact_types=["world", "experience"], # Filter fact types to inject
 
     # Optional - Bank Configuration
     bank_name="My Agent",          # Human-readable display name for the memory bank
@@ -182,7 +182,7 @@ hindsight_litellm.configure(
     bank_id="my-agent",
     use_reflect=False,  # Default
 )
-# Injects: "1. [WORLD] User prefers Python\n2. [OPINION] User dislikes Java..."
+# Injects: "1. [WORLD] User prefers Python\n2. [EXPERIENCE] User struggled with Java..."
 
 # Reflect mode - synthesized context
 hindsight_litellm.configure(
@@ -240,7 +240,7 @@ for m in memories:
 
 # Output:
 # - [world] User is building a FastAPI project
-# - [opinion] User prefers Python over JavaScript
+# - [world] User prefers Python over JavaScript
 ```
 
 ### Reflect - Get synthesized context

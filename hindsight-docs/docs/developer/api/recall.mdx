@@ -42,7 +42,7 @@ Make sure you've completed the [Quick Start](./quickstart) to install the client
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | string | required | Natural language query |
-| `types` | list | all | Filter: `world`, `experience`, `opinion` |
+| `types` | list | all | Filter: `world`, `experience` |
 | `budget` | string | "mid" | Budget level: `low`, `mid`, `high` |
 | `max_tokens` | int | 4096 | Token budget for results |
 | `trace` | bool | false | Enable trace output for debugging |
@@ -68,19 +68,11 @@ Recall specific memory types:
 <TabItem value="python" label="Python">
 <CodeSnippet code={recallPy} section="recall-world-only" language="python" />
 <CodeSnippet code={recallPy} section="recall-experience-only" language="python" />
-<CodeSnippet code={recallPy} section="recall-opinions-only" language="python" />
 </TabItem>
 <TabItem value="cli" label="CLI">
 <CodeSnippet code={recallSh} section="recall-fact-type" language="bash" />
 </TabItem>
 </Tabs>
-
-:::warning About Opinions
-Opinions are beliefs formed during [reflect](/developer/api/reflect) operations. Unlike world facts and experience, opinions are subjective interpretations and may not represent objective truth. Depending on your use case:
-- **Exclude opinions** (`types=["world", "experience"]`) when you need factual, verifiable information
-- **Include opinions** when you want the agent's perspective or formed beliefs
-- **Use opinions alone** (`types=["opinion"]`) only when specifically asking about the agent's views
-:::
 
 ## Token Budget Management
 
