@@ -115,8 +115,7 @@ class CausalRelation(BaseModel):
 
     target_fact_index: int = Field(description="Index of the related fact in the facts array (0-based).")
     relation_type: Literal["caused_by"] = Field(
-        description="How this fact relates to the target: "
-        "'caused_by' = this fact was caused by the target"
+        description="How this fact relates to the target: 'caused_by' = this fact was caused by the target"
     )
     strength: float = Field(
         description="Strength of relationship (0.0 to 1.0)",
@@ -140,8 +139,7 @@ class FactCausalRelation(BaseModel):
         "Example: if this is fact #5, target_index can only be 0, 1, 2, 3, or 4."
     )
     relation_type: Literal["caused_by"] = Field(
-        description="How this fact relates to the target fact: "
-        "'caused_by' = this fact was caused by the target fact"
+        description="How this fact relates to the target fact: 'caused_by' = this fact was caused by the target fact"
     )
     strength: float = Field(
         description="Strength of relationship (0.0 to 1.0). 1.0 = strong, 0.5 = moderate",

@@ -1,7 +1,7 @@
 """mental_model_id_to_text
 
-Revision ID: l7g8h9i0j1k2
-Revises: k6f7g8h9i0j1
+Revision ID: m8h9i0j1k2l3
+Revises: l7g8h9i0j1k2
 Create Date: 2026-01-19 00:00:00.000000
 
 This migration changes the mental_models.id column from VARCHAR(64) to TEXT
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 from alembic import context, op
 
 # revision identifiers, used by Alembic.
-revision: str = "l7g8h9i0j1k2"
-down_revision: str | Sequence[str] | None = "k6f7g8h9i0j1"
+revision: str = "m8h9i0j1k2l3"
+down_revision: str | Sequence[str] | None = "l7g8h9i0j1k2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
