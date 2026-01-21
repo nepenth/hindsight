@@ -15,6 +15,8 @@ The framework supports two answer generation patterns:
 2. Integrated: Answer generator performs its own retrieval (e.g., think API)
    - Indicated by needs_external_search() returning False
    - Skips the search step for efficiency
+
+Optional --include-mental-models flag enables returning mental models in recall results.
 """
 
 import asyncio
@@ -29,7 +31,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import pydantic
 from hindsight_api import MemoryEngine
 from hindsight_api.config import get_config
-from hindsight_api.engine.memory_engine import ReflectResult
 
 # Configure logging from environment variable
 get_config().configure_logging()
@@ -120,105 +121,6 @@ async def create_memory_engine() -> MemoryEngine:
     return memory
 
 
-# Default mission for reflect mode benchmarks
-DEFAULT_REFLECT_MISSION = """I am an AI assistant helping the user. My goal is to:
-- Understand and remember user preferences, interests, and personal information
-- Track important events, dates, and experiences the user shares
-- Learn from our conversations to provide personalized assistance
-- Remember context from previous conversations to give relevant responses
-- Notice patterns in user behavior and preferences over time"""
-
-
-async def poll_operation_until_complete(
-    memory: MemoryEngine,
-    bank_id: str,
-    operation_id: str,
-    request_context: "RequestContext",
-    poll_interval: float = 2.0,
-    timeout: float = 300.0,
-) -> Dict[str, Any]:
-    """
-    Poll an async operation until it completes or fails.
-
-    Args:
-        memory: MemoryEngine instance
-        bank_id: Bank identifier
-        operation_id: Operation ID to poll
-        request_context: Request context for authentication
-        poll_interval: Seconds between polls (default: 2.0)
-        timeout: Maximum seconds to wait (default: 300.0)
-
-    Returns:
-        Final operation status dict
-
-    Raises:
-        TimeoutError: If operation doesn't complete within timeout
-        RuntimeError: If operation fails
-    """
-    import time
-
-    start_time = time.time()
-
-    while True:
-        elapsed = time.time() - start_time
-        if elapsed > timeout:
-            raise TimeoutError(f"Operation {operation_id} did not complete within {timeout}s")
-
-        status = await memory.get_operation_status(bank_id, operation_id, request_context=request_context)
-
-        if status["status"] == "completed":
-            return status
-        elif status["status"] == "failed":
-            error_msg = status.get("error_message", "Unknown error")
-            raise RuntimeError(f"Operation {operation_id} failed: {error_msg}")
-        elif status["status"] == "not_found":
-            raise RuntimeError(f"Operation {operation_id} not found")
-
-        # Still pending, wait and poll again
-        await asyncio.sleep(poll_interval)
-
-
-async def setup_reflect_mode(
-    memory: MemoryEngine,
-    bank_id: str,
-    request_context: "RequestContext",
-    mission: str | None = None,
-    refresh_mental_models: bool = True,
-    poll_timeout: float = 300.0,
-) -> None:
-    """
-    Set up a bank for reflect mode by setting a mission and optionally refreshing mental models.
-
-    This is used by benchmarks to prepare a bank for using reflect instead of recall.
-    The mission helps the system understand what kind of information to track and how
-    to organize mental models.
-
-    Args:
-        memory: MemoryEngine instance
-        bank_id: Bank identifier
-        request_context: Request context for authentication
-        mission: Mission text (uses DEFAULT_REFLECT_MISSION if not provided)
-        refresh_mental_models: Whether to refresh mental models after setting mission
-        poll_timeout: Timeout for mental model refresh operation (default: 300s)
-    """
-    # Set the mission
-    mission_text = mission or DEFAULT_REFLECT_MISSION
-    await memory.set_bank_mission(bank_id, mission_text, request_context=request_context)
-    console.print(f"    [green]✓[/green] Set mission for bank '{bank_id}'")
-
-    # Refresh mental models if requested
-    if refresh_mental_models:
-        console.print("    [yellow]Refreshing mental models...[/yellow]")
-        result = await memory.refresh_mental_models(bank_id, request_context=request_context)
-        operation_id = result["operation_id"]
-
-        # Poll until complete
-        await poll_operation_until_complete(
-            memory, bank_id, operation_id, request_context, poll_interval=2.0, timeout=poll_timeout
-        )
-        console.print("    [green]✓[/green] Mental models refreshed")
-
-
 class BenchmarkDataset(ABC):
     """Abstract base class for benchmark datasets."""
 
@@ -299,101 +201,6 @@ class LLMAnswerGenerator(ABC):
               - List: Use these memories instead (integrated mode like think API)
         """
         pass
-
-
-class ReflectAnswerGenerator(LLMAnswerGenerator):
-    """Answer generator using the reflect API instead of recall + LLM.
-
-    This generator uses the agentic reflect API which:
-    1. Has access to mental models (synthesized knowledge)
-    2. Can search facts dynamically using tools
-    3. Can learn and update mental models
-    4. Provides a comprehensive answer based on all available information
-
-    The reflect API does its own retrieval internally, so no external search
-    is needed by the benchmark runner.
-    """
-
-    def __init__(self, memory: MemoryEngine, budget: Budget = Budget.MID):
-        """Initialize with memory instance.
-
-        Args:
-            memory: MemoryEngine instance
-            budget: Budget level for reflect iterations (LOW/MID/HIGH)
-        """
-        self.memory = memory
-        self.budget = budget
-
-    def needs_external_search(self) -> bool:
-        """Reflect API does its own retrieval, so no external search needed."""
-        return False
-
-    async def generate_answer(
-        self,
-        question: str,
-        recall_result: Dict[str, Any],
-        question_date: Optional[datetime] = None,
-        question_type: Optional[str] = None,
-        bank_id: Optional[str] = None,
-    ) -> Tuple[str, str, Optional[List[Dict[str, Any]]]]:
-        """
-        Generate answer using the agentic reflect API.
-
-        The reflect API uses an agentic loop with tools to:
-        - lookup: Get mental models (synthesized knowledge)
-        - recall: Search facts (semantic + temporal retrieval)
-        - learn: Create/update mental models with new insights
-        - expand: Get chunk/document context for memories
-
-        Args:
-            question: Question to answer
-            recall_result: Not used (empty dict), as reflect does its own retrieval
-            question_date: Date when the question was asked (for temporal context)
-            question_type: Question category (for context in the prompt)
-            bank_id: Bank ID to query (required for reflect mode)
-
-        Returns:
-            Tuple of (answer, reasoning, retrieved_memories)
-            - answer: The generated answer text
-            - reasoning: Summary of how the answer was derived
-            - retrieved_memories: Empty list (reflect uses mental models, not raw facts)
-        """
-        if not bank_id:
-            raise ValueError("bank_id is required for ReflectAnswerGenerator")
-
-        try:
-            # Build context string with question date if available
-            context_parts = []
-            if question_date:
-                context_parts.append(
-                    f"The question is being asked on: {question_date.strftime('%Y-%m-%d %H:%M:%S')} UTC"
-                )
-            if question_type:
-                context_parts.append(f"Question category: {question_type}")
-            context = "\n".join(context_parts) if context_parts else None
-
-            # Use the reflect API which does agentic reasoning with tools
-            result: ReflectResult = await self.memory.reflect_async(
-                bank_id=bank_id,
-                query=question,
-                budget=self.budget,
-                context=context,
-                request_context=RequestContext(),
-            )
-
-            # Extract answer
-            answer = result.text
-
-            # Build reasoning summary
-            reasoning = f"Reflect API (budget={self.budget.name})"
-
-            # Reflect doesn't return raw facts like recall, it uses mental models
-            # Return empty list for retrieved_memories
-            return answer, reasoning, []
-
-        except Exception as e:
-            logging.exception(f"Error in reflect API call: {e}")
-            return f"Error generating answer: {str(e)}", "Error occurred during reflect API call.", []
 
 
 class JudgeResponse(pydantic.BaseModel):
@@ -615,11 +422,18 @@ class BenchmarkRunner:
             "max_session_length": max(session_lengths) if session_lengths else 0,
         }
 
-    async def ingest_conversation(self, item: Dict[str, Any], agent_id: str) -> int:
+    async def ingest_conversation(
+        self, item: Dict[str, Any], agent_id: str, wait_for_consolidation: bool = False
+    ) -> int:
         """
         Ingest conversation into memory using batch ingestion.
 
         Uses put_batch_async for maximum efficiency.
+
+        Args:
+            item: Dataset item to ingest
+            agent_id: Agent/bank ID to ingest into
+            wait_for_consolidation: If True, wait for consolidation to complete after ingestion
 
         Returns:
             Number of sessions ingested
@@ -633,7 +447,86 @@ class BenchmarkRunner:
                 request_context=RequestContext(),
             )
 
+        if wait_for_consolidation and batch_contents:
+            await self._wait_for_consolidation(agent_id)
+
         return len(batch_contents)
+
+    async def _get_pending_consolidation_count(self, bank_id: str) -> int:
+        """
+        Get the count of memories pending consolidation.
+
+        Returns:
+            Number of memories not yet consolidated into mental models
+        """
+        pool = await self.memory._get_pool()
+        from hindsight_api.engine.memory_engine import fq_table
+
+        async with pool.acquire() as conn:
+            # Check when consolidation last ran
+            last_consolidated_row = await conn.fetchrow(
+                f"""
+                SELECT MAX(created_at) as last_consolidated_at
+                FROM {fq_table("memory_units")}
+                WHERE bank_id = $1 AND fact_type = 'mental_model'
+                """,
+                bank_id,
+            )
+            last_consolidated_at = last_consolidated_row["last_consolidated_at"] if last_consolidated_row else None
+
+            if last_consolidated_at:
+                # Count memories created after last consolidation
+                result = await conn.fetchrow(
+                    f"""
+                    SELECT COUNT(*) as count
+                    FROM {fq_table("memory_units")}
+                    WHERE bank_id = $1 AND fact_type IN ('experience', 'world')
+                    AND created_at > $2
+                    """,
+                    bank_id,
+                    last_consolidated_at,
+                )
+            else:
+                # If never consolidated, count all experience/world memories
+                result = await conn.fetchrow(
+                    f"""
+                    SELECT COUNT(*) as count
+                    FROM {fq_table("memory_units")}
+                    WHERE bank_id = $1 AND fact_type IN ('experience', 'world')
+                    """,
+                    bank_id,
+                )
+            return result["count"] if result else 0
+
+    async def _wait_for_consolidation(self, bank_id: str, poll_interval: float = 2.0, timeout: float = 300.0) -> None:
+        """
+        Wait for consolidation to complete (pending_consolidation reaches 0).
+
+        Args:
+            bank_id: Bank ID to check
+            poll_interval: Seconds between polls
+            timeout: Maximum seconds to wait
+
+        Raises:
+            TimeoutError: If consolidation doesn't complete within timeout
+        """
+        import time
+
+        start_time = time.time()
+        console.print("      [yellow]Waiting for consolidation to complete...[/yellow]")
+
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                raise TimeoutError(f"Consolidation did not complete within {timeout}s")
+
+            pending = await self._get_pending_consolidation_count(bank_id)
+            if pending == 0:
+                console.print("      [green]✓[/green] Consolidation complete")
+                return
+
+            # Still pending, wait and poll again
+            await asyncio.sleep(poll_interval)
 
     async def answer_question(
         self,
@@ -643,6 +536,8 @@ class BenchmarkRunner:
         max_tokens: int = 4096,
         question_date: Optional[datetime] = None,
         question_type: Optional[str] = None,
+        include_mental_models: bool = False,
+        only_mental_models: bool = False,
     ) -> Tuple[str, str, List[Dict], Dict[str, Dict]]:
         """
         Answer a question using memory retrieval.
@@ -654,6 +549,8 @@ class BenchmarkRunner:
             max_tokens: Maximum tokens to retrieve
             question_date: Date when the question was asked (for temporal filtering)
             question_type: Question category/type (e.g., 'multi-session', 'temporal-reasoning')
+            include_mental_models: If True, include mental models in recall results
+            only_mental_models: If True, only retrieve mental models (no facts)
 
         Returns:
             Tuple of (answer, reasoning, retrieved_memories, chunks)
@@ -668,16 +565,19 @@ class BenchmarkRunner:
             import time
 
             recall_start_time = time.time()
+            # When only_mental_models is True, skip facts and only retrieve mental models
+            fact_types = [] if only_mental_models else ["world", "experience"]
             search_result = await self.memory.recall_async(
                 bank_id=agent_id,
                 query=question,
                 budget=budget,
                 max_tokens=max_tokens,
-                fact_type=["world", "experience"],
+                fact_type=fact_types,
                 question_date=question_date,
-                include_entities=True,
+                include_entities=not only_mental_models,  # Skip entities when only mental models
                 max_entity_tokens=2048,
-                include_chunks=True,
+                include_chunks=not only_mental_models,  # Skip chunks when only mental models
+                include_mental_models=include_mental_models or only_mental_models,
                 request_context=RequestContext(),
             )
             recall_time = time.time() - recall_start_time
@@ -734,12 +634,16 @@ class BenchmarkRunner:
         max_tokens: int,
         max_questions: Optional[int] = None,
         semaphore: asyncio.Semaphore = None,
+        include_mental_models: bool = False,
+        only_mental_models: bool = False,
     ) -> List[Dict]:
         """
         Evaluate QA task with parallel question processing.
 
         Args:
             semaphore: Semaphore to limit concurrent question processing
+            include_mental_models: If True, include mental models in recall results
+            only_mental_models: If True, only retrieve mental models (no facts)
 
         Returns:
             List of QA results
@@ -778,7 +682,14 @@ class BenchmarkRunner:
                     try:
                         # Get predicted answer, reasoning, retrieved memories, and chunks
                         predicted_answer, reasoning, retrieved_memories, chunks = await self.answer_question(
-                            agent_id, question, thinking_budget, max_tokens, question_date, category
+                            agent_id,
+                            question,
+                            thinking_budget,
+                            max_tokens,
+                            question_date,
+                            category,
+                            include_mental_models,
+                            only_mental_models,
                         )
 
                         # Remove embeddings from retrieved memories to reduce file size
@@ -957,9 +868,8 @@ class BenchmarkRunner:
         question_semaphore: asyncio.Semaphore,
         eval_semaphore_size: int = 8,
         clear_this_agent: bool = True,
-        use_reflect_mode: bool = False,
-        reflect_mission: Optional[str] = None,
-        refresh_mental_models: bool = True,
+        include_mental_models: bool = False,
+        only_mental_models: bool = False,
     ) -> Dict:
         """
         Process a single item (ingest + evaluate).
@@ -967,9 +877,8 @@ class BenchmarkRunner:
         Args:
             clear_this_agent: Whether to clear this agent's data before ingesting.
                              Set to False to skip clearing (e.g., when agent_id is shared and already cleared)
-            use_reflect_mode: If True, set up mission and refresh mental models after ingestion
-            reflect_mission: Custom mission text (uses DEFAULT_REFLECT_MISSION if not provided)
-            refresh_mental_models: If True (default), refresh mental models in reflect mode
+            include_mental_models: If True, include mental models in recall results and wait for consolidation after ingestion
+            only_mental_models: If True, only retrieve mental models (no facts)
 
         Returns:
             Result dict with metrics
@@ -986,26 +895,14 @@ class BenchmarkRunner:
                 await self.memory.delete_bank(agent_id, request_context=RequestContext())
                 console.print(f"      [green]✓[/green] Cleared '{agent_id}' agent data")
 
-            # Ingest conversation
+            # Ingest conversation (wait for consolidation if mental models are requested)
             step += 1
             console.print(f"  [{step}] Ingesting conversation (batch mode)...")
-            num_sessions = await self.ingest_conversation(item, agent_id)
+            wait_for_consolidation = include_mental_models or only_mental_models
+            num_sessions = await self.ingest_conversation(item, agent_id, wait_for_consolidation=wait_for_consolidation)
             console.print(f"      [green]✓[/green] Ingested {num_sessions} sessions")
         else:
             num_sessions = -1
-
-        # Set up reflect mode if enabled (mission + mental models)
-        if use_reflect_mode:
-            step += 1
-            console.print(f"  [{step}] Setting up reflect mode...")
-            await setup_reflect_mode(
-                memory=self.memory,
-                bank_id=agent_id,
-                request_context=RequestContext(),
-                mission=reflect_mission,
-                refresh_mental_models=refresh_mental_models,
-                poll_timeout=600.0,
-            )
 
         # Evaluate QA
         step += 1
@@ -1019,6 +916,8 @@ class BenchmarkRunner:
             max_tokens,
             max_questions_per_item,
             question_semaphore,
+            include_mental_models,
+            only_mental_models,
         )
 
         # Calculate metrics
@@ -1050,9 +949,8 @@ class BenchmarkRunner:
         max_concurrent_items: int = 1,  # Max concurrent items (conversations) to process in parallel
         output_path: Optional[Path] = None,  # Path to save results incrementally
         merge_with_existing: bool = False,  # Whether to merge with existing results
-        use_reflect_mode: bool = False,  # If True, set up mission and use reflect API for answering
-        reflect_mission: Optional[str] = None,  # Custom mission text for reflect mode
-        refresh_mental_models: bool = True,  # If True (default), refresh mental models in reflect mode
+        include_mental_models: bool = False,  # If True, include mental models in recall results
+        only_mental_models: bool = False,  # If True, only retrieve mental models (no facts)
     ) -> Dict[str, Any]:
         """
         Run the full benchmark evaluation.
@@ -1072,9 +970,8 @@ class BenchmarkRunner:
             separate_ingestion_phase: If True, ingest all data first, then evaluate all questions (single agent)
             filln: If True, only process items where the agent has no indexed data yet
             max_concurrent_items: Max concurrent items to process in parallel (requires clear_agent_per_item=True)
-            use_reflect_mode: If True, set up mission and use reflect API for answering.
-            reflect_mission: Custom mission text for reflect mode (uses default if not provided)
-            refresh_mental_models: If True (default), refresh mental models in reflect mode. Set to False to skip.
+            include_mental_models: If True, include mental models in recall results and wait for consolidation after ingestion.
+            only_mental_models: If True, only retrieve mental models (no facts). Implies waiting for consolidation.
 
         Returns:
             Dict with complete benchmark results
@@ -1116,8 +1013,8 @@ class BenchmarkRunner:
                 eval_semaphore_size,
                 output_path,
                 merge_with_existing,
-                use_reflect_mode,
-                reflect_mission,
+                include_mental_models,
+                only_mental_models,
             )
         else:
             # Original approach: process each item independently
@@ -1135,9 +1032,8 @@ class BenchmarkRunner:
                 max_concurrent_items,
                 output_path,
                 merge_with_existing,
-                use_reflect_mode,
-                reflect_mission,
-                refresh_mental_models,
+                include_mental_models,
+                only_mental_models,
             )
 
     async def _run_single_phase(
@@ -1155,9 +1051,8 @@ class BenchmarkRunner:
         max_concurrent_items: int = 1,
         output_path: Optional[Path] = None,
         merge_with_existing: bool = False,
-        use_reflect_mode: bool = False,
-        reflect_mission: Optional[str] = None,
-        refresh_mental_models: bool = True,
+        include_mental_models: bool = False,
+        only_mental_models: bool = False,
     ) -> Dict[str, Any]:
         """Original single-phase approach: process each item independently."""
         # Create semaphore for question processing
@@ -1179,9 +1074,8 @@ class BenchmarkRunner:
                 max_concurrent_items,
                 output_path,
                 merge_with_existing,
-                use_reflect_mode,
-                reflect_mission,
-                refresh_mental_models,
+                include_mental_models,
+                only_mental_models,
             )
         else:
             # Sequential item processing (original behavior)
@@ -1198,9 +1092,8 @@ class BenchmarkRunner:
                 filln,
                 output_path,
                 merge_with_existing,
-                use_reflect_mode,
-                reflect_mission,
-                refresh_mental_models,
+                include_mental_models,
+                only_mental_models,
             )
 
         # Calculate overall metrics
@@ -1236,9 +1129,8 @@ class BenchmarkRunner:
         filln: bool,
         output_path: Optional[Path] = None,
         merge_with_existing: bool = False,
-        use_reflect_mode: bool = False,
-        reflect_mission: Optional[str] = None,
-        refresh_mental_models: bool = True,
+        include_mental_models: bool = False,
+        only_mental_models: bool = False,
     ) -> List[Dict]:
         """Process items sequentially (original behavior)."""
         all_results = []
@@ -1286,9 +1178,8 @@ class BenchmarkRunner:
                 question_semaphore,
                 eval_semaphore_size,
                 clear_this_agent,
-                use_reflect_mode,
-                reflect_mission,
-                refresh_mental_models,
+                include_mental_models,
+                only_mental_models,
             )
 
             # Replace existing result or append new one
@@ -1320,9 +1211,8 @@ class BenchmarkRunner:
         max_concurrent_items: int,
         output_path: Optional[Path] = None,
         merge_with_existing: bool = False,
-        use_reflect_mode: bool = False,
-        reflect_mission: Optional[str] = None,
-        refresh_mental_models: bool = True,
+        include_mental_models: bool = False,
+        only_mental_models: bool = False,
     ) -> List[Dict]:
         """Process items in parallel (requires unique agent IDs per item)."""
         # Load existing results if merge_with_existing is True
@@ -1367,9 +1257,8 @@ class BenchmarkRunner:
                     question_semaphore,
                     eval_semaphore_size,
                     clear_this_agent=True,  # Always clear for parallel processing
-                    use_reflect_mode=use_reflect_mode,
-                    reflect_mission=reflect_mission,
-                    refresh_mental_models=refresh_mental_models,
+                    include_mental_models=include_mental_models,
+                    only_mental_models=only_mental_models,
                 )
                 return result
 
@@ -1408,8 +1297,8 @@ class BenchmarkRunner:
         eval_semaphore_size: int,
         output_path: Optional[Path] = None,
         merge_with_existing: bool = False,
-        use_reflect_mode: bool = False,
-        reflect_mission: Optional[str] = None,
+        include_mental_models: bool = False,
+        only_mental_models: bool = False,
     ) -> Dict[str, Any]:
         """
         Two-phase approach: ingest all data into single agent, then evaluate all questions.
@@ -1417,8 +1306,8 @@ class BenchmarkRunner:
         More realistic scenario where agent accumulates memories over time.
 
         Args:
-            use_reflect_mode: If True, set up mission and refresh mental models after ingestion
-            reflect_mission: Custom mission text (uses DEFAULT_REFLECT_MISSION if not provided)
+            include_mental_models: If True, include mental models in recall results and wait for consolidation
+            only_mental_models: If True, only retrieve mental models (no facts)
         """
         # Phase 1: Ingestion
         if not skip_ingestion:
@@ -1454,24 +1343,15 @@ class BenchmarkRunner:
             )
 
             console.print(f"    [green]✓[/green] Ingested {len(all_sessions)} sessions from {len(items)} items")
+
+            # Wait for consolidation if mental models are requested
+            if include_mental_models or only_mental_models:
+                await self._wait_for_consolidation(agent_id)
         else:
             console.print("\n[3] Skipping ingestion (using existing data)")
 
-        # Phase 1.5: Set up reflect mode if enabled (mission + mental models)
-        if use_reflect_mode:
-            console.print("\n[4.5] Setting up reflect mode...")
-            await setup_reflect_mode(
-                memory=self.memory,
-                bank_id=agent_id,
-                request_context=RequestContext(),
-                mission=reflect_mission,
-                refresh_mental_models=True,
-                poll_timeout=600.0,  # 10 minute timeout for mental model refresh
-            )
-
         # Phase 2: Evaluation
-        phase_num = "[6]" if use_reflect_mode else "[5]"
-        console.print(f"\n{phase_num} Phase 2: Evaluating all questions...")
+        console.print("\n[5] Phase 2: Evaluating all questions...")
 
         # Create semaphore for question processing
         question_semaphore = asyncio.Semaphore(max_concurrent_questions)
@@ -1493,6 +1373,8 @@ class BenchmarkRunner:
                 max_tokens,
                 max_questions_per_item,
                 question_semaphore,
+                include_mental_models,
+                only_mental_models,
             )
 
             # Calculate metrics

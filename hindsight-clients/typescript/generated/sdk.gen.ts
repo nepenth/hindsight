@@ -12,21 +12,27 @@ import type {
   ClearBankMemoriesData,
   ClearBankMemoriesErrors,
   ClearBankMemoriesResponses,
-  CreateMentalModelData,
-  CreateMentalModelErrors,
-  CreateMentalModelResponses,
+  CreateDirectiveData,
+  CreateDirectiveErrors,
+  CreateDirectiveResponses,
   CreateOrUpdateBankData,
   CreateOrUpdateBankErrors,
   CreateOrUpdateBankResponses,
+  CreateReflectionData,
+  CreateReflectionErrors,
+  CreateReflectionResponses,
   DeleteBankData,
   DeleteBankErrors,
   DeleteBankResponses,
+  DeleteDirectiveData,
+  DeleteDirectiveErrors,
+  DeleteDirectiveResponses,
   DeleteDocumentData,
   DeleteDocumentErrors,
   DeleteDocumentResponses,
-  DeleteMentalModelData,
-  DeleteMentalModelErrors,
-  DeleteMentalModelResponses,
+  DeleteReflectionData,
+  DeleteReflectionErrors,
+  DeleteReflectionResponses,
   GetAgentStatsData,
   GetAgentStatsErrors,
   GetAgentStatsResponses,
@@ -36,6 +42,9 @@ import type {
   GetChunkData,
   GetChunkErrors,
   GetChunkResponses,
+  GetDirectiveData,
+  GetDirectiveErrors,
+  GetDirectiveResponses,
   GetDocumentData,
   GetDocumentErrors,
   GetDocumentResponses,
@@ -51,17 +60,20 @@ import type {
   GetMentalModelData,
   GetMentalModelErrors,
   GetMentalModelResponses,
-  GetMentalModelVersionData,
-  GetMentalModelVersionErrors,
-  GetMentalModelVersionResponses,
   GetOperationStatusData,
   GetOperationStatusErrors,
   GetOperationStatusResponses,
+  GetReflectionData,
+  GetReflectionErrors,
+  GetReflectionResponses,
   HealthEndpointHealthGetData,
   HealthEndpointHealthGetResponses,
   ListBanksData,
   ListBanksErrors,
   ListBanksResponses,
+  ListDirectivesData,
+  ListDirectivesErrors,
+  ListDirectivesResponses,
   ListDocumentsData,
   ListDocumentsErrors,
   ListDocumentsResponses,
@@ -74,12 +86,12 @@ import type {
   ListMentalModelsData,
   ListMentalModelsErrors,
   ListMentalModelsResponses,
-  ListMentalModelVersionsData,
-  ListMentalModelVersionsErrors,
-  ListMentalModelVersionsResponses,
   ListOperationsData,
   ListOperationsErrors,
   ListOperationsResponses,
+  ListReflectionsData,
+  ListReflectionsErrors,
+  ListReflectionsResponses,
   ListTagsData,
   ListTagsErrors,
   ListTagsResponses,
@@ -91,12 +103,9 @@ import type {
   ReflectData,
   ReflectErrors,
   ReflectResponses,
-  RefreshMentalModelData,
-  RefreshMentalModelErrors,
-  RefreshMentalModelResponses,
-  RefreshMentalModelsData,
-  RefreshMentalModelsErrors,
-  RefreshMentalModelsResponses,
+  RefreshReflectionData,
+  RefreshReflectionErrors,
+  RefreshReflectionResponses,
   RegenerateEntityObservationsData,
   RegenerateEntityObservationsErrors,
   RegenerateEntityObservationsResponses,
@@ -109,9 +118,12 @@ import type {
   UpdateBankDispositionResponses,
   UpdateBankErrors,
   UpdateBankResponses,
-  UpdateMentalModelData,
-  UpdateMentalModelErrors,
-  UpdateMentalModelResponses,
+  UpdateDirectiveData,
+  UpdateDirectiveErrors,
+  UpdateDirectiveResponses,
+  UpdateReflectionData,
+  UpdateReflectionErrors,
+  UpdateReflectionResponses,
 } from "./types.gen";
 
 export type Options<
@@ -338,7 +350,7 @@ export const regenerateEntityObservations = <
 /**
  * List mental models
  *
- * List all mental models for a bank, optionally filtered by subtype or tags.
+ * List auto-consolidated mental models. Mental models are automatically created and updated by the consolidation engine.
  */
 export const listMentalModels = <ThrowOnError extends boolean = false>(
   options: Options<ListMentalModelsData, ThrowOnError>,
@@ -348,46 +360,6 @@ export const listMentalModels = <ThrowOnError extends boolean = false>(
     ListMentalModelsErrors,
     ThrowOnError
   >({ url: "/v1/default/banks/{bank_id}/mental-models", ...options });
-
-/**
- * Create mental model
- *
- * Create a mental model. Supports two subtypes:
- * - 'pinned' (default): User-defined topic, observations are LLM-generated on refresh
- * - 'directive': User-defined hard rules, observations are provided at creation and never regenerated
- */
-export const createMentalModel = <ThrowOnError extends boolean = false>(
-  options: Options<CreateMentalModelData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    CreateMentalModelResponses,
-    CreateMentalModelErrors,
-    ThrowOnError
-  >({
-    url: "/v1/default/banks/{bank_id}/mental-models",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-/**
- * Delete mental model
- *
- * Delete a mental model.
- */
-export const deleteMentalModel = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteMentalModelData, ThrowOnError>,
-) =>
-  (options.client ?? client).delete<
-    DeleteMentalModelResponses,
-    DeleteMentalModelErrors,
-    ThrowOnError
-  >({
-    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}",
-    ...options,
-  });
 
 /**
  * Get mental model
@@ -407,19 +379,88 @@ export const getMentalModel = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Update mental model
+ * List reflections
  *
- * Update a mental model's name and/or description. Useful for editing directives.
+ * List user-curated living documents that stay current.
  */
-export const updateMentalModel = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateMentalModelData, ThrowOnError>,
+export const listReflections = <ThrowOnError extends boolean = false>(
+  options: Options<ListReflectionsData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    ListReflectionsResponses,
+    ListReflectionsErrors,
+    ThrowOnError
+  >({ url: "/v1/default/banks/{bank_id}/reflections", ...options });
+
+/**
+ * Create reflection
+ *
+ * Create a reflection by running reflect with the source query in the background. Returns an operation ID to track progress. The content is auto-generated by the reflect endpoint. Use the operations endpoint to check completion status.
+ */
+export const createReflection = <ThrowOnError extends boolean = false>(
+  options: Options<CreateReflectionData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    CreateReflectionResponses,
+    CreateReflectionErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/reflections",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+/**
+ * Delete reflection
+ *
+ * Delete a reflection.
+ */
+export const deleteReflection = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteReflectionData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<
+    DeleteReflectionResponses,
+    DeleteReflectionErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}",
+    ...options,
+  });
+
+/**
+ * Get reflection
+ *
+ * Get a specific reflection by ID.
+ */
+export const getReflection = <ThrowOnError extends boolean = false>(
+  options: Options<GetReflectionData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    GetReflectionResponses,
+    GetReflectionErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}",
+    ...options,
+  });
+
+/**
+ * Update reflection
+ *
+ * Update a reflection's name.
+ */
+export const updateReflection = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateReflectionData, ThrowOnError>,
 ) =>
   (options.client ?? client).patch<
-    UpdateMentalModelResponses,
-    UpdateMentalModelErrors,
+    UpdateReflectionResponses,
+    UpdateReflectionErrors,
     ThrowOnError
   >({
-    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}",
+    url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -428,19 +469,50 @@ export const updateMentalModel = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Refresh mental models (async)
+ * Refresh reflection
  *
- * Submit a background job to refresh mental models for a bank. By default refreshes all subtypes. Optionally specify 'subtype' to only refresh 'structural' (from mission) or 'emergent' (from entities) models. Optionally pass tags to apply to newly created models. Use GET /banks/{bank_id}/operations to check progress.
+ * Re-run the source query through reflect and update the content.
  */
-export const refreshMentalModels = <ThrowOnError extends boolean = false>(
-  options: Options<RefreshMentalModelsData, ThrowOnError>,
+export const refreshReflection = <ThrowOnError extends boolean = false>(
+  options: Options<RefreshReflectionData, ThrowOnError>,
 ) =>
   (options.client ?? client).post<
-    RefreshMentalModelsResponses,
-    RefreshMentalModelsErrors,
+    RefreshReflectionResponses,
+    RefreshReflectionErrors,
     ThrowOnError
   >({
-    url: "/v1/default/banks/{bank_id}/mental-models/refresh",
+    url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}/refresh",
+    ...options,
+  });
+
+/**
+ * List directives
+ *
+ * List hard rules that are injected into prompts.
+ */
+export const listDirectives = <ThrowOnError extends boolean = false>(
+  options: Options<ListDirectivesData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    ListDirectivesResponses,
+    ListDirectivesErrors,
+    ThrowOnError
+  >({ url: "/v1/default/banks/{bank_id}/directives", ...options });
+
+/**
+ * Create directive
+ *
+ * Create a hard rule that will be injected into prompts.
+ */
+export const createDirective = <ThrowOnError extends boolean = false>(
+  options: Options<CreateDirectiveData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    CreateDirectiveResponses,
+    CreateDirectiveErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/directives",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -449,54 +521,58 @@ export const refreshMentalModels = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Refresh mental model content (async)
+ * Delete directive
  *
- * Submit a background job to refresh content for a specific mental model. This is useful for newly created learned models or to refresh content for any model.
+ * Delete a directive.
  */
-export const refreshMentalModel = <ThrowOnError extends boolean = false>(
-  options: Options<RefreshMentalModelData, ThrowOnError>,
+export const deleteDirective = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteDirectiveData, ThrowOnError>,
 ) =>
-  (options.client ?? client).post<
-    RefreshMentalModelResponses,
-    RefreshMentalModelErrors,
+  (options.client ?? client).delete<
+    DeleteDirectiveResponses,
+    DeleteDirectiveErrors,
     ThrowOnError
   >({
-    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/refresh",
+    url: "/v1/default/banks/{bank_id}/directives/{directive_id}",
     ...options,
   });
 
 /**
- * List mental model version history
+ * Get directive
  *
- * List all saved versions of a mental model's observations, ordered by version descending.
+ * Get a specific directive by ID.
  */
-export const listMentalModelVersions = <ThrowOnError extends boolean = false>(
-  options: Options<ListMentalModelVersionsData, ThrowOnError>,
+export const getDirective = <ThrowOnError extends boolean = false>(
+  options: Options<GetDirectiveData, ThrowOnError>,
 ) =>
   (options.client ?? client).get<
-    ListMentalModelVersionsResponses,
-    ListMentalModelVersionsErrors,
+    GetDirectiveResponses,
+    GetDirectiveErrors,
     ThrowOnError
   >({
-    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions",
+    url: "/v1/default/banks/{bank_id}/directives/{directive_id}",
     ...options,
   });
 
 /**
- * Get specific mental model version
+ * Update directive
  *
- * Get observations from a specific version of a mental model.
+ * Update a directive's properties.
  */
-export const getMentalModelVersion = <ThrowOnError extends boolean = false>(
-  options: Options<GetMentalModelVersionData, ThrowOnError>,
+export const updateDirective = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateDirectiveData, ThrowOnError>,
 ) =>
-  (options.client ?? client).get<
-    GetMentalModelVersionResponses,
-    GetMentalModelVersionErrors,
+  (options.client ?? client).patch<
+    UpdateDirectiveResponses,
+    UpdateDirectiveErrors,
     ThrowOnError
   >({
-    url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions/{version}",
+    url: "/v1/default/banks/{bank_id}/directives/{directive_id}",
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
   });
 
 /**

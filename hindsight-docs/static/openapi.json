@@ -788,7 +788,7 @@
           "Mental Models"
         ],
         "summary": "List mental models",
-        "description": "List all mental models for a bank, optionally filtered by subtype or tags.",
+        "description": "List auto-consolidated mental models. Mental models are automatically created and updated by the consolidation engine.",
         "operationId": "list_mental_models",
         "parameters": [
           {
@@ -799,24 +799,6 @@
               "type": "string",
               "title": "Bank Id"
             }
-          },
-          {
-            "name": "subtype",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter by subtype: structural, emergent, or pinned",
-              "title": "Subtype"
-            },
-            "description": "Filter by subtype: structural, emergent, or pinned"
           },
           {
             "name": "tags",
@@ -834,10 +816,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by tags (includes untagged models)",
+              "description": "Filter by tags",
               "title": "Tags"
             },
-            "description": "Filter by tags (includes untagged models)"
+            "description": "Filter by tags"
           },
           {
             "name": "tags_match",
@@ -850,11 +832,34 @@
                 "exact"
               ],
               "type": "string",
-              "description": "How to match tags: 'any' (OR), 'all' (AND), or 'exact'",
+              "description": "How to match tags",
               "default": "any",
               "title": "Tags Match"
             },
-            "description": "How to match tags: 'any' (OR), 'all' (AND), or 'exact'"
+            "description": "How to match tags"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
           },
           {
             "name": "authorization",
@@ -880,73 +885,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MentalModelListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "Mental Models"
-        ],
-        "summary": "Create mental model",
-        "description": "Create a mental model. Supports two subtypes:\n- 'pinned' (default): User-defined topic, observations are LLM-generated on refresh\n- 'directive': User-defined hard rules, observations are provided at creation and never regenerated",
-        "operationId": "create_mental_model",
-        "parameters": [
-          {
-            "name": "bank_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Bank Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateMentalModelRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MentalModelResponse"
                 }
               }
             }
@@ -1014,7 +952,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MentalModelResponse"
+                  "$ref": "#/components/schemas/MentalModelApiResponse"
                 }
               }
             }
@@ -1030,14 +968,16 @@
             }
           }
         }
-      },
-      "delete": {
+      }
+    },
+    "/v1/default/banks/{bank_id}/reflections": {
+      "get": {
         "tags": [
-          "Mental Models"
+          "Reflections"
         ],
-        "summary": "Delete mental model",
-        "description": "Delete a mental model.",
-        "operationId": "delete_mental_model",
+        "summary": "List reflections",
+        "description": "List user-curated living documents that stay current.",
+        "operationId": "list_reflections",
         "parameters": [
           {
             "name": "bank_id",
@@ -1049,12 +989,64 @@
             }
           },
           {
-            "name": "model_id",
-            "in": "path",
-            "required": true,
+            "name": "tags",
+            "in": "query",
+            "required": false,
             "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by tags",
+              "title": "Tags"
+            },
+            "description": "Filter by tags"
+          },
+          {
+            "name": "tags_match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all",
+                "exact"
+              ],
               "type": "string",
-              "title": "Model Id"
+              "description": "How to match tags",
+              "default": "any",
+              "title": "Tags Match"
+            },
+            "description": "How to match tags"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
             }
           },
           {
@@ -1080,7 +1072,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeleteResponse"
+                  "$ref": "#/components/schemas/ReflectionListResponse"
                 }
               }
             }
@@ -1097,13 +1089,13 @@
           }
         }
       },
-      "patch": {
+      "post": {
         "tags": [
-          "Mental Models"
+          "Reflections"
         ],
-        "summary": "Update mental model",
-        "description": "Update a mental model's name and/or description. Useful for editing directives.",
-        "operationId": "update_mental_model",
+        "summary": "Create reflection",
+        "description": "Create a reflection by running reflect with the source query in the background. Returns an operation ID to track progress. The content is auto-generated by the reflect endpoint. Use the operations endpoint to check completion status.",
+        "operationId": "create_reflection",
         "parameters": [
           {
             "name": "bank_id",
@@ -1112,15 +1104,6 @@
             "schema": {
               "type": "string",
               "title": "Bank Id"
-            }
-          },
-          {
-            "name": "model_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Model Id"
             }
           },
           {
@@ -1145,7 +1128,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateMentalModelRequest"
+                "$ref": "#/components/schemas/CreateReflectionRequest"
               }
             }
           }
@@ -1156,7 +1139,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MentalModelResponse"
+                  "$ref": "#/components/schemas/CreateReflectionResponse"
                 }
               }
             }
@@ -1174,14 +1157,14 @@
         }
       }
     },
-    "/v1/default/banks/{bank_id}/mental-models/refresh": {
-      "post": {
+    "/v1/default/banks/{bank_id}/reflections/{reflection_id}": {
+      "get": {
         "tags": [
-          "Mental Models"
+          "Reflections"
         ],
-        "summary": "Refresh mental models (async)",
-        "description": "Submit a background job to refresh mental models for a bank. By default refreshes all subtypes. Optionally specify 'subtype' to only refresh 'structural' (from mission) or 'emergent' (from entities) models. Optionally pass tags to apply to newly created models. Use GET /banks/{bank_id}/operations to check progress.",
-        "operationId": "refresh_mental_models",
+        "summary": "Get reflection",
+        "description": "Get a specific reflection by ID.",
+        "operationId": "get_reflection",
         "parameters": [
           {
             "name": "bank_id",
@@ -1190,6 +1173,81 @@
             "schema": {
               "type": "string",
               "title": "Bank Id"
+            }
+          },
+          {
+            "name": "reflection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reflection Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReflectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Reflections"
+        ],
+        "summary": "Update reflection",
+        "description": "Update a reflection's name.",
+        "operationId": "update_reflection",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "reflection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reflection Id"
             }
           },
           {
@@ -1210,18 +1268,11 @@
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/RefreshMentalModelsRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Body"
+                "$ref": "#/components/schemas/UpdateReflectionRequest"
               }
             }
           }
@@ -1232,7 +1283,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AsyncOperationSubmitResponse"
+                  "$ref": "#/components/schemas/ReflectionResponse"
                 }
               }
             }
@@ -1248,16 +1299,14 @@
             }
           }
         }
-      }
-    },
-    "/v1/default/banks/{bank_id}/mental-models/{model_id}/refresh": {
-      "post": {
+      },
+      "delete": {
         "tags": [
-          "Mental Models"
+          "Reflections"
         ],
-        "summary": "Refresh mental model content (async)",
-        "description": "Submit a background job to refresh content for a specific mental model. This is useful for newly created learned models or to refresh content for any model.",
-        "operationId": "refresh_mental_model",
+        "summary": "Delete reflection",
+        "description": "Delete a reflection.",
+        "operationId": "delete_reflection",
         "parameters": [
           {
             "name": "bank_id",
@@ -1269,80 +1318,12 @@
             }
           },
           {
-            "name": "model_id",
+            "name": "reflection_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Model Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AsyncOperationSubmitResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions": {
-      "get": {
-        "tags": [
-          "Mental Models"
-        ],
-        "summary": "List mental model version history",
-        "description": "List all saved versions of a mental model's observations, ordered by version descending.",
-        "operationId": "list_mental_model_versions",
-        "parameters": [
-          {
-            "name": "bank_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Bank Id"
-            }
-          },
-          {
-            "name": "model_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Model Id"
+              "title": "Reflection Id"
             }
           },
           {
@@ -1384,14 +1365,14 @@
         }
       }
     },
-    "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions/{version}": {
-      "get": {
+    "/v1/default/banks/{bank_id}/reflections/{reflection_id}/refresh": {
+      "post": {
         "tags": [
-          "Mental Models"
+          "Reflections"
         ],
-        "summary": "Get specific mental model version",
-        "description": "Get observations from a specific version of a mental model.",
-        "operationId": "get_mental_model_version",
+        "summary": "Refresh reflection",
+        "description": "Re-run the source query through reflect and update the content.",
+        "operationId": "refresh_reflection",
         "parameters": [
           {
             "name": "bank_id",
@@ -1403,21 +1384,421 @@
             }
           },
           {
-            "name": "model_id",
+            "name": "reflection_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Model Id"
+              "title": "Reflection Id"
             }
           },
           {
-            "name": "version",
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReflectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/default/banks/{bank_id}/directives": {
+      "get": {
+        "tags": [
+          "Directives"
+        ],
+        "summary": "List directives",
+        "description": "List hard rules that are injected into prompts.",
+        "operationId": "list_directives",
+        "parameters": [
+          {
+            "name": "bank_id",
             "in": "path",
             "required": true,
             "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by tags",
+              "title": "Tags"
+            },
+            "description": "Filter by tags"
+          },
+          {
+            "name": "tags_match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all",
+                "exact"
+              ],
+              "type": "string",
+              "description": "How to match tags",
+              "default": "any",
+              "title": "Tags Match"
+            },
+            "description": "How to match tags"
+          },
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only return active directives",
+              "default": true,
+              "title": "Active Only"
+            },
+            "description": "Only return active directives"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
               "type": "integer",
-              "title": "Version"
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectiveListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Directives"
+        ],
+        "summary": "Create directive",
+        "description": "Create a hard rule that will be injected into prompts.",
+        "operationId": "create_directive",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDirectiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectiveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/default/banks/{bank_id}/directives/{directive_id}": {
+      "get": {
+        "tags": [
+          "Directives"
+        ],
+        "summary": "Get directive",
+        "description": "Get a specific directive by ID.",
+        "operationId": "get_directive",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "directive_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Directive Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectiveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Directives"
+        ],
+        "summary": "Update directive",
+        "description": "Update a directive's properties.",
+        "operationId": "update_directive",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "directive_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Directive Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDirectiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectiveResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Directives"
+        ],
+        "summary": "Delete directive",
+        "description": "Delete a directive.",
+        "operationId": "delete_directive",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "directive_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Directive Id"
             }
           },
           {
@@ -2602,29 +2983,6 @@
           "update_disposition": true
         }
       },
-      "AsyncOperationSubmitResponse": {
-        "properties": {
-          "operation_id": {
-            "type": "string",
-            "title": "Operation Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          }
-        },
-        "type": "object",
-        "required": [
-          "operation_id",
-          "status"
-        ],
-        "title": "AsyncOperationSubmitResponse",
-        "description": "Response model for submitting an async operation.",
-        "example": {
-          "operation_id": "550e8400-e29b-41d4-a716-446655440000",
-          "status": "queued"
-        }
-      },
       "BackgroundResponse": {
         "properties": {
           "mission": {
@@ -2866,6 +3224,30 @@
           "failed_operations": {
             "type": "integer",
             "title": "Failed Operations"
+          },
+          "last_consolidated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Consolidated At",
+            "description": "When consolidation last ran (ISO format)"
+          },
+          "pending_consolidation": {
+            "type": "integer",
+            "title": "Pending Consolidation",
+            "description": "Number of memories not yet processed into mental models",
+            "default": 0
+          },
+          "total_mental_models": {
+            "type": "integer",
+            "title": "Total Mental Models",
+            "description": "Total number of mental models",
+            "default": 0
           }
         },
         "type": "object",
@@ -2886,6 +3268,7 @@
         "example": {
           "bank_id": "user123",
           "failed_operations": 0,
+          "last_consolidated_at": "2024-01-15T10:30:00Z",
           "links_breakdown": {
             "fact": {
               "entity": 40,
@@ -2908,9 +3291,11 @@
             "observation": 20,
             "preference": 30
           },
+          "pending_consolidation": 0,
           "pending_operations": 2,
           "total_documents": 10,
           "total_links": 300,
+          "total_mental_models": 45,
           "total_nodes": 150
         }
       },
@@ -3104,38 +3489,58 @@
           "name": "Alice"
         }
       },
-      "CreateMentalModelRequest": {
+      "CreateDirectiveRequest": {
         "properties": {
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "Human-readable name for the mental model"
+            "description": "Human-readable name for the directive"
           },
-          "description": {
+          "content": {
             "type": "string",
-            "title": "Description",
-            "description": "One-liner description for quick scanning"
+            "title": "Content",
+            "description": "The directive text to inject into prompts"
           },
-          "subtype": {
+          "priority": {
+            "type": "integer",
+            "title": "Priority",
+            "description": "Higher priority directives are injected first",
+            "default": 0
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "Whether this directive is active",
+            "default": true
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Tags for filtering"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "content"
+        ],
+        "title": "CreateDirectiveRequest",
+        "description": "Request model for creating a directive."
+      },
+      "CreateReflectionRequest": {
+        "properties": {
+          "name": {
             "type": "string",
-            "title": "Subtype",
-            "description": "Type of mental model: 'pinned' (observations LLM-generated) or 'directive' (observations user-provided)",
-            "default": "pinned"
+            "title": "Name",
+            "description": "Human-readable name for the reflection"
           },
-          "observations": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ObservationInput"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observations",
-            "description": "For directives only: list of user-provided observations. Required when subtype='directive'."
+          "source_query": {
+            "type": "string",
+            "title": "Source Query",
+            "description": "The query to run to generate content"
           },
           "tags": {
             "items": {
@@ -3144,35 +3549,46 @@
             "type": "array",
             "title": "Tags",
             "description": "Tags for scoped visibility"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 256.0,
+            "title": "Max Tokens",
+            "description": "Maximum tokens for generated content",
+            "default": 2048
           }
         },
         "type": "object",
         "required": [
           "name",
-          "description"
+          "source_query"
         ],
-        "title": "CreateMentalModelRequest",
-        "description": "Request model for creating a mental model.",
-        "examples": [
-          {
-            "description": "Key product priorities and upcoming features",
-            "name": "Product Roadmap",
-            "tags": [
-              "project-x"
-            ]
-          },
-          {
-            "description": "Rules about scheduling meetings",
-            "name": "Meeting Rules",
-            "observations": [
-              {
-                "content": "Never schedule meetings before 10am",
-                "title": "Morning meetings"
-              }
-            ],
-            "subtype": "directive"
+        "title": "CreateReflectionRequest",
+        "description": "Request model for creating a reflection.",
+        "example": {
+          "max_tokens": 2048,
+          "name": "Team Communication Preferences",
+          "source_query": "How does the team prefer to communicate?",
+          "tags": [
+            "team"
+          ]
+        }
+      },
+      "CreateReflectionResponse": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "title": "Operation Id",
+            "description": "Operation ID to track progress"
           }
-        ]
+        },
+        "type": "object",
+        "required": [
+          "operation_id"
+        ],
+        "title": "CreateReflectionResponse",
+        "description": "Response model for reflection creation."
       },
       "CreatedMentalModel": {
         "properties": {
@@ -3276,6 +3692,91 @@
           "message": "Deleted successfully",
           "success": true
         }
+      },
+      "DirectiveListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DirectiveResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DirectiveListResponse",
+        "description": "Response model for listing directives."
+      },
+      "DirectiveResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "bank_id": {
+            "type": "string",
+            "title": "Bank Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority",
+            "default": 0
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "bank_id",
+          "name",
+          "content"
+        ],
+        "title": "DirectiveResponse",
+        "description": "Response model for a directive."
       },
       "DispositionTraits": {
         "properties": {
@@ -3793,6 +4294,17 @@
               }
             ],
             "description": "Include raw chunks. Set to {} to enable, null to disable (default: disabled)."
+          },
+          "reflections": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReflectionsIncludeOptions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Include relevant reflections. Set to {} to enable, null to disable (default: disabled)."
           }
         },
         "type": "object",
@@ -4063,14 +4575,62 @@
           "timestamp": "2024-01-15T10:30:00Z"
         }
       },
-      "MentalModelFreshnessResponse": {
+      "MentalModelApiResponse": {
         "properties": {
-          "is_up_to_date": {
-            "type": "boolean",
-            "title": "Is Up To Date",
-            "description": "Whether the model has been refreshed since the last memory was added"
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique mental model ID"
           },
-          "last_refresh_at": {
+          "bank_id": {
+            "type": "string",
+            "title": "Bank Id",
+            "description": "Bank this mental model belongs to"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The consolidated mental model text"
+          },
+          "proof_count": {
+            "type": "integer",
+            "title": "Proof Count",
+            "description": "Number of facts supporting this mental model"
+          },
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "History",
+            "description": "History of changes to this mental model"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Tags for scoped visibility"
+          },
+          "source_memory_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Memory Ids",
+            "description": "IDs of memories that consolidated into this"
+          },
+          "source_memories": {
+            "items": {
+              "$ref": "#/components/schemas/SourceMemory"
+            },
+            "type": "array",
+            "title": "Source Memories",
+            "description": "Full source memory details (when requested)"
+          },
+          "created_at": {
             "anyOf": [
               {
                 "type": "string"
@@ -4079,37 +4639,35 @@
                 "type": "null"
               }
             ],
-            "title": "Last Refresh At",
-            "description": "When the model was last refreshed (ISO format)"
+            "title": "Created At"
           },
-          "memories_since_refresh": {
-            "type": "integer",
-            "title": "Memories Since Refresh",
-            "description": "Number of memories added since last refresh"
-          },
-          "reasons": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Reasons",
-            "description": "Reasons why the model needs refresh (empty if up to date). Possible values: never_refreshed, new_memories, mission_changed, disposition_changed, directives_changed"
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "type": "object",
         "required": [
-          "is_up_to_date",
-          "last_refresh_at",
-          "memories_since_refresh"
+          "id",
+          "bank_id",
+          "text",
+          "proof_count"
         ],
-        "title": "MentalModelFreshnessResponse",
-        "description": "Freshness information for a mental model."
+        "title": "MentalModelApiResponse",
+        "description": "Response model for a mental model (auto-consolidated knowledge)."
       },
       "MentalModelListResponse": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/MentalModelResponse"
+              "$ref": "#/components/schemas/MentalModelApiResponse"
             },
             "type": "array",
             "title": "Items"
@@ -4121,270 +4679,6 @@
         ],
         "title": "MentalModelListResponse",
         "description": "Response model for listing mental models."
-      },
-      "MentalModelObservationResponse": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "title": "Title",
-            "description": "Short summary title for the observation"
-          },
-          "content": {
-            "type": "string",
-            "title": "Content",
-            "description": "The observation content - detailed explanation"
-          },
-          "evidence": {
-            "items": {
-              "$ref": "#/components/schemas/ObservationEvidenceResponse"
-            },
-            "type": "array",
-            "title": "Evidence",
-            "description": "Supporting evidence with quotes"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At",
-            "description": "When this observation was first created (ISO format)"
-          },
-          "trend": {
-            "type": "string",
-            "title": "Trend",
-            "description": "Computed trend: stable, strengthening, weakening, new, stale"
-          },
-          "evidence_count": {
-            "type": "integer",
-            "title": "Evidence Count",
-            "description": "Number of evidence items supporting this observation"
-          },
-          "evidence_span": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Evidence Span",
-            "description": "Time span of evidence: {from: iso_date, to: iso_date}"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "content",
-          "created_at",
-          "trend",
-          "evidence_count",
-          "evidence_span"
-        ],
-        "title": "MentalModelObservationResponse",
-        "description": "An observation within a mental model with its supporting evidence."
-      },
-      "MentalModelResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "bank_id": {
-            "type": "string",
-            "title": "Bank Id"
-          },
-          "subtype": {
-            "type": "string",
-            "title": "Subtype"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description"
-          },
-          "observations": {
-            "items": {
-              "$ref": "#/components/schemas/MentalModelObservationResponse"
-            },
-            "type": "array",
-            "title": "Observations",
-            "description": "Structured observations with per-observation fact attribution"
-          },
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "description": "Version number of the mental model observations",
-            "default": 0
-          },
-          "entity_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entity Id"
-          },
-          "links": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Links",
-            "default": []
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Tags",
-            "default": []
-          },
-          "last_updated": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Updated"
-          },
-          "last_refresh_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Refresh At",
-            "description": "When observations were last refreshed (ISO format)"
-          },
-          "freshness": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MentalModelFreshnessResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Freshness info (null for directive subtypes which don't need refresh)"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "bank_id",
-          "subtype",
-          "name",
-          "description",
-          "created_at"
-        ],
-        "title": "MentalModelResponse",
-        "description": "Response model for a mental model.",
-        "example": {
-          "bank_id": "test-bank",
-          "created_at": "2024-01-10T08:00:00Z",
-          "description": "Who's on the team and their roles",
-          "freshness": {
-            "is_up_to_date": true,
-            "last_refresh_at": "2024-01-15T10:30:00Z",
-            "memories_since_refresh": 0,
-            "reasons": []
-          },
-          "id": "team-structure",
-          "last_refresh_at": "2024-01-15T10:30:00Z",
-          "last_updated": "2024-01-15T10:30:00Z",
-          "links": [],
-          "name": "Team Structure",
-          "observations": [
-            {
-              "content": "The team prefers async communication over synchronous meetings",
-              "created_at": "2024-01-15T10:30:00Z",
-              "evidence": [
-                {
-                  "memory_id": "uuid1",
-                  "quote": "I prefer Slack over meetings",
-                  "relevance": "Shows async preference",
-                  "timestamp": "2024-01-10T08:00:00Z"
-                }
-              ],
-              "evidence_count": 1,
-              "evidence_span": {
-                "from": "2024-01-10T08:00:00Z",
-                "to": "2024-01-10T08:00:00Z"
-              },
-              "title": "Prefers async communication",
-              "trend": "stable"
-            }
-          ],
-          "subtype": "structural",
-          "tags": [
-            "project-x"
-          ],
-          "version": 1
-        }
-      },
-      "ObservationEvidenceResponse": {
-        "properties": {
-          "memory_id": {
-            "type": "string",
-            "title": "Memory Id",
-            "description": "ID of the memory unit this evidence comes from"
-          },
-          "quote": {
-            "type": "string",
-            "title": "Quote",
-            "description": "Exact quote from the memory supporting the observation"
-          },
-          "relevance": {
-            "type": "string",
-            "title": "Relevance",
-            "description": "Brief explanation of how this quote supports the observation"
-          },
-          "timestamp": {
-            "type": "string",
-            "title": "Timestamp",
-            "description": "When the source memory was created (ISO format)"
-          }
-        },
-        "type": "object",
-        "required": [
-          "memory_id",
-          "quote",
-          "relevance",
-          "timestamp"
-        ],
-        "title": "ObservationEvidenceResponse",
-        "description": "A single piece of evidence supporting an observation."
-      },
-      "ObservationInput": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "title": "Title",
-            "description": "Short title/header for the observation"
-          },
-          "content": {
-            "type": "string",
-            "title": "Content",
-            "description": "Content of the observation"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "content"
-        ],
-        "title": "ObservationInput",
-        "description": "Input model for a single observation."
       },
       "OperationResponse": {
         "properties": {
@@ -4577,6 +4871,72 @@
           "total": 150
         }
       },
+      "RecallMentalModelResult": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique mental model ID"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The consolidated mental model text"
+          },
+          "proof_count": {
+            "type": "integer",
+            "title": "Proof Count",
+            "description": "Number of facts supporting this mental model"
+          },
+          "relevance": {
+            "type": "number",
+            "title": "Relevance",
+            "description": "Relevance score to the query",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "proof_count"
+        ],
+        "title": "RecallMentalModelResult",
+        "description": "A mental model result in recall response."
+      },
+      "RecallReflectionResult": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique reflection ID"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Human-readable name"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "The synthesized content"
+          },
+          "relevance": {
+            "type": "number",
+            "title": "Relevance",
+            "description": "Relevance score to the query",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "content"
+        ],
+        "title": "RecallReflectionResult",
+        "description": "A reflection result in recall response."
+      },
       "RecallRequest": {
         "properties": {
           "query": {
@@ -4596,7 +4956,7 @@
               }
             ],
             "title": "Types",
-            "description": "List of fact types to recall: 'world', 'experience'. Defaults to both if not specified. Note: 'opinion' is accepted but ignored (opinions are excluded from recall)."
+            "description": "List of fact types to recall: 'world', 'experience', 'mental_model'. Defaults to world and experience if not specified. Note: 'opinion' is accepted but ignored (opinions are excluded from recall)."
           },
           "budget": {
             "$ref": "#/components/schemas/Budget",
@@ -4733,6 +5093,36 @@
             ],
             "title": "Chunks",
             "description": "Chunks for facts, keyed by chunk_id"
+          },
+          "mental_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecallMentalModelResult"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mental Models",
+            "description": "Relevant mental models (consolidated knowledge) matching the query"
+          },
+          "reflections": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecallReflectionResult"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reflections",
+            "description": "Relevant reflections (user-curated summaries) matching the query"
           }
         },
         "type": "object",
@@ -4761,6 +5151,22 @@
               ]
             }
           },
+          "mental_models": [
+            {
+              "id": "789e0123-e45b-67d8-a901-234567890123",
+              "proof_count": 5,
+              "relevance": 0.92,
+              "text": "Alice is a machine learning expert who frequently discusses AI applications"
+            }
+          ],
+          "reflections": [
+            {
+              "content": "Alice specializes in ML...",
+              "id": "012e3456-e78b-90d1-a234-567890123456",
+              "name": "Team Expertise Summary",
+              "relevance": 0.88
+            }
+          ],
           "results": [
             {
               "chunk_id": "456e7890-e12b-34d5-a678-901234567890",
@@ -5460,51 +5866,113 @@
         "title": "ReflectTrace",
         "description": "Execution trace of LLM and tool calls during reflection."
       },
-      "RefreshMentalModelsRequest": {
+      "ReflectionListResponse": {
         "properties": {
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags",
-            "description": "Tags to apply to newly created mental models"
-          },
-          "subtype": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "structural",
-                  "emergent",
-                  "pinned",
-                  "learned"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subtype",
-            "description": "Only refresh models of this subtype. If not specified, refreshes all subtypes."
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReflectionResponse"
+            },
+            "type": "array",
+            "title": "Items"
           }
         },
         "type": "object",
-        "title": "RefreshMentalModelsRequest",
-        "description": "Request model for refresh mental models endpoint.",
-        "example": {
-          "subtype": "structural",
-          "tags": [
-            "project-x"
-          ]
-        }
+        "required": [
+          "items"
+        ],
+        "title": "ReflectionListResponse",
+        "description": "Response model for listing reflections."
+      },
+      "ReflectionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "bank_id": {
+            "type": "string",
+            "title": "Bank Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source_query": {
+            "type": "string",
+            "title": "Source Query"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "last_refreshed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Refreshed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "reflect_response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reflect Response",
+            "description": "Full reflect API response payload including based_on facts and mental_models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "bank_id",
+          "name",
+          "source_query",
+          "content"
+        ],
+        "title": "ReflectionResponse",
+        "description": "Response model for a reflection."
+      },
+      "ReflectionsIncludeOptions": {
+        "properties": {
+          "max_results": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Results",
+            "description": "Maximum number of reflections to return",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "title": "ReflectionsIncludeOptions",
+        "description": "Options for including reflections in recall results."
       },
       "RetainRequest": {
         "properties": {
@@ -5627,6 +6095,69 @@
           }
         }
       },
+      "SourceMemory": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Memory unit ID"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Memory text content"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Fact type (world, experience)"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context",
+            "description": "Memory context"
+          },
+          "occurred_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred Start",
+            "description": "When the event occurred"
+          },
+          "mentioned_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mentioned At",
+            "description": "When the memory was mentioned"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "type"
+        ],
+        "title": "SourceMemory",
+        "description": "A source memory that contributed to a mental model."
+      },
       "TagItem": {
         "properties": {
           "tag": {
@@ -5691,6 +6222,76 @@
         "title": "ToolCallsIncludeOptions",
         "description": "Options for including tool calls in reflect results."
       },
+      "UpdateDirectiveRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "New name"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "New content"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority",
+            "description": "New priority"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active",
+            "description": "New active status"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "New tags"
+          }
+        },
+        "type": "object",
+        "title": "UpdateDirectiveRequest",
+        "description": "Request model for updating a directive."
+      },
       "UpdateDispositionRequest": {
         "properties": {
           "disposition": {
@@ -5704,7 +6305,7 @@
         "title": "UpdateDispositionRequest",
         "description": "Request model for updating disposition traits."
       },
-      "UpdateMentalModelRequest": {
+      "UpdateReflectionRequest": {
         "properties": {
           "name": {
             "anyOf": [
@@ -5716,27 +6317,14 @@
               }
             ],
             "title": "Name",
-            "description": "New name for the mental model"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "New description/rule text"
+            "description": "New name for the reflection"
           }
         },
         "type": "object",
-        "title": "UpdateMentalModelRequest",
-        "description": "Request model for updating a mental model.",
+        "title": "UpdateReflectionRequest",
+        "description": "Request model for updating a reflection.",
         "example": {
-          "description": "Updated description with new rules",
-          "name": "Updated Name"
+          "name": "Updated Team Communication Preferences"
         }
       },
       "ValidationError": {

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import { useRouter } from "next/navigation";
 import { client } from "@/lib/api";
 import { useBank } from "@/lib/bank-context";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,6 +17,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +48,11 @@ import {
   Activity,
   Trash2,
   Target,
+  AlertTriangle,
+  Plus,
+  Tag,
+  Loader2,
+  X,
 } from "lucide-react";
 
 interface DispositionTraits {
@@ -70,6 +85,10 @@ interface BankStats {
   };
   pending_operations: number;
   failed_operations: number;
+  // Consolidation stats
+  last_consolidated_at: string | null;
+  pending_consolidation: number;
+  total_mental_models: number;
 }
 
 interface Operation {
@@ -78,6 +97,18 @@ interface Operation {
   created_at: string;
   status: string;
   error_message?: string;
+}
+
+interface Directive {
+  id: string;
+  bank_id: string;
+  name: string;
+  content: string;
+  priority: number;
+  is_active: boolean;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 const TRAIT_LABELS: Record<
@@ -174,10 +205,19 @@ export function BankProfileView() {
   const [stats, setStats] = useState<BankStats | null>(null);
   const [operations, setOperations] = useState<Operation[]>([]);
   const [totalOperations, setTotalOperations] = useState(0);
-  const [mentalModelsCount, setMentalModelsCount] = useState(0);
+  const [directives, setDirectives] = useState<Directive[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
+
+  // Directive state
+  const [showCreateDirective, setShowCreateDirective] = useState(false);
+  const [selectedDirective, setSelectedDirective] = useState<Directive | null>(null);
+  const [directiveDeleteTarget, setDirectiveDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [deletingDirective, setDeletingDirective] = useState(false);
 
   // Ref to track editMode for polling (avoids stale closure)
   const editModeRef = useRef(editMode);
@@ -205,15 +245,15 @@ export function BankProfileView() {
     if (isPolling && editModeRef.current) {
       // Only refresh stats and operations during edit mode
       try {
-        const [statsData, opsData, modelsData] = await Promise.all([
+        const [statsData, opsData, directivesData] = await Promise.all([
           client.getBankStats(currentBank),
           client.listOperations(currentBank),
-          client.listMentalModels(currentBank),
+          client.listDirectives(currentBank),
         ]);
         setStats(statsData as BankStats);
         setOperations((opsData as any)?.operations || []);
         setTotalOperations((opsData as any)?.total || 0);
-        setMentalModelsCount(modelsData.items?.length || 0);
+        setDirectives(directivesData.items || []);
       } catch (error) {
         console.error("Error refreshing stats:", error);
       }
@@ -222,17 +262,17 @@ export function BankProfileView() {
 
     setLoading(true);
     try {
-      const [profileData, statsData, opsData, modelsData] = await Promise.all([
+      const [profileData, statsData, opsData, directivesData] = await Promise.all([
         client.getBankProfile(currentBank),
         client.getBankStats(currentBank),
         client.listOperations(currentBank),
-        client.listMentalModels(currentBank),
+        client.listDirectives(currentBank),
       ]);
       setProfile(profileData);
       setStats(statsData as BankStats);
       setOperations((opsData as any)?.operations || []);
       setTotalOperations((opsData as any)?.total || 0);
-      setMentalModelsCount(modelsData.items?.length || 0);
+      setDirectives(directivesData.items || []);
 
       // Only initialize edit state when not in edit mode
       if (!editModeRef.current) {
@@ -292,6 +332,23 @@ export function BankProfileView() {
     }
   };
 
+  const handleDeleteDirective = async () => {
+    if (!currentBank || !directiveDeleteTarget) return;
+
+    setDeletingDirective(true);
+    try {
+      await client.deleteDirective(currentBank, directiveDeleteTarget.id);
+      setDirectives((prev) => prev.filter((d) => d.id !== directiveDeleteTarget.id));
+      if (selectedDirective?.id === directiveDeleteTarget.id) setSelectedDirective(null);
+      setDirectiveDeleteTarget(null);
+    } catch (error) {
+      console.error("Error deleting directive:", error);
+      alert("Error deleting: " + (error as Error).message);
+    } finally {
+      setDeletingDirective(false);
+    }
+  };
+
   useEffect(() => {
     if (currentBank) {
       loadData();
@@ -300,6 +357,17 @@ export function BankProfileView() {
       return () => clearInterval(interval);
     }
   }, [currentBank]);
+
+  // Close directive detail panel on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedDirective(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   if (!currentBank) {
     return (
@@ -440,7 +508,7 @@ export function BankProfileView() {
 
       {/* Memory Type Breakdown */}
       {stats && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-center">
             <p className="text-xs text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wide">
               World Facts
@@ -457,11 +525,21 @@ export function BankProfileView() {
               {stats.nodes_by_fact_type?.experience || 0}
             </p>
           </div>
-          <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 text-center">
-            <p className="text-xs text-primary font-semibold uppercase tracking-wide">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-center">
+            <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold uppercase tracking-wide">
               Mental Models
             </p>
-            <p className="text-2xl font-bold text-primary mt-1">{mentalModelsCount}</p>
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+              {stats.total_mental_models || 0}
+            </p>
+          </div>
+          <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 text-center">
+            <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold uppercase tracking-wide">
+              Directives
+            </p>
+            <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">
+              {directives.length}
+            </p>
           </div>
         </div>
       )}
@@ -520,6 +598,79 @@ export function BankProfileView() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Directives Section */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <AlertTriangle className="w-5 h-5 text-rose-500" />
+                Directives
+              </CardTitle>
+              <CardDescription>Hard rules that must be followed during reflect</CardDescription>
+            </div>
+            <Button
+              onClick={() => setShowCreateDirective(true)}
+              variant="outline"
+              size="sm"
+              className="h-8"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {directives.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              {directives.map((d) => (
+                <Card
+                  key={d.id}
+                  className={`cursor-pointer transition-colors border-rose-500/30 ${
+                    selectedDirective?.id === d.id
+                      ? "bg-rose-500/10 border-rose-500"
+                      : "hover:bg-rose-500/5"
+                  }`}
+                  onClick={() => setSelectedDirective(d)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium text-sm text-foreground">{d.name}</span>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                          {d.content}
+                        </p>
+                        {d.tags && d.tags.length > 0 && (
+                          <div className="flex items-center gap-1 mt-2 flex-wrap">
+                            <Tag className="w-3 h-3 text-muted-foreground" />
+                            {d.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="p-6 border border-dashed border-rose-500/30 rounded-lg text-center">
+              <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-rose-500/50" />
+              <p className="text-sm text-muted-foreground">
+                No directives yet. Directives are hard rules that must be followed during reflect.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Operations Section */}
       <Card>
@@ -661,6 +812,258 @@ export function BankProfileView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Directive Dialog */}
+      <CreateDirectiveDialog
+        open={showCreateDirective}
+        onClose={() => setShowCreateDirective(false)}
+        onCreated={(d) => {
+          setDirectives((prev) => [d, ...prev]);
+          setShowCreateDirective(false);
+        }}
+      />
+
+      {/* Delete Directive Confirmation Dialog */}
+      <AlertDialog
+        open={!!directiveDeleteTarget}
+        onOpenChange={(open) => !open && setDirectiveDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Directive</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold">&quot;{directiveDeleteTarget?.name}&quot;</span>?
+              <br />
+              <br />
+              <span className="text-destructive font-semibold">This action cannot be undone.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row justify-end space-x-2">
+            <AlertDialogCancel className="mt-0">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteDirective}
+              disabled={deletingDirective}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingDirective ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Directive Detail Panel */}
+      {selectedDirective && (
+        <DirectiveDetailPanel
+          directive={selectedDirective}
+          onClose={() => setSelectedDirective(null)}
+          onDelete={() =>
+            setDirectiveDeleteTarget({
+              id: selectedDirective.id,
+              name: selectedDirective.name,
+            })
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+// ============= CREATE DIRECTIVE DIALOG =============
+
+function CreateDirectiveDialog({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (d: Directive) => void;
+}) {
+  const { currentBank } = useBank();
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ name: "", description: "", tags: "" });
+
+  const handleCreate = async () => {
+    if (!currentBank || !form.name.trim() || !form.description.trim()) return;
+
+    setCreating(true);
+    try {
+      const tags = form.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
+      const result = await client.createDirective(currentBank, {
+        name: form.name.trim(),
+        content: form.description.trim(),
+        tags: tags.length > 0 ? tags : undefined,
+      });
+
+      setForm({ name: "", description: "", tags: "" });
+      onCreated(result);
+    } catch (error) {
+      console.error("Error creating directive:", error);
+      alert("Error creating directive: " + (error as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          setForm({ name: "", description: "", tags: "" });
+          onClose();
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-rose-500" />
+            Create Directive
+          </DialogTitle>
+          <DialogDescription>
+            Directives are hard rules that must be followed during reflect.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Name *</label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="e.g., Competitor Policy"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Rule *</label>
+            <Textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="e.g., Never mention competitor products directly."
+              className="min-h-[120px]"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Tags <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <Input
+              value={form.tags}
+              onChange={(e) => setForm({ ...form, tags: e.target.value })}
+              placeholder="e.g., project-x, team-alpha (comma-separated)"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreate}
+            disabled={creating || !form.name.trim() || !form.description.trim()}
+            className="bg-rose-500 hover:bg-rose-600"
+          >
+            {creating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============= DIRECTIVE DETAIL PANEL =============
+
+function DirectiveDetailPanel({
+  directive,
+  onClose,
+  onDelete,
+}: {
+  directive: Directive;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="fixed right-0 top-0 h-screen w-1/2 bg-card border-l-2 border-rose-500 shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300 ease-out">
+      <div className="p-6">
+        {/* Header */}
+        <div className="flex justify-between items-start mb-8 pb-5 border-b border-border">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-500" />
+            <div>
+              <h3 className="text-xl font-bold text-foreground">{directive.name}</h3>
+              <span className="text-xs px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                directive
+              </span>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Description */}
+          <div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Rule
+            </div>
+            <div className="prose prose-base dark:prose-invert max-w-none">
+              <ReactMarkdown>{directive.content}</ReactMarkdown>
+            </div>
+          </div>
+
+          {/* Tags */}
+          {directive.tags && directive.tags.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                Tags
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {directive.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2 py-1 rounded bg-muted text-muted-foreground text-sm"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ID */}
+          <div className="p-4 bg-muted/50 rounded-lg">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              ID
+            </div>
+            <code className="text-sm font-mono break-all text-muted-foreground">
+              {directive.id}
+            </code>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-4 border-t border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDelete}
+              className="text-muted-foreground hover:text-rose-500 hover:border-rose-500 hover:bg-rose-500/10"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

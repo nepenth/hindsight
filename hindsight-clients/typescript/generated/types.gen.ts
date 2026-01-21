@@ -25,22 +25,6 @@ export type AddBackgroundRequest = {
 };
 
 /**
- * AsyncOperationSubmitResponse
- *
- * Response model for submitting an async operation.
- */
-export type AsyncOperationSubmitResponse = {
-  /**
-   * Operation Id
-   */
-  operation_id: string;
-  /**
-   * Status
-   */
-  status: string;
-};
-
-/**
  * BackgroundResponse
  *
  * Response model for background update. Deprecated: use MissionResponse instead.
@@ -185,6 +169,24 @@ export type BankStatsResponse = {
    * Failed Operations
    */
   failed_operations: number;
+  /**
+   * Last Consolidated At
+   *
+   * When consolidation last ran (ISO format)
+   */
+  last_consolidated_at?: string | null;
+  /**
+   * Pending Consolidation
+   *
+   * Number of memories not yet processed into mental models
+   */
+  pending_consolidation?: number;
+  /**
+   * Total Mental Models
+   *
+   * Total number of mental models
+   */
+  total_mental_models?: number;
 };
 
 /**
@@ -312,41 +314,87 @@ export type CreateBankRequest = {
 };
 
 /**
- * CreateMentalModelRequest
+ * CreateDirectiveRequest
  *
- * Request model for creating a mental model.
+ * Request model for creating a directive.
  */
-export type CreateMentalModelRequest = {
+export type CreateDirectiveRequest = {
   /**
    * Name
    *
-   * Human-readable name for the mental model
+   * Human-readable name for the directive
    */
   name: string;
   /**
-   * Description
+   * Content
    *
-   * One-liner description for quick scanning
+   * The directive text to inject into prompts
    */
-  description: string;
+  content: string;
   /**
-   * Subtype
+   * Priority
    *
-   * Type of mental model: 'pinned' (observations LLM-generated) or 'directive' (observations user-provided)
+   * Higher priority directives are injected first
    */
-  subtype?: string;
+  priority?: number;
   /**
-   * Observations
+   * Is Active
    *
-   * For directives only: list of user-provided observations. Required when subtype='directive'.
+   * Whether this directive is active
    */
-  observations?: Array<ObservationInput> | null;
+  is_active?: boolean;
+  /**
+   * Tags
+   *
+   * Tags for filtering
+   */
+  tags?: Array<string>;
+};
+
+/**
+ * CreateReflectionRequest
+ *
+ * Request model for creating a reflection.
+ */
+export type CreateReflectionRequest = {
+  /**
+   * Name
+   *
+   * Human-readable name for the reflection
+   */
+  name: string;
+  /**
+   * Source Query
+   *
+   * The query to run to generate content
+   */
+  source_query: string;
   /**
    * Tags
    *
    * Tags for scoped visibility
    */
   tags?: Array<string>;
+  /**
+   * Max Tokens
+   *
+   * Maximum tokens for generated content
+   */
+  max_tokens?: number;
+};
+
+/**
+ * CreateReflectionResponse
+ *
+ * Response model for reflection creation.
+ */
+export type CreateReflectionResponse = {
+  /**
+   * Operation Id
+   *
+   * Operation ID to track progress
+   */
+  operation_id: string;
 };
 
 /**
@@ -417,6 +465,62 @@ export type DeleteResponse = {
    * Deleted Count
    */
   deleted_count?: number | null;
+};
+
+/**
+ * DirectiveListResponse
+ *
+ * Response model for listing directives.
+ */
+export type DirectiveListResponse = {
+  /**
+   * Items
+   */
+  items: Array<DirectiveResponse>;
+};
+
+/**
+ * DirectiveResponse
+ *
+ * Response model for a directive.
+ */
+export type DirectiveResponse = {
+  /**
+   * Id
+   */
+  id: string;
+  /**
+   * Bank Id
+   */
+  bank_id: string;
+  /**
+   * Name
+   */
+  name: string;
+  /**
+   * Content
+   */
+  content: string;
+  /**
+   * Priority
+   */
+  priority?: number;
+  /**
+   * Is Active
+   */
+  is_active?: boolean;
+  /**
+   * Tags
+   */
+  tags?: Array<string>;
+  /**
+   * Created At
+   */
+  created_at?: string | null;
+  /**
+   * Updated At
+   */
+  updated_at?: string | null;
 };
 
 /**
@@ -720,6 +824,10 @@ export type IncludeOptions = {
    * Include raw chunks. Set to {} to enable, null to disable (default: disabled).
    */
   chunks?: ChunkIncludeOptions | null;
+  /**
+   * Include relevant reflections. Set to {} to enable, null to disable (default: disabled).
+   */
+  reflections?: ReflectionsIncludeOptions | null;
 };
 
 /**
@@ -843,35 +951,69 @@ export type MemoryItem = {
 };
 
 /**
- * MentalModelFreshnessResponse
+ * MentalModelApiResponse
  *
- * Freshness information for a mental model.
+ * Response model for a mental model (auto-consolidated knowledge).
  */
-export type MentalModelFreshnessResponse = {
+export type MentalModelApiResponse = {
   /**
-   * Is Up To Date
+   * Id
    *
-   * Whether the model has been refreshed since the last memory was added
+   * Unique mental model ID
    */
-  is_up_to_date: boolean;
+  id: string;
   /**
-   * Last Refresh At
+   * Bank Id
    *
-   * When the model was last refreshed (ISO format)
+   * Bank this mental model belongs to
    */
-  last_refresh_at: string | null;
+  bank_id: string;
   /**
-   * Memories Since Refresh
+   * Text
    *
-   * Number of memories added since last refresh
+   * The consolidated mental model text
    */
-  memories_since_refresh: number;
+  text: string;
   /**
-   * Reasons
+   * Proof Count
    *
-   * Reasons why the model needs refresh (empty if up to date). Possible values: never_refreshed, new_memories, mission_changed, disposition_changed, directives_changed
+   * Number of facts supporting this mental model
    */
-  reasons?: Array<string>;
+  proof_count: number;
+  /**
+   * History
+   *
+   * History of changes to this mental model
+   */
+  history?: Array<{
+    [key: string]: unknown;
+  }>;
+  /**
+   * Tags
+   *
+   * Tags for scoped visibility
+   */
+  tags?: Array<string>;
+  /**
+   * Source Memory Ids
+   *
+   * IDs of memories that consolidated into this
+   */
+  source_memory_ids?: Array<string>;
+  /**
+   * Source Memories
+   *
+   * Full source memory details (when requested)
+   */
+  source_memories?: Array<SourceMemory>;
+  /**
+   * Created At
+   */
+  created_at?: string | null;
+  /**
+   * Updated At
+   */
+  updated_at?: string | null;
 };
 
 /**
@@ -883,181 +1025,7 @@ export type MentalModelListResponse = {
   /**
    * Items
    */
-  items: Array<MentalModelResponse>;
-};
-
-/**
- * MentalModelObservationResponse
- *
- * An observation within a mental model with its supporting evidence.
- */
-export type MentalModelObservationResponse = {
-  /**
-   * Title
-   *
-   * Short summary title for the observation
-   */
-  title: string;
-  /**
-   * Content
-   *
-   * The observation content - detailed explanation
-   */
-  content: string;
-  /**
-   * Evidence
-   *
-   * Supporting evidence with quotes
-   */
-  evidence?: Array<ObservationEvidenceResponse>;
-  /**
-   * Created At
-   *
-   * When this observation was first created (ISO format)
-   */
-  created_at: string;
-  /**
-   * Trend
-   *
-   * Computed trend: stable, strengthening, weakening, new, stale
-   */
-  trend: string;
-  /**
-   * Evidence Count
-   *
-   * Number of evidence items supporting this observation
-   */
-  evidence_count: number;
-  /**
-   * Evidence Span
-   *
-   * Time span of evidence: {from: iso_date, to: iso_date}
-   */
-  evidence_span: {
-    [key: string]: unknown;
-  };
-};
-
-/**
- * MentalModelResponse
- *
- * Response model for a mental model.
- */
-export type MentalModelResponse = {
-  /**
-   * Id
-   */
-  id: string;
-  /**
-   * Bank Id
-   */
-  bank_id: string;
-  /**
-   * Subtype
-   */
-  subtype: string;
-  /**
-   * Name
-   */
-  name: string;
-  /**
-   * Description
-   */
-  description: string;
-  /**
-   * Observations
-   *
-   * Structured observations with per-observation fact attribution
-   */
-  observations?: Array<MentalModelObservationResponse>;
-  /**
-   * Version
-   *
-   * Version number of the mental model observations
-   */
-  version?: number;
-  /**
-   * Entity Id
-   */
-  entity_id?: string | null;
-  /**
-   * Links
-   */
-  links?: Array<string>;
-  /**
-   * Tags
-   */
-  tags?: Array<string>;
-  /**
-   * Last Updated
-   */
-  last_updated?: string | null;
-  /**
-   * Last Refresh At
-   *
-   * When observations were last refreshed (ISO format)
-   */
-  last_refresh_at?: string | null;
-  /**
-   * Freshness info (null for directive subtypes which don't need refresh)
-   */
-  freshness?: MentalModelFreshnessResponse | null;
-  /**
-   * Created At
-   */
-  created_at: string;
-};
-
-/**
- * ObservationEvidenceResponse
- *
- * A single piece of evidence supporting an observation.
- */
-export type ObservationEvidenceResponse = {
-  /**
-   * Memory Id
-   *
-   * ID of the memory unit this evidence comes from
-   */
-  memory_id: string;
-  /**
-   * Quote
-   *
-   * Exact quote from the memory supporting the observation
-   */
-  quote: string;
-  /**
-   * Relevance
-   *
-   * Brief explanation of how this quote supports the observation
-   */
-  relevance: string;
-  /**
-   * Timestamp
-   *
-   * When the source memory was created (ISO format)
-   */
-  timestamp: string;
-};
-
-/**
- * ObservationInput
- *
- * Input model for a single observation.
- */
-export type ObservationInput = {
-  /**
-   * Title
-   *
-   * Short title/header for the observation
-   */
-  title: string;
-  /**
-   * Content
-   *
-   * Content of the observation
-   */
-  content: string;
+  items: Array<MentalModelApiResponse>;
 };
 
 /**
@@ -1153,6 +1121,70 @@ export type OperationsListResponse = {
 };
 
 /**
+ * RecallMentalModelResult
+ *
+ * A mental model result in recall response.
+ */
+export type RecallMentalModelResult = {
+  /**
+   * Id
+   *
+   * Unique mental model ID
+   */
+  id: string;
+  /**
+   * Text
+   *
+   * The consolidated mental model text
+   */
+  text: string;
+  /**
+   * Proof Count
+   *
+   * Number of facts supporting this mental model
+   */
+  proof_count: number;
+  /**
+   * Relevance
+   *
+   * Relevance score to the query
+   */
+  relevance?: number;
+};
+
+/**
+ * RecallReflectionResult
+ *
+ * A reflection result in recall response.
+ */
+export type RecallReflectionResult = {
+  /**
+   * Id
+   *
+   * Unique reflection ID
+   */
+  id: string;
+  /**
+   * Name
+   *
+   * Human-readable name
+   */
+  name: string;
+  /**
+   * Content
+   *
+   * The synthesized content
+   */
+  content: string;
+  /**
+   * Relevance
+   *
+   * Relevance score to the query
+   */
+  relevance?: number;
+};
+
+/**
  * RecallRequest
  *
  * Request model for recall endpoint.
@@ -1165,7 +1197,7 @@ export type RecallRequest = {
   /**
    * Types
    *
-   * List of fact types to recall: 'world', 'experience'. Defaults to both if not specified. Note: 'opinion' is accepted but ignored (opinions are excluded from recall).
+   * List of fact types to recall: 'world', 'experience', 'mental_model'. Defaults to world and experience if not specified. Note: 'opinion' is accepted but ignored (opinions are excluded from recall).
    */
   types?: Array<string> | null;
   budget?: Budget;
@@ -1233,6 +1265,18 @@ export type RecallResponse = {
   chunks?: {
     [key: string]: ChunkData;
   } | null;
+  /**
+   * Mental Models
+   *
+   * Relevant mental models (consolidated knowledge) matching the query
+   */
+  mental_models?: Array<RecallMentalModelResult> | null;
+  /**
+   * Reflections
+   *
+   * Relevant reflections (user-curated summaries) matching the query
+   */
+  reflections?: Array<RecallReflectionResult> | null;
 };
 
 /**
@@ -1577,23 +1621,77 @@ export type ReflectTrace = {
 };
 
 /**
- * RefreshMentalModelsRequest
+ * ReflectionListResponse
  *
- * Request model for refresh mental models endpoint.
+ * Response model for listing reflections.
  */
-export type RefreshMentalModelsRequest = {
+export type ReflectionListResponse = {
+  /**
+   * Items
+   */
+  items: Array<ReflectionResponse>;
+};
+
+/**
+ * ReflectionResponse
+ *
+ * Response model for a reflection.
+ */
+export type ReflectionResponse = {
+  /**
+   * Id
+   */
+  id: string;
+  /**
+   * Bank Id
+   */
+  bank_id: string;
+  /**
+   * Name
+   */
+  name: string;
+  /**
+   * Source Query
+   */
+  source_query: string;
+  /**
+   * Content
+   */
+  content: string;
   /**
    * Tags
-   *
-   * Tags to apply to newly created mental models
    */
-  tags?: Array<string> | null;
+  tags?: Array<string>;
   /**
-   * Subtype
-   *
-   * Only refresh models of this subtype. If not specified, refreshes all subtypes.
+   * Last Refreshed At
    */
-  subtype?: "structural" | "emergent" | "pinned" | "learned" | null;
+  last_refreshed_at?: string | null;
+  /**
+   * Created At
+   */
+  created_at?: string | null;
+  /**
+   * Reflect Response
+   *
+   * Full reflect API response payload including based_on facts and mental_models
+   */
+  reflect_response?: {
+    [key: string]: unknown;
+  } | null;
+};
+
+/**
+ * ReflectionsIncludeOptions
+ *
+ * Options for including reflections in recall results.
+ */
+export type ReflectionsIncludeOptions = {
+  /**
+   * Max Results
+   *
+   * Maximum number of reflections to return
+   */
+  max_results?: number;
 };
 
 /**
@@ -1654,6 +1752,50 @@ export type RetainResponse = {
    * Token usage metrics for LLM calls during fact extraction (only present for synchronous operations)
    */
   usage?: TokenUsage | null;
+};
+
+/**
+ * SourceMemory
+ *
+ * A source memory that contributed to a mental model.
+ */
+export type SourceMemory = {
+  /**
+   * Id
+   *
+   * Memory unit ID
+   */
+  id: string;
+  /**
+   * Text
+   *
+   * Memory text content
+   */
+  text: string;
+  /**
+   * Type
+   *
+   * Fact type (world, experience)
+   */
+  type: string;
+  /**
+   * Context
+   *
+   * Memory context
+   */
+  context?: string | null;
+  /**
+   * Occurred Start
+   *
+   * When the event occurred
+   */
+  occurred_start?: string | null;
+  /**
+   * Mentioned At
+   *
+   * When the memory was mentioned
+   */
+  mentioned_at?: string | null;
 };
 
 /**
@@ -1720,6 +1862,44 @@ export type ToolCallsIncludeOptions = {
 };
 
 /**
+ * UpdateDirectiveRequest
+ *
+ * Request model for updating a directive.
+ */
+export type UpdateDirectiveRequest = {
+  /**
+   * Name
+   *
+   * New name
+   */
+  name?: string | null;
+  /**
+   * Content
+   *
+   * New content
+   */
+  content?: string | null;
+  /**
+   * Priority
+   *
+   * New priority
+   */
+  priority?: number | null;
+  /**
+   * Is Active
+   *
+   * New active status
+   */
+  is_active?: boolean | null;
+  /**
+   * Tags
+   *
+   * New tags
+   */
+  tags?: Array<string> | null;
+};
+
+/**
  * UpdateDispositionRequest
  *
  * Request model for updating disposition traits.
@@ -1729,23 +1909,17 @@ export type UpdateDispositionRequest = {
 };
 
 /**
- * UpdateMentalModelRequest
+ * UpdateReflectionRequest
  *
- * Request model for updating a mental model.
+ * Request model for updating a reflection.
  */
-export type UpdateMentalModelRequest = {
+export type UpdateReflectionRequest = {
   /**
    * Name
    *
-   * New name for the mental model
+   * New name for the reflection
    */
   name?: string | null;
-  /**
-   * Description
-   *
-   * New description/rule text
-   */
-  description?: string | null;
 };
 
 /**
@@ -2221,23 +2395,25 @@ export type ListMentalModelsData = {
   };
   query?: {
     /**
-     * Subtype
-     *
-     * Filter by subtype: structural, emergent, or pinned
-     */
-    subtype?: string | null;
-    /**
      * Tags
      *
-     * Filter by tags (includes untagged models)
+     * Filter by tags
      */
     tags?: Array<string> | null;
     /**
      * Tags Match
      *
-     * How to match tags: 'any' (OR), 'all' (AND), or 'exact'
+     * How to match tags
      */
     tags_match?: "any" | "all" | "exact";
+    /**
+     * Limit
+     */
+    limit?: number;
+    /**
+     * Offset
+     */
+    offset?: number;
   };
   url: "/v1/default/banks/{bank_id}/mental-models";
 };
@@ -2261,86 +2437,6 @@ export type ListMentalModelsResponses = {
 
 export type ListMentalModelsResponse =
   ListMentalModelsResponses[keyof ListMentalModelsResponses];
-
-export type CreateMentalModelData = {
-  body: CreateMentalModelRequest;
-  headers?: {
-    /**
-     * Authorization
-     */
-    authorization?: string | null;
-  };
-  path: {
-    /**
-     * Bank Id
-     */
-    bank_id: string;
-  };
-  query?: never;
-  url: "/v1/default/banks/{bank_id}/mental-models";
-};
-
-export type CreateMentalModelErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError;
-};
-
-export type CreateMentalModelError =
-  CreateMentalModelErrors[keyof CreateMentalModelErrors];
-
-export type CreateMentalModelResponses = {
-  /**
-   * Successful Response
-   */
-  200: MentalModelResponse;
-};
-
-export type CreateMentalModelResponse =
-  CreateMentalModelResponses[keyof CreateMentalModelResponses];
-
-export type DeleteMentalModelData = {
-  body?: never;
-  headers?: {
-    /**
-     * Authorization
-     */
-    authorization?: string | null;
-  };
-  path: {
-    /**
-     * Bank Id
-     */
-    bank_id: string;
-    /**
-     * Model Id
-     */
-    model_id: string;
-  };
-  query?: never;
-  url: "/v1/default/banks/{bank_id}/mental-models/{model_id}";
-};
-
-export type DeleteMentalModelErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError;
-};
-
-export type DeleteMentalModelError =
-  DeleteMentalModelErrors[keyof DeleteMentalModelErrors];
-
-export type DeleteMentalModelResponses = {
-  /**
-   * Successful Response
-   */
-  200: DeleteResponse;
-};
-
-export type DeleteMentalModelResponse =
-  DeleteMentalModelResponses[keyof DeleteMentalModelResponses];
 
 export type GetMentalModelData = {
   body?: never;
@@ -2378,59 +2474,14 @@ export type GetMentalModelResponses = {
   /**
    * Successful Response
    */
-  200: MentalModelResponse;
+  200: MentalModelApiResponse;
 };
 
 export type GetMentalModelResponse =
   GetMentalModelResponses[keyof GetMentalModelResponses];
 
-export type UpdateMentalModelData = {
-  body: UpdateMentalModelRequest;
-  headers?: {
-    /**
-     * Authorization
-     */
-    authorization?: string | null;
-  };
-  path: {
-    /**
-     * Bank Id
-     */
-    bank_id: string;
-    /**
-     * Model Id
-     */
-    model_id: string;
-  };
-  query?: never;
-  url: "/v1/default/banks/{bank_id}/mental-models/{model_id}";
-};
-
-export type UpdateMentalModelErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError;
-};
-
-export type UpdateMentalModelError =
-  UpdateMentalModelErrors[keyof UpdateMentalModelErrors];
-
-export type UpdateMentalModelResponses = {
-  /**
-   * Successful Response
-   */
-  200: MentalModelResponse;
-};
-
-export type UpdateMentalModelResponse =
-  UpdateMentalModelResponses[keyof UpdateMentalModelResponses];
-
-export type RefreshMentalModelsData = {
-  /**
-   * Body
-   */
-  body?: RefreshMentalModelsRequest | null;
+export type ListReflectionsData = {
+  body?: never;
   headers?: {
     /**
      * Authorization
@@ -2443,31 +2494,90 @@ export type RefreshMentalModelsData = {
      */
     bank_id: string;
   };
-  query?: never;
-  url: "/v1/default/banks/{bank_id}/mental-models/refresh";
+  query?: {
+    /**
+     * Tags
+     *
+     * Filter by tags
+     */
+    tags?: Array<string> | null;
+    /**
+     * Tags Match
+     *
+     * How to match tags
+     */
+    tags_match?: "any" | "all" | "exact";
+    /**
+     * Limit
+     */
+    limit?: number;
+    /**
+     * Offset
+     */
+    offset?: number;
+  };
+  url: "/v1/default/banks/{bank_id}/reflections";
 };
 
-export type RefreshMentalModelsErrors = {
+export type ListReflectionsErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError;
 };
 
-export type RefreshMentalModelsError =
-  RefreshMentalModelsErrors[keyof RefreshMentalModelsErrors];
+export type ListReflectionsError =
+  ListReflectionsErrors[keyof ListReflectionsErrors];
 
-export type RefreshMentalModelsResponses = {
+export type ListReflectionsResponses = {
   /**
    * Successful Response
    */
-  200: AsyncOperationSubmitResponse;
+  200: ReflectionListResponse;
 };
 
-export type RefreshMentalModelsResponse =
-  RefreshMentalModelsResponses[keyof RefreshMentalModelsResponses];
+export type ListReflectionsResponse =
+  ListReflectionsResponses[keyof ListReflectionsResponses];
 
-export type RefreshMentalModelData = {
+export type CreateReflectionData = {
+  body: CreateReflectionRequest;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/reflections";
+};
+
+export type CreateReflectionErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type CreateReflectionError =
+  CreateReflectionErrors[keyof CreateReflectionErrors];
+
+export type CreateReflectionResponses = {
+  /**
+   * Successful Response
+   */
+  200: CreateReflectionResponse;
+};
+
+export type CreateReflectionResponse2 =
+  CreateReflectionResponses[keyof CreateReflectionResponses];
+
+export type DeleteReflectionData = {
   body?: never;
   headers?: {
     /**
@@ -2481,74 +2591,32 @@ export type RefreshMentalModelData = {
      */
     bank_id: string;
     /**
-     * Model Id
+     * Reflection Id
      */
-    model_id: string;
+    reflection_id: string;
   };
   query?: never;
-  url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/refresh";
+  url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}";
 };
 
-export type RefreshMentalModelErrors = {
+export type DeleteReflectionErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError;
 };
 
-export type RefreshMentalModelError =
-  RefreshMentalModelErrors[keyof RefreshMentalModelErrors];
+export type DeleteReflectionError =
+  DeleteReflectionErrors[keyof DeleteReflectionErrors];
 
-export type RefreshMentalModelResponses = {
-  /**
-   * Successful Response
-   */
-  200: AsyncOperationSubmitResponse;
-};
-
-export type RefreshMentalModelResponse =
-  RefreshMentalModelResponses[keyof RefreshMentalModelResponses];
-
-export type ListMentalModelVersionsData = {
-  body?: never;
-  headers?: {
-    /**
-     * Authorization
-     */
-    authorization?: string | null;
-  };
-  path: {
-    /**
-     * Bank Id
-     */
-    bank_id: string;
-    /**
-     * Model Id
-     */
-    model_id: string;
-  };
-  query?: never;
-  url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions";
-};
-
-export type ListMentalModelVersionsErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError;
-};
-
-export type ListMentalModelVersionsError =
-  ListMentalModelVersionsErrors[keyof ListMentalModelVersionsErrors];
-
-export type ListMentalModelVersionsResponses = {
+export type DeleteReflectionResponses = {
   /**
    * Successful Response
    */
   200: unknown;
 };
 
-export type GetMentalModelVersionData = {
+export type GetReflectionData = {
   body?: never;
   headers?: {
     /**
@@ -2562,34 +2630,341 @@ export type GetMentalModelVersionData = {
      */
     bank_id: string;
     /**
-     * Model Id
+     * Reflection Id
      */
-    model_id: string;
-    /**
-     * Version
-     */
-    version: number;
+    reflection_id: string;
   };
   query?: never;
-  url: "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions/{version}";
+  url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}";
 };
 
-export type GetMentalModelVersionErrors = {
+export type GetReflectionErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError;
 };
 
-export type GetMentalModelVersionError =
-  GetMentalModelVersionErrors[keyof GetMentalModelVersionErrors];
+export type GetReflectionError = GetReflectionErrors[keyof GetReflectionErrors];
 
-export type GetMentalModelVersionResponses = {
+export type GetReflectionResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReflectionResponse;
+};
+
+export type GetReflectionResponse =
+  GetReflectionResponses[keyof GetReflectionResponses];
+
+export type UpdateReflectionData = {
+  body: UpdateReflectionRequest;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+    /**
+     * Reflection Id
+     */
+    reflection_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}";
+};
+
+export type UpdateReflectionErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type UpdateReflectionError =
+  UpdateReflectionErrors[keyof UpdateReflectionErrors];
+
+export type UpdateReflectionResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReflectionResponse;
+};
+
+export type UpdateReflectionResponse =
+  UpdateReflectionResponses[keyof UpdateReflectionResponses];
+
+export type RefreshReflectionData = {
+  body?: never;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+    /**
+     * Reflection Id
+     */
+    reflection_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/reflections/{reflection_id}/refresh";
+};
+
+export type RefreshReflectionErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type RefreshReflectionError =
+  RefreshReflectionErrors[keyof RefreshReflectionErrors];
+
+export type RefreshReflectionResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReflectionResponse;
+};
+
+export type RefreshReflectionResponse =
+  RefreshReflectionResponses[keyof RefreshReflectionResponses];
+
+export type ListDirectivesData = {
+  body?: never;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+  };
+  query?: {
+    /**
+     * Tags
+     *
+     * Filter by tags
+     */
+    tags?: Array<string> | null;
+    /**
+     * Tags Match
+     *
+     * How to match tags
+     */
+    tags_match?: "any" | "all" | "exact";
+    /**
+     * Active Only
+     *
+     * Only return active directives
+     */
+    active_only?: boolean;
+    /**
+     * Limit
+     */
+    limit?: number;
+    /**
+     * Offset
+     */
+    offset?: number;
+  };
+  url: "/v1/default/banks/{bank_id}/directives";
+};
+
+export type ListDirectivesErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ListDirectivesError =
+  ListDirectivesErrors[keyof ListDirectivesErrors];
+
+export type ListDirectivesResponses = {
+  /**
+   * Successful Response
+   */
+  200: DirectiveListResponse;
+};
+
+export type ListDirectivesResponse =
+  ListDirectivesResponses[keyof ListDirectivesResponses];
+
+export type CreateDirectiveData = {
+  body: CreateDirectiveRequest;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/directives";
+};
+
+export type CreateDirectiveErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type CreateDirectiveError =
+  CreateDirectiveErrors[keyof CreateDirectiveErrors];
+
+export type CreateDirectiveResponses = {
+  /**
+   * Successful Response
+   */
+  200: DirectiveResponse;
+};
+
+export type CreateDirectiveResponse =
+  CreateDirectiveResponses[keyof CreateDirectiveResponses];
+
+export type DeleteDirectiveData = {
+  body?: never;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+    /**
+     * Directive Id
+     */
+    directive_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/directives/{directive_id}";
+};
+
+export type DeleteDirectiveErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type DeleteDirectiveError =
+  DeleteDirectiveErrors[keyof DeleteDirectiveErrors];
+
+export type DeleteDirectiveResponses = {
   /**
    * Successful Response
    */
   200: unknown;
 };
+
+export type GetDirectiveData = {
+  body?: never;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+    /**
+     * Directive Id
+     */
+    directive_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/directives/{directive_id}";
+};
+
+export type GetDirectiveErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type GetDirectiveError = GetDirectiveErrors[keyof GetDirectiveErrors];
+
+export type GetDirectiveResponses = {
+  /**
+   * Successful Response
+   */
+  200: DirectiveResponse;
+};
+
+export type GetDirectiveResponse =
+  GetDirectiveResponses[keyof GetDirectiveResponses];
+
+export type UpdateDirectiveData = {
+  body: UpdateDirectiveRequest;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+    /**
+     * Directive Id
+     */
+    directive_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/directives/{directive_id}";
+};
+
+export type UpdateDirectiveErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type UpdateDirectiveError =
+  UpdateDirectiveErrors[keyof UpdateDirectiveErrors];
+
+export type UpdateDirectiveResponses = {
+  /**
+   * Successful Response
+   */
+  200: DirectiveResponse;
+};
+
+export type UpdateDirectiveResponse =
+  UpdateDirectiveResponses[keyof UpdateDirectiveResponses];
 
 export type ListDocumentsData = {
   body?: never;

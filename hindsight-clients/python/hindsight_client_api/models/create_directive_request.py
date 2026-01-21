@@ -22,15 +22,16 @@ from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
-class MentalModelFreshnessResponse(BaseModel):
+class CreateDirectiveRequest(BaseModel):
     """
-    Freshness information for a mental model.
+    Request model for creating a directive.
     """ # noqa: E501
-    is_up_to_date: StrictBool = Field(description="Whether the model has been refreshed since the last memory was added")
-    last_refresh_at: Optional[StrictStr]
-    memories_since_refresh: StrictInt = Field(description="Number of memories added since last refresh")
-    reasons: Optional[List[StrictStr]] = Field(default=None, description="Reasons why the model needs refresh (empty if up to date). Possible values: never_refreshed, new_memories, mission_changed, disposition_changed, directives_changed")
-    __properties: ClassVar[List[str]] = ["is_up_to_date", "last_refresh_at", "memories_since_refresh", "reasons"]
+    name: StrictStr = Field(description="Human-readable name for the directive")
+    content: StrictStr = Field(description="The directive text to inject into prompts")
+    priority: Optional[StrictInt] = Field(default=0, description="Higher priority directives are injected first")
+    is_active: Optional[StrictBool] = Field(default=True, description="Whether this directive is active")
+    tags: Optional[List[StrictStr]] = Field(default=None, description="Tags for filtering")
+    __properties: ClassVar[List[str]] = ["name", "content", "priority", "is_active", "tags"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -50,7 +51,7 @@ class MentalModelFreshnessResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of MentalModelFreshnessResponse from a JSON string"""
+        """Create an instance of CreateDirectiveRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -71,16 +72,11 @@ class MentalModelFreshnessResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if last_refresh_at (nullable) is None
-        # and model_fields_set contains the field
-        if self.last_refresh_at is None and "last_refresh_at" in self.model_fields_set:
-            _dict['last_refresh_at'] = None
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of MentalModelFreshnessResponse from a dict"""
+        """Create an instance of CreateDirectiveRequest from a dict"""
         if obj is None:
             return None
 
@@ -88,10 +84,11 @@ class MentalModelFreshnessResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "is_up_to_date": obj.get("is_up_to_date"),
-            "last_refresh_at": obj.get("last_refresh_at"),
-            "memories_since_refresh": obj.get("memories_since_refresh"),
-            "reasons": obj.get("reasons")
+            "name": obj.get("name"),
+            "content": obj.get("content"),
+            "priority": obj.get("priority") if obj.get("priority") is not None else 0,
+            "is_active": obj.get("is_active") if obj.get("is_active") is not None else True,
+            "tags": obj.get("tags")
         })
         return _obj
 

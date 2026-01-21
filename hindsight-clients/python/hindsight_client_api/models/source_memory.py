@@ -19,20 +19,20 @@ import json
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
-from hindsight_client_api.models.observation_input import ObservationInput
 from typing import Optional, Set
 from typing_extensions import Self
 
-class CreateMentalModelRequest(BaseModel):
+class SourceMemory(BaseModel):
     """
-    Request model for creating a mental model.
+    A source memory that contributed to a mental model.
     """ # noqa: E501
-    name: StrictStr = Field(description="Human-readable name for the mental model")
-    description: StrictStr = Field(description="One-liner description for quick scanning")
-    subtype: Optional[StrictStr] = Field(default='pinned', description="Type of mental model: 'pinned' (observations LLM-generated) or 'directive' (observations user-provided)")
-    observations: Optional[List[ObservationInput]] = None
-    tags: Optional[List[StrictStr]] = Field(default=None, description="Tags for scoped visibility")
-    __properties: ClassVar[List[str]] = ["name", "description", "subtype", "observations", "tags"]
+    id: StrictStr = Field(description="Memory unit ID")
+    text: StrictStr = Field(description="Memory text content")
+    type: StrictStr = Field(description="Fact type (world, experience)")
+    context: Optional[StrictStr] = None
+    occurred_start: Optional[StrictStr] = None
+    mentioned_at: Optional[StrictStr] = None
+    __properties: ClassVar[List[str]] = ["id", "text", "type", "context", "occurred_start", "mentioned_at"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -52,7 +52,7 @@ class CreateMentalModelRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of CreateMentalModelRequest from a JSON string"""
+        """Create an instance of SourceMemory from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -73,23 +73,26 @@ class CreateMentalModelRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of each item in observations (list)
-        _items = []
-        if self.observations:
-            for _item_observations in self.observations:
-                if _item_observations:
-                    _items.append(_item_observations.to_dict())
-            _dict['observations'] = _items
-        # set to None if observations (nullable) is None
+        # set to None if context (nullable) is None
         # and model_fields_set contains the field
-        if self.observations is None and "observations" in self.model_fields_set:
-            _dict['observations'] = None
+        if self.context is None and "context" in self.model_fields_set:
+            _dict['context'] = None
+
+        # set to None if occurred_start (nullable) is None
+        # and model_fields_set contains the field
+        if self.occurred_start is None and "occurred_start" in self.model_fields_set:
+            _dict['occurred_start'] = None
+
+        # set to None if mentioned_at (nullable) is None
+        # and model_fields_set contains the field
+        if self.mentioned_at is None and "mentioned_at" in self.model_fields_set:
+            _dict['mentioned_at'] = None
 
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of CreateMentalModelRequest from a dict"""
+        """Create an instance of SourceMemory from a dict"""
         if obj is None:
             return None
 
@@ -97,11 +100,12 @@ class CreateMentalModelRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "name": obj.get("name"),
-            "description": obj.get("description"),
-            "subtype": obj.get("subtype") if obj.get("subtype") is not None else 'pinned',
-            "observations": [ObservationInput.from_dict(_item) for _item in obj["observations"]] if obj.get("observations") is not None else None,
-            "tags": obj.get("tags")
+            "id": obj.get("id"),
+            "text": obj.get("text"),
+            "type": obj.get("type"),
+            "context": obj.get("context"),
+            "occurred_start": obj.get("occurred_start"),
+            "mentioned_at": obj.get("mentioned_at")
         })
         return _obj
 

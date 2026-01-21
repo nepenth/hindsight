@@ -22,13 +22,12 @@ from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
-class UpdateMentalModelRequest(BaseModel):
+class UpdateReflectionRequest(BaseModel):
     """
-    Request model for updating a mental model.
+    Request model for updating a reflection.
     """ # noqa: E501
     name: Optional[StrictStr] = None
-    description: Optional[StrictStr] = None
-    __properties: ClassVar[List[str]] = ["name", "description"]
+    __properties: ClassVar[List[str]] = ["name"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -48,7 +47,7 @@ class UpdateMentalModelRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of UpdateMentalModelRequest from a JSON string"""
+        """Create an instance of UpdateReflectionRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -74,16 +73,11 @@ class UpdateMentalModelRequest(BaseModel):
         if self.name is None and "name" in self.model_fields_set:
             _dict['name'] = None
 
-        # set to None if description (nullable) is None
-        # and model_fields_set contains the field
-        if self.description is None and "description" in self.model_fields_set:
-            _dict['description'] = None
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of UpdateMentalModelRequest from a dict"""
+        """Create an instance of UpdateReflectionRequest from a dict"""
         if obj is None:
             return None
 
@@ -91,8 +85,7 @@ class UpdateMentalModelRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "name": obj.get("name"),
-            "description": obj.get("description")
+            "name": obj.get("name")
         })
         return _obj
 

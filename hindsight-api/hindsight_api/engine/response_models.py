@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 # Valid fact types for recall operations (excludes 'observation' which is internal, and 'opinion' which is deprecated)
-VALID_RECALL_FACT_TYPES = frozenset(["world", "experience"])
+VALID_RECALL_FACT_TYPES = frozenset(["world", "experience", "mental_model"])
 
 
 class LLMToolCall(BaseModel):
@@ -166,6 +166,25 @@ class ChunkInfo(BaseModel):
     truncated: bool = Field(default=False, description="Whether the chunk was truncated due to token limits")
 
 
+class MentalModelResult(BaseModel):
+    """A mental model result from recall."""
+
+    id: str = Field(description="Unique mental model ID")
+    text: str = Field(description="The mental model text")
+    proof_count: int = Field(description="Number of facts supporting this mental model")
+    relevance: float = Field(default=0.0, description="Relevance score to the query")
+    tags: list[str] | None = Field(default=None, description="Tags for visibility scoping")
+
+
+class ReflectionResult(BaseModel):
+    """A reflection result from recall."""
+
+    id: str = Field(description="Unique reflection ID")
+    name: str = Field(description="Human-readable name")
+    content: str = Field(description="The synthesized content")
+    relevance: float = Field(default=0.0, description="Relevance score to the query")
+
+
 class RecallResult(BaseModel):
     """
     Result from a recall operation.
@@ -200,6 +219,12 @@ class RecallResult(BaseModel):
     )
     chunks: dict[str, ChunkInfo] | None = Field(
         None, description="Chunks for facts, keyed by '{document_id}_{chunk_index}'"
+    )
+    mental_models: list[MentalModelResult] | None = Field(
+        None, description="Relevant mental models (consolidated knowledge) matching the query"
+    )
+    reflections: list[ReflectionResult] | None = Field(
+        None, description="Relevant reflections (user-curated summaries) matching the query"
     )
 
 

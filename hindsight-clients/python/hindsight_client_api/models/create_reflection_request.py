@@ -17,28 +17,21 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
+from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class RefreshMentalModelsRequest(BaseModel):
+class CreateReflectionRequest(BaseModel):
     """
-    Request model for refresh mental models endpoint.
+    Request model for creating a reflection.
     """ # noqa: E501
-    tags: Optional[List[StrictStr]] = None
-    subtype: Optional[StrictStr] = None
-    __properties: ClassVar[List[str]] = ["tags", "subtype"]
-
-    @field_validator('subtype')
-    def subtype_validate_enum(cls, value):
-        """Validates the enum"""
-        if value is None:
-            return value
-
-        if value not in set(['structural', 'emergent', 'pinned', 'learned']):
-            raise ValueError("must be one of enum values ('structural', 'emergent', 'pinned', 'learned')")
-        return value
+    name: StrictStr = Field(description="Human-readable name for the reflection")
+    source_query: StrictStr = Field(description="The query to run to generate content")
+    tags: Optional[List[StrictStr]] = Field(default=None, description="Tags for scoped visibility")
+    max_tokens: Optional[Annotated[int, Field(le=8192, strict=True, ge=256)]] = Field(default=2048, description="Maximum tokens for generated content")
+    __properties: ClassVar[List[str]] = ["name", "source_query", "tags", "max_tokens"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -58,7 +51,7 @@ class RefreshMentalModelsRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of RefreshMentalModelsRequest from a JSON string"""
+        """Create an instance of CreateReflectionRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -79,21 +72,11 @@ class RefreshMentalModelsRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if tags (nullable) is None
-        # and model_fields_set contains the field
-        if self.tags is None and "tags" in self.model_fields_set:
-            _dict['tags'] = None
-
-        # set to None if subtype (nullable) is None
-        # and model_fields_set contains the field
-        if self.subtype is None and "subtype" in self.model_fields_set:
-            _dict['subtype'] = None
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of RefreshMentalModelsRequest from a dict"""
+        """Create an instance of CreateReflectionRequest from a dict"""
         if obj is None:
             return None
 
@@ -101,8 +84,10 @@ class RefreshMentalModelsRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
+            "name": obj.get("name"),
+            "source_query": obj.get("source_query"),
             "tags": obj.get("tags"),
-            "subtype": obj.get("subtype")
+            "max_tokens": obj.get("max_tokens") if obj.get("max_tokens") is not None else 2048
         })
         return _obj
 

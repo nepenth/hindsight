@@ -17,18 +17,21 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictStr
-from typing import Any, ClassVar, Dict, List
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
-class AsyncOperationSubmitResponse(BaseModel):
+class UpdateDirectiveRequest(BaseModel):
     """
-    Response model for submitting an async operation.
+    Request model for updating a directive.
     """ # noqa: E501
-    operation_id: StrictStr
-    status: StrictStr
-    __properties: ClassVar[List[str]] = ["operation_id", "status"]
+    name: Optional[StrictStr] = None
+    content: Optional[StrictStr] = None
+    priority: Optional[StrictInt] = None
+    is_active: Optional[StrictBool] = None
+    tags: Optional[List[StrictStr]] = None
+    __properties: ClassVar[List[str]] = ["name", "content", "priority", "is_active", "tags"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -48,7 +51,7 @@ class AsyncOperationSubmitResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of AsyncOperationSubmitResponse from a JSON string"""
+        """Create an instance of UpdateDirectiveRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -69,11 +72,36 @@ class AsyncOperationSubmitResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # set to None if name (nullable) is None
+        # and model_fields_set contains the field
+        if self.name is None and "name" in self.model_fields_set:
+            _dict['name'] = None
+
+        # set to None if content (nullable) is None
+        # and model_fields_set contains the field
+        if self.content is None and "content" in self.model_fields_set:
+            _dict['content'] = None
+
+        # set to None if priority (nullable) is None
+        # and model_fields_set contains the field
+        if self.priority is None and "priority" in self.model_fields_set:
+            _dict['priority'] = None
+
+        # set to None if is_active (nullable) is None
+        # and model_fields_set contains the field
+        if self.is_active is None and "is_active" in self.model_fields_set:
+            _dict['is_active'] = None
+
+        # set to None if tags (nullable) is None
+        # and model_fields_set contains the field
+        if self.tags is None and "tags" in self.model_fields_set:
+            _dict['tags'] = None
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of AsyncOperationSubmitResponse from a dict"""
+        """Create an instance of UpdateDirectiveRequest from a dict"""
         if obj is None:
             return None
 
@@ -81,8 +109,11 @@ class AsyncOperationSubmitResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "operation_id": obj.get("operation_id"),
-            "status": obj.get("status")
+            "name": obj.get("name"),
+            "content": obj.get("content"),
+            "priority": obj.get("priority"),
+            "is_active": obj.get("is_active"),
+            "tags": obj.get("tags")
         })
         return _obj
 

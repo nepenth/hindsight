@@ -19,7 +19,7 @@ import json
 
 from pydantic import BaseModel, ConfigDict
 from typing import Any, ClassVar, Dict, List
-from hindsight_client_api.models.mental_model_response import MentalModelResponse
+from hindsight_client_api.models.mental_model_api_response import MentalModelApiResponse
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -27,7 +27,7 @@ class MentalModelListResponse(BaseModel):
     """
     Response model for listing mental models.
     """ # noqa: E501
-    items: List[MentalModelResponse]
+    items: List[MentalModelApiResponse]
     __properties: ClassVar[List[str]] = ["items"]
 
     model_config = ConfigDict(
@@ -88,7 +88,7 @@ class MentalModelListResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "items": [MentalModelResponse.from_dict(_item) for _item in obj["items"]] if obj.get("items") is not None else None
+            "items": [MentalModelApiResponse.from_dict(_item) for _item in obj["items"]] if obj.get("items") is not None else None
         })
         return _obj
 

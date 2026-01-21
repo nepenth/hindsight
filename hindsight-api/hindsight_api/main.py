@@ -212,6 +212,8 @@ def main():
             retain_extract_causal_links=config.retain_extract_causal_links,
             retain_extraction_mode=config.retain_extraction_mode,
             retain_observations_async=config.retain_observations_async,
+            enable_consolidation=config.enable_consolidation,
+            consolidation_similarity_threshold=config.consolidation_similarity_threshold,
             skip_llm_verification=config.skip_llm_verification,
             lazy_reranker=config.lazy_reranker,
             run_migrations_on_startup=config.run_migrations_on_startup,

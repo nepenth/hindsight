@@ -17,20 +17,18 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict
 from typing import Any, ClassVar, Dict, List
+from hindsight_client_api.models.directive_response import DirectiveResponse
 from typing import Optional, Set
 from typing_extensions import Self
 
-class ObservationEvidenceResponse(BaseModel):
+class DirectiveListResponse(BaseModel):
     """
-    A single piece of evidence supporting an observation.
+    Response model for listing directives.
     """ # noqa: E501
-    memory_id: StrictStr = Field(description="ID of the memory unit this evidence comes from")
-    quote: StrictStr = Field(description="Exact quote from the memory supporting the observation")
-    relevance: StrictStr = Field(description="Brief explanation of how this quote supports the observation")
-    timestamp: StrictStr = Field(description="When the source memory was created (ISO format)")
-    __properties: ClassVar[List[str]] = ["memory_id", "quote", "relevance", "timestamp"]
+    items: List[DirectiveResponse]
+    __properties: ClassVar[List[str]] = ["items"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -50,7 +48,7 @@ class ObservationEvidenceResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of ObservationEvidenceResponse from a JSON string"""
+        """Create an instance of DirectiveListResponse from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -71,11 +69,18 @@ class ObservationEvidenceResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of each item in items (list)
+        _items = []
+        if self.items:
+            for _item_items in self.items:
+                if _item_items:
+                    _items.append(_item_items.to_dict())
+            _dict['items'] = _items
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of ObservationEvidenceResponse from a dict"""
+        """Create an instance of DirectiveListResponse from a dict"""
         if obj is None:
             return None
 
@@ -83,10 +88,7 @@ class ObservationEvidenceResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "memory_id": obj.get("memory_id"),
-            "quote": obj.get("quote"),
-            "relevance": obj.get("relevance"),
-            "timestamp": obj.get("timestamp")
+            "items": [DirectiveResponse.from_dict(_item) for _item in obj["items"]] if obj.get("items") is not None else None
         })
         return _obj
 

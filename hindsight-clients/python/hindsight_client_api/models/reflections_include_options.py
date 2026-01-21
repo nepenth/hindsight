@@ -17,18 +17,18 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
-from typing import Any, ClassVar, Dict, List
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, ClassVar, Dict, List, Optional
+from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class ObservationInput(BaseModel):
+class ReflectionsIncludeOptions(BaseModel):
     """
-    Input model for a single observation.
+    Options for including reflections in recall results.
     """ # noqa: E501
-    title: StrictStr = Field(description="Short title/header for the observation")
-    content: StrictStr = Field(description="Content of the observation")
-    __properties: ClassVar[List[str]] = ["title", "content"]
+    max_results: Optional[Annotated[int, Field(le=20, strict=True, ge=1)]] = Field(default=5, description="Maximum number of reflections to return")
+    __properties: ClassVar[List[str]] = ["max_results"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -48,7 +48,7 @@ class ObservationInput(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of ObservationInput from a JSON string"""
+        """Create an instance of ReflectionsIncludeOptions from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -73,7 +73,7 @@ class ObservationInput(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of ObservationInput from a dict"""
+        """Create an instance of ReflectionsIncludeOptions from a dict"""
         if obj is None:
             return None
 
@@ -81,8 +81,7 @@ class ObservationInput(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "title": obj.get("title"),
-            "content": obj.get("content")
+            "max_results": obj.get("max_results") if obj.get("max_results") is not None else 5
         })
         return _obj
 

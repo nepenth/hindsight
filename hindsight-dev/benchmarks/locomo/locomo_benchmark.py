@@ -21,8 +21,6 @@ from benchmarks.common.benchmark_runner import (
     BenchmarkRunner,
     LLMAnswerEvaluator,
     LLMAnswerGenerator,
-    ReflectAnswerGenerator,
-    setup_reflect_mode,
 )
 
 
@@ -280,7 +278,8 @@ async def run_benchmark(
     max_questions_per_conv: int = None,
     skip_ingestion: bool = False,
     use_think: bool = False,
-    use_reflect: bool = False,
+    include_mental_models: bool = False,
+    only_mental_models: bool = False,
     conversation: str = None,
     api_url: str = None,
     max_concurrent_questions_override: int = None,
@@ -295,8 +294,8 @@ async def run_benchmark(
         max_questions_per_conv: Maximum questions per conversation (None for all)
         skip_ingestion: Whether to skip ingestion and use existing data
         use_think: Whether to use the think API instead of search + LLM
-        use_reflect: Whether to use the reflect API instead of search + LLM. Sets up mission and
-                     refreshes mental models after ingestion.
+        include_mental_models: If True, include mental models in recall results and wait for consolidation after ingestion.
+        only_mental_models: If True, only retrieve mental models (no facts). Implies waiting for consolidation.
         conversation: Specific conversation ID to run (e.g., "conv-26")
         api_url: Optional API URL to connect to (default: use local memory)
         only_failed: If True, only run conversations that have failed questions (is_correct=False)
@@ -362,21 +361,10 @@ async def run_benchmark(
 
         memory = await create_memory_engine()
 
-    # Validate mutually exclusive modes
-    if use_think and use_reflect:
-        console.print("[red]Error: --use-think and --use-reflect cannot be used together[/red]")
-        return
-
     # Select answer generator based on mode
     from hindsight_api.engine.memory_engine import Budget
 
-    if use_reflect:
-        console.print("[blue]Mode: reflect (using agentic reflect API)[/blue]")
-        # bank_id is passed dynamically through generate_answer, ensuring it matches the runner's agent_id
-        answer_generator = ReflectAnswerGenerator(memory=memory, budget=Budget.MID)
-        max_concurrent_questions = max_concurrent_questions_override or 4
-        eval_semaphore_size = 4
-    elif use_think:
+    if use_think:
         console.print("[blue]Mode: think (using think API)[/blue]")
         answer_generator = LoComoThinkAnswerGenerator(memory=memory, agent_id="locomo", thinking_budget=500)
         max_concurrent_questions = max_concurrent_questions_override or 4
@@ -415,10 +403,12 @@ async def run_benchmark(
         dataset.load = filtered_load
 
     # Determine output filename based on mode
-    if use_reflect:
-        suffix = "_reflect"
-    elif use_think:
+    if use_think:
         suffix = "_think"
+    elif only_mental_models:
+        suffix = "_only_mental_models"
+    elif include_mental_models:
+        suffix = "_mental_models"
     else:
         suffix = ""
     results_filename = f"benchmark_results{suffix}.json"
@@ -430,15 +420,13 @@ async def run_benchmark(
     # Merge with existing results if running a specific conversation or using filters
     merge_with_existing = conversation is not None or only_failed or only_invalid
 
-    # Reflect mode uses per-conversation banks (like traditional mode) to maintain isolation
-    # Each conversation only sees its own context
-    if use_reflect:
-        separate_ingestion = False  # Process each item independently
-        clear_per_item = True  # Use unique agent ID per conversation
-        concurrent_items = 2  # Reflect is more expensive, limit parallelism
+    # Each conversation gets its own isolated bank
+    separate_ingestion = False
+    clear_per_item = True  # Use unique agent ID per conversation
+    if include_mental_models or only_mental_models:
+        # Mental models requires more time due to consolidation, limit parallelism
+        concurrent_items = 2
     else:
-        separate_ingestion = False
-        clear_per_item = True  # Use unique agent ID per conversation
         concurrent_items = 3  # Process up to 3 conversations in parallel
 
     # Run benchmark with parallel conversation processing
@@ -460,7 +448,8 @@ async def run_benchmark(
         max_concurrent_items=concurrent_items,
         output_path=output_path,  # Save results incrementally
         merge_with_existing=merge_with_existing,
-        use_reflect_mode=use_reflect,  # Enable reflect mode (mission + mental models per item)
+        include_mental_models=include_mental_models,  # Include mental models in recall results
+        only_mental_models=only_mental_models,  # Only retrieve mental models (no facts)
     )
 
     # Display results (final save already happened incrementally)
@@ -468,12 +457,16 @@ async def run_benchmark(
     console.print(f"\n[green]✓[/green] Results saved incrementally to {output_path}")
 
     # Generate markdown table
-    generate_markdown_table(results, use_think=use_think, use_reflect=use_reflect)
+    generate_markdown_table(
+        results, use_think=use_think, include_mental_models=include_mental_models, only_mental_models=only_mental_models
+    )
 
     return results
 
 
-def generate_markdown_table(results: dict, use_think: bool = False, use_reflect: bool = False):
+def generate_markdown_table(
+    results: dict, use_think: bool = False, include_mental_models: bool = False, only_mental_models: bool = False
+):
     """
     Generate a markdown table with benchmark results.
 
@@ -491,10 +484,12 @@ def generate_markdown_table(results: dict, use_think: bool = False, use_reflect:
 
     # Build markdown content
     lines = []
-    if use_reflect:
-        mode_str = " (Reflect Mode)"
-    elif use_think:
+    if use_think:
         mode_str = " (Think Mode)"
+    elif only_mental_models:
+        mode_str = " (Only Mental Models Mode)"
+    elif include_mental_models:
+        mode_str = " (Mental Models Mode)"
     else:
         mode_str = ""
     lines.append(f"# LoComo Benchmark Results{mode_str}")
@@ -547,10 +542,12 @@ def generate_markdown_table(results: dict, use_think: bool = False, use_reflect:
         )
 
     # Write to file with suffix
-    if use_reflect:
-        suffix = "_reflect"
-    elif use_think:
+    if use_think:
         suffix = "_think"
+    elif only_mental_models:
+        suffix = "_only_mental_models"
+    elif include_mental_models:
+        suffix = "_mental_models"
     else:
         suffix = ""
     output_file = Path(__file__).parent / "results" / f"results_table{suffix}.md"
@@ -596,9 +593,14 @@ if __name__ == "__main__":
         help="Only run conversations that have invalid questions (is_invalid=True). Requires existing results file.",
     )
     parser.add_argument(
-        "--use-reflect",
+        "--include-mental-models",
         action="store_true",
-        help="Use the reflect API instead of search + LLM. Sets up mission and refreshes mental models after ingestion. Cannot be combined with --use-think.",
+        help="Include mental models in recall results. This waits for consolidation to complete after ingestion and includes mental models in the recall response.",
+    )
+    parser.add_argument(
+        "--only-mental-models",
+        action="store_true",
+        help="Only retrieve mental models (no facts). This waits for consolidation to complete after ingestion and only returns mental models.",
     )
 
     args = parser.parse_args()
@@ -607,17 +609,14 @@ if __name__ == "__main__":
     if args.only_failed and args.only_invalid:
         parser.error("Cannot use both --only-failed and --only-invalid at the same time")
 
-    # Validate that --use-think and --use-reflect are mutually exclusive
-    if args.use_think and args.use_reflect:
-        parser.error("Cannot use both --use-think and --use-reflect at the same time")
-
     results = asyncio.run(
         run_benchmark(
             max_conversations=args.max_conversations,
             max_questions_per_conv=args.max_questions,
             skip_ingestion=args.skip_ingestion,
             use_think=args.use_think,
-            use_reflect=args.use_reflect,
+            include_mental_models=args.include_mental_models,
+            only_mental_models=args.only_mental_models,
             conversation=args.conversation,
             api_url=args.api_url,
             max_concurrent_questions_override=args.max_concurrent_questions,

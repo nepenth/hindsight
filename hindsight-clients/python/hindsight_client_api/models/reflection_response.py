@@ -17,24 +17,25 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
-from hindsight_client_api.models.observation_evidence_response import ObservationEvidenceResponse
 from typing import Optional, Set
 from typing_extensions import Self
 
-class MentalModelObservationResponse(BaseModel):
+class ReflectionResponse(BaseModel):
     """
-    An observation within a mental model with its supporting evidence.
+    Response model for a reflection.
     """ # noqa: E501
-    title: StrictStr = Field(description="Short summary title for the observation")
-    content: StrictStr = Field(description="The observation content - detailed explanation")
-    evidence: Optional[List[ObservationEvidenceResponse]] = Field(default=None, description="Supporting evidence with quotes")
-    created_at: StrictStr = Field(description="When this observation was first created (ISO format)")
-    trend: StrictStr = Field(description="Computed trend: stable, strengthening, weakening, new, stale")
-    evidence_count: StrictInt = Field(description="Number of evidence items supporting this observation")
-    evidence_span: Dict[str, Any] = Field(description="Time span of evidence: {from: iso_date, to: iso_date}")
-    __properties: ClassVar[List[str]] = ["title", "content", "evidence", "created_at", "trend", "evidence_count", "evidence_span"]
+    id: StrictStr
+    bank_id: StrictStr
+    name: StrictStr
+    source_query: StrictStr
+    content: StrictStr
+    tags: Optional[List[StrictStr]] = None
+    last_refreshed_at: Optional[StrictStr] = None
+    created_at: Optional[StrictStr] = None
+    reflect_response: Optional[Dict[str, Any]] = None
+    __properties: ClassVar[List[str]] = ["id", "bank_id", "name", "source_query", "content", "tags", "last_refreshed_at", "created_at", "reflect_response"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -54,7 +55,7 @@ class MentalModelObservationResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of MentalModelObservationResponse from a JSON string"""
+        """Create an instance of ReflectionResponse from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -75,18 +76,26 @@ class MentalModelObservationResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of each item in evidence (list)
-        _items = []
-        if self.evidence:
-            for _item_evidence in self.evidence:
-                if _item_evidence:
-                    _items.append(_item_evidence.to_dict())
-            _dict['evidence'] = _items
+        # set to None if last_refreshed_at (nullable) is None
+        # and model_fields_set contains the field
+        if self.last_refreshed_at is None and "last_refreshed_at" in self.model_fields_set:
+            _dict['last_refreshed_at'] = None
+
+        # set to None if created_at (nullable) is None
+        # and model_fields_set contains the field
+        if self.created_at is None and "created_at" in self.model_fields_set:
+            _dict['created_at'] = None
+
+        # set to None if reflect_response (nullable) is None
+        # and model_fields_set contains the field
+        if self.reflect_response is None and "reflect_response" in self.model_fields_set:
+            _dict['reflect_response'] = None
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of MentalModelObservationResponse from a dict"""
+        """Create an instance of ReflectionResponse from a dict"""
         if obj is None:
             return None
 
@@ -94,13 +103,15 @@ class MentalModelObservationResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "title": obj.get("title"),
+            "id": obj.get("id"),
+            "bank_id": obj.get("bank_id"),
+            "name": obj.get("name"),
+            "source_query": obj.get("source_query"),
             "content": obj.get("content"),
-            "evidence": [ObservationEvidenceResponse.from_dict(_item) for _item in obj["evidence"]] if obj.get("evidence") is not None else None,
+            "tags": obj.get("tags"),
+            "last_refreshed_at": obj.get("last_refreshed_at"),
             "created_at": obj.get("created_at"),
-            "trend": obj.get("trend"),
-            "evidence_count": obj.get("evidence_count"),
-            "evidence_span": obj.get("evidence_span")
+            "reflect_response": obj.get("reflect_response")
         })
         return _obj
 

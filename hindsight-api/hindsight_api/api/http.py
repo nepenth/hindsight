@@ -58,6 +58,12 @@ class ChunkIncludeOptions(BaseModel):
     max_tokens: int = Field(default=8192, description="Maximum tokens for chunks (chunks may be truncated)")
 
 
+class ReflectionsIncludeOptions(BaseModel):
+    """Options for including reflections in recall results."""
+
+    max_results: int = Field(default=5, ge=1, le=20, description="Maximum number of reflections to return")
+
+
 class IncludeOptions(BaseModel):
     """Options for including additional data in recall results."""
 
@@ -67,6 +73,10 @@ class IncludeOptions(BaseModel):
     )
     chunks: ChunkIncludeOptions | None = Field(
         default=None, description="Include raw chunks. Set to {} to enable, null to disable (default: disabled)."
+    )
+    reflections: ReflectionsIncludeOptions | None = Field(
+        default=None,
+        description="Include relevant reflections. Set to {} to enable, null to disable (default: disabled).",
     )
 
 
@@ -92,7 +102,7 @@ class RecallRequest(BaseModel):
     query: str
     types: list[str] | None = Field(
         default=None,
-        description="List of fact types to recall: 'world', 'experience'. Defaults to both if not specified. "
+        description="List of fact types to recall: 'world', 'experience', 'mental_model'. Defaults to world and experience if not specified. "
         "Note: 'opinion' is accepted but ignored (opinions are excluded from recall).",
     )
     budget: Budget = Budget.MID
@@ -253,6 +263,25 @@ class ChunkData(BaseModel):
     truncated: bool = Field(default=False, description="Whether the chunk text was truncated due to token limits")
 
 
+class RecallMentalModelResult(BaseModel):
+    """A mental model result in recall response."""
+
+    id: str = Field(description="Unique mental model ID")
+    text: str = Field(description="The consolidated mental model text")
+    proof_count: int = Field(description="Number of facts supporting this mental model")
+    relevance: float = Field(default=0.0, description="Relevance score to the query")
+    tags: list[str] | None = Field(default=None, description="Tags for visibility scoping")
+
+
+class RecallReflectionResult(BaseModel):
+    """A reflection result in recall response."""
+
+    id: str = Field(description="Unique reflection ID")
+    name: str = Field(description="Human-readable name")
+    content: str = Field(description="The synthesized content")
+    relevance: float = Field(default=0.0, description="Relevance score to the query")
+
+
 class RecallResponse(BaseModel):
     """Response model for recall endpoints."""
 
@@ -292,6 +321,22 @@ class RecallResponse(BaseModel):
                         "chunk_index": 0,
                     }
                 },
+                "mental_models": [
+                    {
+                        "id": "789e0123-e45b-67d8-a901-234567890123",
+                        "text": "Alice is a machine learning expert who frequently discusses AI applications",
+                        "proof_count": 5,
+                        "relevance": 0.92,
+                    }
+                ],
+                "reflections": [
+                    {
+                        "id": "012e3456-e78b-90d1-a234-567890123456",
+                        "name": "Team Expertise Summary",
+                        "content": "Alice specializes in ML...",
+                        "relevance": 0.88,
+                    }
+                ],
             }
         }
     )
@@ -302,6 +347,12 @@ class RecallResponse(BaseModel):
         default=None, description="Entity states for entities mentioned in results"
     )
     chunks: dict[str, ChunkData] | None = Field(default=None, description="Chunks for facts, keyed by chunk_id")
+    mental_models: list[RecallMentalModelResult] | None = Field(
+        default=None, description="Relevant mental models (consolidated knowledge) matching the query"
+    )
+    reflections: list[RecallReflectionResult] | None = Field(
+        default=None, description="Relevant reflections (user-curated summaries) matching the query"
+    )
 
 
 class EntityInput(BaseModel):
@@ -1032,6 +1083,9 @@ class BankStatsResponse(BaseModel):
                 "links_breakdown": {"fact": {"temporal": 100, "semantic": 60, "entity": 40}},
                 "pending_operations": 2,
                 "failed_operations": 0,
+                "last_consolidated_at": "2024-01-15T10:30:00Z",
+                "pending_consolidation": 0,
+                "total_mental_models": 45,
             }
         }
     )
@@ -1046,6 +1100,10 @@ class BankStatsResponse(BaseModel):
     links_breakdown: dict[str, dict[str, int]]
     pending_operations: int
     failed_operations: int
+    # Consolidation stats
+    last_consolidated_at: str | None = Field(default=None, description="When consolidation last ran (ISO format)")
+    pending_consolidation: int = Field(default=0, description="Number of memories not yet processed into mental models")
+    total_mental_models: int = Field(default=0, description="Total number of mental models")
 
 
 # Mental Model models
@@ -1060,205 +1118,158 @@ class ObservationEvidenceResponse(BaseModel):
     timestamp: str = Field(description="When the source memory was created (ISO format)")
 
 
-class MentalModelObservationResponse(BaseModel):
-    """An observation within a mental model with its supporting evidence."""
-
-    title: str = Field(description="Short summary title for the observation")
-    content: str = Field(description="The observation content - detailed explanation")
-    evidence: list[ObservationEvidenceResponse] = Field(
-        default_factory=list, description="Supporting evidence with quotes"
-    )
-    created_at: str = Field(description="When this observation was first created (ISO format)")
-    trend: str = Field(description="Computed trend: stable, strengthening, weakening, new, stale")
-    evidence_count: int = Field(description="Number of evidence items supporting this observation")
-    evidence_span: dict = Field(description="Time span of evidence: {from: iso_date, to: iso_date}")
+# =========================================================================
+# Directive Models
+# =========================================================================
 
 
-class MentalModelFreshnessResponse(BaseModel):
-    """Freshness information for a mental model."""
-
-    is_up_to_date: bool = Field(description="Whether the model has been refreshed since the last memory was added")
-    last_refresh_at: str | None = Field(description="When the model was last refreshed (ISO format)")
-    memories_since_refresh: int = Field(description="Number of memories added since last refresh")
-    reasons: list[str] = Field(
-        default_factory=list,
-        description="Reasons why the model needs refresh (empty if up to date). "
-        "Possible values: never_refreshed, new_memories, mission_changed, disposition_changed, directives_changed",
-    )
-
-
-class MentalModelResponse(BaseModel):
-    """Response model for a mental model."""
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "id": "team-structure",
-                "bank_id": "test-bank",
-                "subtype": "structural",
-                "name": "Team Structure",
-                "description": "Who's on the team and their roles",
-                "observations": [
-                    {
-                        "title": "Prefers async communication",
-                        "content": "The team prefers async communication over synchronous meetings",
-                        "evidence": [
-                            {
-                                "memory_id": "uuid1",
-                                "quote": "I prefer Slack over meetings",
-                                "relevance": "Shows async preference",
-                                "timestamp": "2024-01-10T08:00:00Z",
-                            }
-                        ],
-                        "created_at": "2024-01-15T10:30:00Z",
-                        "trend": "stable",
-                        "evidence_count": 1,
-                        "evidence_span": {"from": "2024-01-10T08:00:00Z", "to": "2024-01-10T08:00:00Z"},
-                    }
-                ],
-                "version": 1,
-                "entity_id": None,
-                "links": [],
-                "tags": ["project-x"],
-                "last_updated": "2024-01-15T10:30:00Z",
-                "last_refresh_at": "2024-01-15T10:30:00Z",
-                "freshness": {
-                    "is_up_to_date": True,
-                    "last_refresh_at": "2024-01-15T10:30:00Z",
-                    "memories_since_refresh": 0,
-                    "reasons": [],
-                },
-                "created_at": "2024-01-10T08:00:00Z",
-            }
-        }
-    )
+class DirectiveResponse(BaseModel):
+    """Response model for a directive."""
 
     id: str
     bank_id: str
-    subtype: str
     name: str
-    description: str
-    observations: list[MentalModelObservationResponse] = Field(
-        default_factory=list, description="Structured observations with per-observation fact attribution"
+    content: str
+    priority: int = 0
+    is_active: bool = True
+    tags: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class DirectiveListResponse(BaseModel):
+    """Response model for listing directives."""
+
+    items: list[DirectiveResponse]
+
+
+class CreateDirectiveRequest(BaseModel):
+    """Request model for creating a directive."""
+
+    name: str = Field(description="Human-readable name for the directive")
+    content: str = Field(description="The directive text to inject into prompts")
+    priority: int = Field(default=0, description="Higher priority directives are injected first")
+    is_active: bool = Field(default=True, description="Whether this directive is active")
+    tags: list[str] = Field(default_factory=list, description="Tags for filtering")
+
+
+class UpdateDirectiveRequest(BaseModel):
+    """Request model for updating a directive."""
+
+    name: str | None = Field(default=None, description="New name")
+    content: str | None = Field(default=None, description="New content")
+    priority: int | None = Field(default=None, description="New priority")
+    is_active: bool | None = Field(default=None, description="New active status")
+    tags: list[str] | None = Field(default=None, description="New tags")
+
+
+# =========================================================================
+# Reflections Models
+# =========================================================================
+
+
+class ReflectionResponse(BaseModel):
+    """Response model for a reflection."""
+
+    id: str
+    bank_id: str
+    name: str
+    source_query: str
+    content: str
+    tags: list[str] = Field(default_factory=list)
+    last_refreshed_at: str | None = None
+    created_at: str | None = None
+    reflect_response: dict | None = Field(
+        default=None,
+        description="Full reflect API response payload including based_on facts and mental_models",
     )
-    version: int = Field(default=0, description="Version number of the mental model observations")
-    entity_id: str | None = None
-    links: list[str] = []
-    tags: list[str] = []
-    last_updated: str | None = None
-    last_refresh_at: str | None = Field(default=None, description="When observations were last refreshed (ISO format)")
-    freshness: MentalModelFreshnessResponse | None = Field(
-        default=None, description="Freshness info (null for directive subtypes which don't need refresh)"
+
+
+class ReflectionListResponse(BaseModel):
+    """Response model for listing reflections."""
+
+    items: list[ReflectionResponse]
+
+
+# =========================================================================
+# MENTAL MODELS RESPONSE MODELS (for listing auto-consolidated mental models)
+# =========================================================================
+
+
+class SourceMemory(BaseModel):
+    """A source memory that contributed to a mental model."""
+
+    id: str = Field(description="Memory unit ID")
+    text: str = Field(description="Memory text content")
+    type: str = Field(description="Fact type (world, experience)")
+    context: str | None = Field(default=None, description="Memory context")
+    occurred_start: str | None = Field(default=None, description="When the event occurred")
+    mentioned_at: str | None = Field(default=None, description="When the memory was mentioned")
+
+
+class MentalModelApiResponse(BaseModel):
+    """Response model for a mental model (auto-consolidated knowledge)."""
+
+    id: str = Field(description="Unique mental model ID")
+    bank_id: str = Field(description="Bank this mental model belongs to")
+    text: str = Field(description="The consolidated mental model text")
+    proof_count: int = Field(description="Number of facts supporting this mental model")
+    history: list[dict] = Field(default_factory=list, description="History of changes to this mental model")
+    tags: list[str] = Field(default_factory=list, description="Tags for scoped visibility")
+    source_memory_ids: list[str] = Field(
+        default_factory=list, description="IDs of memories that consolidated into this"
     )
-    created_at: str
+    source_memories: list[SourceMemory] = Field(
+        default_factory=list, description="Full source memory details (when requested)"
+    )
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class MentalModelListResponse(BaseModel):
     """Response model for listing mental models."""
 
-    items: list[MentalModelResponse]
+    items: list[MentalModelApiResponse]
 
 
-def _observation_to_response(obs: Observation) -> MentalModelObservationResponse:
-    """Convert internal Observation model to API response model."""
-    return MentalModelObservationResponse(
-        title=obs.title,
-        content=obs.content,
-        evidence=[
-            ObservationEvidenceResponse(
-                memory_id=ev.memory_id,
-                quote=ev.quote,
-                relevance=ev.relevance,
-                timestamp=ev.timestamp.isoformat(),
-            )
-            for ev in obs.evidence
-        ],
-        created_at=obs.created_at.isoformat(),
-        trend=obs.trend.value,
-        evidence_count=obs.evidence_count,
-        evidence_span=obs.evidence_span,
-    )
-
-
-def _prepare_mental_model_response(model: dict[str, Any]) -> MentalModelResponse:
-    """Convert internal mental model dict to API response model.
-
-    Handles conversion of Observation models to MentalModelObservationResponse.
-    """
-    observations = model.get("observations", [])
-    converted_observations = [
-        _observation_to_response(obs) if isinstance(obs, Observation) else obs for obs in observations
-    ]
-    return MentalModelResponse(**{**model, "observations": converted_observations})
-
-
-class RefreshMentalModelsRequest(BaseModel):
-    """Request model for refresh mental models endpoint."""
-
-    model_config = ConfigDict(json_schema_extra={"example": {"tags": ["project-x"], "subtype": "structural"}})
-
-    tags: list[str] | None = Field(default=None, description="Tags to apply to newly created mental models")
-    subtype: Literal["structural", "emergent", "pinned", "learned"] | None = Field(
-        default=None,
-        description="Only refresh models of this subtype. If not specified, refreshes all subtypes.",
-    )
-
-
-class ObservationInput(BaseModel):
-    """Input model for a single observation."""
-
-    title: str = Field(description="Short title/header for the observation")
-    content: str = Field(description="Content of the observation")
-
-
-class CreateMentalModelRequest(BaseModel):
-    """Request model for creating a mental model."""
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "name": "Product Roadmap",
-                    "description": "Key product priorities and upcoming features",
-                    "tags": ["project-x"],
-                },
-                {
-                    "name": "Meeting Rules",
-                    "description": "Rules about scheduling meetings",
-                    "subtype": "directive",
-                    "observations": [{"title": "Morning meetings", "content": "Never schedule meetings before 10am"}],
-                },
-            ]
-        }
-    )
-
-    name: str = Field(description="Human-readable name for the mental model")
-    description: str = Field(description="One-liner description for quick scanning")
-    subtype: str = Field(
-        default="pinned",
-        description="Type of mental model: 'pinned' (observations LLM-generated) or 'directive' (observations user-provided)",
-    )
-    observations: list[ObservationInput] | None = Field(
-        default=None,
-        description="For directives only: list of user-provided observations. Required when subtype='directive'.",
-    )
-    tags: list[str] = Field(default_factory=list, description="Tags for scoped visibility")
-
-
-class UpdateMentalModelRequest(BaseModel):
-    """Request model for updating a mental model."""
+class CreateReflectionRequest(BaseModel):
+    """Request model for creating a reflection."""
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "name": "Updated Name",
-                "description": "Updated description with new rules",
+                "name": "Team Communication Preferences",
+                "source_query": "How does the team prefer to communicate?",
+                "tags": ["team"],
+                "max_tokens": 2048,
             }
         }
     )
 
-    name: str | None = Field(default=None, description="New name for the mental model")
-    description: str | None = Field(default=None, description="New description/rule text")
+    name: str = Field(description="Human-readable name for the reflection")
+    source_query: str = Field(description="The query to run to generate content")
+    tags: list[str] = Field(default_factory=list, description="Tags for scoped visibility")
+    max_tokens: int = Field(default=2048, ge=256, le=8192, description="Maximum tokens for generated content")
+
+
+class CreateReflectionResponse(BaseModel):
+    """Response model for reflection creation."""
+
+    operation_id: str = Field(description="Operation ID to track progress")
+
+
+class UpdateReflectionRequest(BaseModel):
+    """Request model for updating a reflection."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Updated Team Communication Preferences",
+            }
+        }
+    )
+
+    name: str | None = Field(default=None, description="New name for the reflection")
 
 
 class OperationResponse(BaseModel):
@@ -1753,6 +1764,14 @@ def _register_routes(app: FastAPI):
             include_chunks = request.include.chunks is not None
             max_chunk_tokens = request.include.chunks.max_tokens if include_chunks else 8192
 
+            # Determine mental models inclusion settings (enabled when 'mental_model' is in types)
+            include_mental_models = "mental_model" in fact_types if fact_types else False
+            max_mental_models = 10
+
+            # Determine reflections inclusion settings
+            include_reflections = request.include.reflections is not None
+            max_reflections = request.include.reflections.max_results if include_reflections else 5
+
             pre_recall = time.time() - handler_start
             # Run recall with tracing (record metrics)
             with metrics.record_operation(
@@ -1771,6 +1790,10 @@ def _register_routes(app: FastAPI):
                     max_entity_tokens=max_entity_tokens,
                     include_chunks=include_chunks,
                     max_chunk_tokens=max_chunk_tokens,
+                    include_mental_models=include_mental_models,
+                    max_mental_models=max_mental_models,
+                    include_reflections=include_reflections,
+                    max_reflections=max_reflections,
                     request_context=request_context,
                     tags=request.tags,
                     tags_match=request.tags_match,
@@ -1820,8 +1843,40 @@ def _register_routes(app: FastAPI):
                         ],
                     )
 
+            # Convert mental models from engine to HTTP API format
+            mental_models_response = None
+            if core_result.mental_models:
+                mental_models_response = [
+                    RecallMentalModelResult(
+                        id=mm.id,
+                        text=mm.text,
+                        proof_count=mm.proof_count,
+                        relevance=mm.relevance,
+                        tags=mm.tags,
+                    )
+                    for mm in core_result.mental_models
+                ]
+
+            # Convert reflections from engine to HTTP API format
+            reflections_response = None
+            if core_result.reflections:
+                reflections_response = [
+                    RecallReflectionResult(
+                        id=r.id,
+                        name=r.name,
+                        content=r.content,
+                        relevance=r.relevance,
+                    )
+                    for r in core_result.reflections
+                ]
+
             response = RecallResponse(
-                results=recall_results, trace=core_result.trace, entities=entities_response, chunks=chunks_response
+                results=recall_results,
+                trace=core_result.trace,
+                entities=entities_response,
+                chunks=chunks_response,
+                mental_models=mental_models_response,
+                reflections=reflections_response,
             )
 
             handler_duration = time.time() - handler_start
@@ -2096,6 +2151,54 @@ def _register_routes(app: FastAPI):
                 )
                 total_documents = doc_count_result["count"] if doc_count_result else 0
 
+                # Get consolidation stats
+                bank_row = await conn.fetchrow(
+                    f"""
+                    SELECT last_consolidated_at
+                    FROM {fq_table("banks")}
+                    WHERE bank_id = $1
+                    """,
+                    bank_id,
+                )
+                last_consolidated_at = bank_row["last_consolidated_at"] if bank_row else None
+
+                # Count memories pending consolidation (created after last_consolidated_at)
+                if last_consolidated_at:
+                    pending_consolidation_result = await conn.fetchrow(
+                        f"""
+                        SELECT COUNT(*) as count
+                        FROM {fq_table("memory_units")}
+                        WHERE bank_id = $1
+                          AND created_at > $2
+                          AND fact_type IN ('experience', 'world')
+                        """,
+                        bank_id,
+                        last_consolidated_at,
+                    )
+                else:
+                    # If never consolidated, count all experience/world memories
+                    pending_consolidation_result = await conn.fetchrow(
+                        f"""
+                        SELECT COUNT(*) as count
+                        FROM {fq_table("memory_units")}
+                        WHERE bank_id = $1
+                          AND fact_type IN ('experience', 'world')
+                        """,
+                        bank_id,
+                    )
+                pending_consolidation = pending_consolidation_result["count"] if pending_consolidation_result else 0
+
+                # Count total mental models
+                mental_model_count_result = await conn.fetchrow(
+                    f"""
+                    SELECT COUNT(*) as count
+                    FROM {fq_table("memory_units")}
+                    WHERE bank_id = $1 AND fact_type = 'mental_model'
+                    """,
+                    bank_id,
+                )
+                total_mental_models = mental_model_count_result["count"] if mental_model_count_result else 0
+
                 # Format results
                 nodes_by_type = {row["fact_type"]: row["count"] for row in node_stats}
                 links_by_type = {row["link_type"]: row["count"] for row in link_stats}
@@ -2125,6 +2228,9 @@ def _register_routes(app: FastAPI):
                     links_breakdown=links_breakdown,
                     pending_operations=pending_operations,
                     failed_operations=failed_operations,
+                    last_consolidated_at=(last_consolidated_at.isoformat() if last_consolidated_at else None),
+                    pending_consolidation=pending_consolidation,
+                    total_mental_models=total_mental_models,
                 )
 
         except (AuthenticationError, HTTPException):
@@ -2223,85 +2329,43 @@ def _register_routes(app: FastAPI):
         entity_id: str,
         request_context: RequestContext = Depends(get_request_context),
     ):
-        """Regenerate observations for an entity. DEPRECATED: Use mental models instead."""
+        """Regenerate observations for an entity. DEPRECATED."""
         raise HTTPException(
             status_code=410,
-            detail="This endpoint is deprecated. Entity observations have been replaced by mental models. "
-            "Use the /mental-models endpoints instead.",
+            detail="This endpoint is deprecated. Entity observations are no longer supported.",
         )
 
     # =========================================================================
-    # Mental Models endpoints
+    # MENTAL MODELS ENDPOINTS (auto-consolidated knowledge, read-only)
     # =========================================================================
 
     @app.get(
         "/v1/default/banks/{bank_id}/mental-models",
         response_model=MentalModelListResponse,
         summary="List mental models",
-        description="List all mental models for a bank, optionally filtered by subtype or tags.",
+        description="List auto-consolidated mental models. Mental models are automatically created and updated by the consolidation engine.",
         operation_id="list_mental_models",
         tags=["Mental Models"],
     )
     async def api_list_mental_models(
         bank_id: str,
-        subtype: str | None = Query(None, description="Filter by subtype: structural, emergent, or pinned"),
-        tags_filter: list[str] | None = Query(
-            None, alias="tags", description="Filter by tags (includes untagged models)"
-        ),
-        tags_match: Literal["any", "all", "exact"] = Query(
-            "any", description="How to match tags: 'any' (OR), 'all' (AND), or 'exact'"
-        ),
+        tags_filter: list[str] | None = Query(None, alias="tags", description="Filter by tags"),
+        tags_match: Literal["any", "all", "exact"] = Query("any", description="How to match tags"),
+        limit: int = Query(100, ge=1, le=1000),
+        offset: int = Query(0, ge=0),
         request_context: RequestContext = Depends(get_request_context),
     ):
         """List mental models for a bank."""
         try:
-            models = await app.state.memory.list_mental_models(
+            mental_models = await app.state.memory.list_mental_models_consolidated(
                 bank_id=bank_id,
-                subtype=subtype,
                 tags=tags_filter,
                 tags_match=tags_match,
+                limit=limit,
+                offset=offset,
                 request_context=request_context,
             )
-
-            # Add freshness to each model (skip for directives)
-            # Get data needed for freshness computation (once for all models)
-            from hindsight_api.engine.reflect.mental_model_reflect import (
-                BankProfile,
-                DirectiveMentalModel,
-                check_needs_refresh,
-            )
-
-            total_memories = await app.state.memory._count_memories_since(bank_id, None)
-            bank_profile_dict = await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
-
-            # Convert to typed models at the boundary
-            bank_profile = BankProfile.model_validate(bank_profile_dict)
-            directives = [DirectiveMentalModel.model_validate(m) for m in models if m.get("subtype") == "directive"]
-
-            for model in models:
-                if model.get("subtype") != "directive":
-                    last_refresh_at = model.get("last_refresh_at")
-                    memories_since = await app.state.memory._count_memories_since(bank_id, last_refresh_at)
-
-                    # Use check_needs_refresh to get reasons
-                    stored_refresh_state = model.get("refresh_state")
-                    refresh_check = check_needs_refresh(
-                        stored_state=stored_refresh_state,
-                        current_memories_count=total_memories,
-                        bank_profile=bank_profile,
-                        directives=directives,
-                    )
-
-                    model["freshness"] = {
-                        "is_up_to_date": not refresh_check.needs_refresh,
-                        "last_refresh_at": last_refresh_at,
-                        "memories_since_refresh": memories_since,
-                        "reasons": refresh_check.reasons,
-                    }
-                else:
-                    model["freshness"] = None
-
-            return MentalModelListResponse(items=[_prepare_mental_model_response(m) for m in models])
+            return MentalModelListResponse(items=[MentalModelApiResponse(**mm) for mm in mental_models])
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:
@@ -2311,54 +2375,9 @@ def _register_routes(app: FastAPI):
             logger.error(f"Error in GET /v1/default/banks/{bank_id}/mental-models: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.post(
-        "/v1/default/banks/{bank_id}/mental-models",
-        response_model=MentalModelResponse,
-        summary="Create mental model",
-        description=(
-            "Create a mental model. Supports two subtypes:\n"
-            "- 'pinned' (default): User-defined topic, observations are LLM-generated on refresh\n"
-            "- 'directive': User-defined hard rules, observations are provided at creation and never regenerated"
-        ),
-        operation_id="create_mental_model",
-        tags=["Mental Models"],
-    )
-    async def api_create_mental_model(
-        bank_id: str,
-        body: CreateMentalModelRequest,
-        request_context: RequestContext = Depends(get_request_context),
-    ):
-        """Create a mental model (pinned or directive)."""
-        try:
-            # Convert observations to list of dicts if provided
-            observations_list = None
-            if body.observations:
-                observations_list = [{"title": obs.title, "content": obs.content} for obs in body.observations]
-
-            model = await app.state.memory.create_mental_model(
-                bank_id=bank_id,
-                name=body.name,
-                description=body.description,
-                subtype=body.subtype,
-                observations=observations_list,
-                tags=body.tags,
-                request_context=request_context,
-            )
-            return _prepare_mental_model_response(model)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except (AuthenticationError, HTTPException):
-            raise
-        except Exception as e:
-            import traceback
-
-            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in POST /v1/default/banks/{bank_id}/mental-models: {error_detail}")
-            raise HTTPException(status_code=500, detail=str(e))
-
     @app.get(
         "/v1/default/banks/{bank_id}/mental-models/{model_id}",
-        response_model=MentalModelResponse,
+        response_model=MentalModelApiResponse,
         summary="Get mental model",
         description="Get a specific mental model by ID.",
         operation_id="get_mental_model",
@@ -2371,54 +2390,14 @@ def _register_routes(app: FastAPI):
     ):
         """Get a mental model by ID."""
         try:
-            model = await app.state.memory.get_mental_model(
+            mental_model = await app.state.memory.get_mental_model_consolidated(
                 bank_id=bank_id,
                 model_id=model_id,
                 request_context=request_context,
             )
-            if model is None:
+            if mental_model is None:
                 raise HTTPException(status_code=404, detail=f"Mental model '{model_id}' not found")
-
-            # Compute freshness for non-directive models
-            if model.get("subtype") != "directive":
-                from hindsight_api.engine.reflect.mental_model_reflect import (
-                    BankProfile,
-                    DirectiveMentalModel,
-                    check_needs_refresh,
-                )
-
-                last_refresh_at = model.get("last_refresh_at")
-                total_memories = await app.state.memory._count_memories_since(bank_id, None)
-                memories_since = await app.state.memory._count_memories_since(bank_id, last_refresh_at)
-                bank_profile_dict = await app.state.memory.get_bank_profile(bank_id, request_context=request_context)
-                directives_dicts = await app.state.memory.list_mental_models(
-                    bank_id, subtype="directive", request_context=request_context
-                )
-
-                # Convert to typed models at the boundary
-                bank_profile = BankProfile.model_validate(bank_profile_dict)
-                directives = [DirectiveMentalModel.model_validate(d) for d in directives_dicts]
-
-                # Use check_needs_refresh to get reasons
-                stored_refresh_state = model.get("refresh_state")
-                refresh_check = check_needs_refresh(
-                    stored_state=stored_refresh_state,
-                    current_memories_count=total_memories,
-                    bank_profile=bank_profile,
-                    directives=directives,
-                )
-
-                model["freshness"] = {
-                    "is_up_to_date": not refresh_check.needs_refresh,
-                    "last_refresh_at": last_refresh_at,
-                    "memories_since_refresh": memories_since,
-                    "reasons": refresh_check.reasons,
-                }
-            else:
-                # Directives don't need freshness - they're static
-                model["freshness"] = None
-
-            return _prepare_mental_model_response(model)
+            return MentalModelApiResponse(**mental_model)
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:
@@ -2428,39 +2407,105 @@ def _register_routes(app: FastAPI):
             logger.error(f"Error in GET /v1/default/banks/{bank_id}/mental-models/{model_id}: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.post(
-        "/v1/default/banks/{bank_id}/mental-models/refresh",
-        response_model=AsyncOperationSubmitResponse,
-        summary="Refresh mental models (async)",
-        description="Submit a background job to refresh mental models for a bank. "
-        "By default refreshes all subtypes. Optionally specify 'subtype' to only refresh "
-        "'structural' (from mission) or 'emergent' (from entities) models. "
-        "Optionally pass tags to apply to newly created models. "
-        "Use GET /banks/{bank_id}/operations to check progress.",
-        operation_id="refresh_mental_models",
-        tags=["Mental Models"],
+    # =========================================================================
+    # REFLECTIONS ENDPOINTS
+    # =========================================================================
+
+    @app.get(
+        "/v1/default/banks/{bank_id}/reflections",
+        response_model=ReflectionListResponse,
+        summary="List reflections",
+        description="List user-curated living documents that stay current.",
+        operation_id="list_reflections",
+        tags=["Reflections"],
     )
-    async def api_refresh_mental_models(
+    async def api_list_reflections(
         bank_id: str,
-        body: RefreshMentalModelsRequest | None = None,
+        tags_filter: list[str] | None = Query(None, alias="tags", description="Filter by tags"),
+        tags_match: Literal["any", "all", "exact"] = Query("any", description="How to match tags"),
+        limit: int = Query(100, ge=1, le=1000),
+        offset: int = Query(0, ge=0),
         request_context: RequestContext = Depends(get_request_context),
     ):
-        """Submit a background job to refresh mental models for a bank.
-
-        Requires a mission to be set for the bank first.
-        Optionally pass tags to apply to newly created mental models.
-        Optionally specify a subtype to only refresh models of that type.
-        """
+        """List reflections for a bank."""
         try:
-            result = await app.state.memory.refresh_mental_models(
+            reflections = await app.state.memory.list_reflections(
                 bank_id=bank_id,
-                tags=body.tags if body else None,
-                subtype=body.subtype if body else None,
+                tags=tags_filter,
+                tags_match=tags_match,
+                limit=limit,
+                offset=offset,
                 request_context=request_context,
             )
-            return AsyncOperationSubmitResponse(**result)
+            return ReflectionListResponse(items=[ReflectionResponse(**r) for r in reflections])
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in GET /v1/default/banks/{bank_id}/reflections: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get(
+        "/v1/default/banks/{bank_id}/reflections/{reflection_id}",
+        response_model=ReflectionResponse,
+        summary="Get reflection",
+        description="Get a specific reflection by ID.",
+        operation_id="get_reflection",
+        tags=["Reflections"],
+    )
+    async def api_get_reflection(
+        bank_id: str,
+        reflection_id: str,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Get a reflection by ID."""
+        try:
+            reflection = await app.state.memory.get_reflection(
+                bank_id=bank_id,
+                reflection_id=reflection_id,
+                request_context=request_context,
+            )
+            if reflection is None:
+                raise HTTPException(status_code=404, detail=f"Reflection '{reflection_id}' not found")
+            return ReflectionResponse(**reflection)
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in GET /v1/default/banks/{bank_id}/reflections/{reflection_id}: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post(
+        "/v1/default/banks/{bank_id}/reflections",
+        response_model=CreateReflectionResponse,
+        summary="Create reflection",
+        description="Create a reflection by running reflect with the source query in the background. "
+        "Returns an operation ID to track progress. The content is auto-generated by the reflect endpoint. "
+        "Use the operations endpoint to check completion status.",
+        operation_id="create_reflection",
+        tags=["Reflections"],
+    )
+    async def api_create_reflection(
+        bank_id: str,
+        body: CreateReflectionRequest,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Create a reflection (async - returns operation_id)."""
+        try:
+            result = await app.state.memory.submit_async_create_reflection(
+                bank_id=bank_id,
+                name=body.name,
+                source_query=body.source_query,
+                tags=body.tags if body.tags else None,
+                max_tokens=body.max_tokens,
+                request_context=request_context,
+            )
+            return CreateReflectionResponse(operation_id=result["operation_id"])
         except ValueError as e:
-            # Mission not set or other validation error
             raise HTTPException(status_code=400, detail=str(e))
         except (AuthenticationError, HTTPException):
             raise
@@ -2468,184 +2513,32 @@ def _register_routes(app: FastAPI):
             import traceback
 
             error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in POST /v1/default/banks/{bank_id}/mental-models/refresh: {error_detail}")
+            logger.error(f"Error in POST /v1/default/banks/{bank_id}/reflections: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
-
-    @app.delete(
-        "/v1/default/banks/{bank_id}/mental-models/{model_id}",
-        response_model=DeleteResponse,
-        summary="Delete mental model",
-        description="Delete a mental model.",
-        operation_id="delete_mental_model",
-        tags=["Mental Models"],
-    )
-    async def api_delete_mental_model(
-        bank_id: str,
-        model_id: str,
-        request_context: RequestContext = Depends(get_request_context),
-    ):
-        """Delete a mental model."""
-        try:
-            deleted = await app.state.memory.delete_mental_model(
-                bank_id=bank_id,
-                model_id=model_id,
-                request_context=request_context,
-            )
-            if not deleted:
-                raise HTTPException(status_code=404, detail=f"Mental model '{model_id}' not found")
-            return DeleteResponse(success=True, deleted_count=1)
-        except (AuthenticationError, HTTPException):
-            raise
-        except Exception as e:
-            import traceback
-
-            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in DELETE /v1/default/banks/{bank_id}/mental-models/{model_id}: {error_detail}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @app.patch(
-        "/v1/default/banks/{bank_id}/mental-models/{model_id}",
-        response_model=MentalModelResponse,
-        summary="Update mental model",
-        description="Update a mental model's name and/or description. Useful for editing directives.",
-        operation_id="update_mental_model",
-        tags=["Mental Models"],
-    )
-    async def api_update_mental_model(
-        bank_id: str,
-        model_id: str,
-        body: UpdateMentalModelRequest,
-        request_context: RequestContext = Depends(get_request_context),
-    ):
-        """Update a mental model's name and/or description."""
-        try:
-            if body.name is None and body.description is None:
-                raise HTTPException(status_code=400, detail="At least one of 'name' or 'description' must be provided")
-
-            updated = await app.state.memory.update_mental_model(
-                bank_id=bank_id,
-                model_id=model_id,
-                name=body.name,
-                description=body.description,
-                request_context=request_context,
-            )
-            if not updated:
-                raise HTTPException(status_code=404, detail=f"Mental model '{model_id}' not found")
-            return _prepare_mental_model_response(updated)
-        except (AuthenticationError, HTTPException):
-            raise
-        except Exception as e:
-            import traceback
-
-            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in PATCH /v1/default/banks/{bank_id}/mental-models/{model_id}: {error_detail}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    class RefreshMentalModelRequest(BaseModel):
-        """Request model for refresh single mental model endpoint."""
-
-        model_config = ConfigDict(json_schema_extra={"example": {"force": True}})
-
-        force: bool = Field(
-            default=False,
-            description="Force refresh even if the model appears up-to-date based on freshness checks.",
-        )
 
     @app.post(
-        "/v1/default/banks/{bank_id}/mental-models/{model_id}/refresh",
-        response_model=AsyncOperationSubmitResponse,
-        summary="Refresh mental model content (async)",
-        description="Submit a background job to refresh content for a specific mental model. "
-        "This is useful for newly created learned models or to refresh content for any model. "
-        "Use force=true to bypass freshness checks and force a refresh.",
-        operation_id="refresh_mental_model",
-        tags=["Mental Models"],
+        "/v1/default/banks/{bank_id}/reflections/{reflection_id}/refresh",
+        response_model=ReflectionResponse,
+        summary="Refresh reflection",
+        description="Re-run the source query through reflect and update the content.",
+        operation_id="refresh_reflection",
+        tags=["Reflections"],
     )
-    async def api_refresh_mental_model(
+    async def api_refresh_reflection(
         bank_id: str,
-        model_id: str,
-        body: RefreshMentalModelRequest | None = None,
+        reflection_id: str,
         request_context: RequestContext = Depends(get_request_context),
     ):
-        """Refresh content for a specific mental model."""
+        """Refresh a reflection by re-running its source query."""
         try:
-            result = await app.state.memory.refresh_mental_model_async(
+            reflection = await app.state.memory.refresh_reflection(
                 bank_id=bank_id,
-                model_id=model_id,
-                request_context=request_context,
-                force=body.force if body else False,
-            )
-            return AsyncOperationSubmitResponse(
-                operation_id=result["operation_id"],
-                status=result.get("status", "queued"),
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        except (AuthenticationError, HTTPException):
-            raise
-        except Exception as e:
-            import traceback
-
-            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in POST /v1/default/banks/{bank_id}/mental-models/{model_id}/refresh: {error_detail}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @app.get(
-        "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions",
-        summary="List mental model version history",
-        description="List all saved versions of a mental model's observations, ordered by version descending.",
-        operation_id="list_mental_model_versions",
-        tags=["Mental Models"],
-    )
-    async def api_list_mental_model_versions(
-        bank_id: str,
-        model_id: str,
-        request_context: RequestContext = Depends(get_request_context),
-    ):
-        """List version history for a mental model."""
-        try:
-            versions = await app.state.memory.get_mental_model_versions(
-                bank_id=bank_id,
-                model_id=model_id,
+                reflection_id=reflection_id,
                 request_context=request_context,
             )
-            return {"versions": versions}
-        except (AuthenticationError, HTTPException):
-            raise
-        except Exception as e:
-            import traceback
-
-            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Error in GET /v1/default/banks/{bank_id}/mental-models/{model_id}/versions: {error_detail}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @app.get(
-        "/v1/default/banks/{bank_id}/mental-models/{model_id}/versions/{version}",
-        summary="Get specific mental model version",
-        description="Get observations from a specific version of a mental model.",
-        operation_id="get_mental_model_version",
-        tags=["Mental Models"],
-    )
-    async def api_get_mental_model_version(
-        bank_id: str,
-        model_id: str,
-        version: int,
-        request_context: RequestContext = Depends(get_request_context),
-    ):
-        """Get a specific version of a mental model."""
-        try:
-            version_data = await app.state.memory.get_mental_model_version(
-                bank_id=bank_id,
-                model_id=model_id,
-                version=version,
-                request_context=request_context,
-            )
-            if not version_data:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Version {version} not found for mental model '{model_id}'",
-                )
-            return version_data
+            if reflection is None:
+                raise HTTPException(status_code=404, detail=f"Reflection '{reflection_id}' not found")
+            return ReflectionResponse(**reflection)
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:
@@ -2653,8 +2546,252 @@ def _register_routes(app: FastAPI):
 
             error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             logger.error(
-                f"Error in GET /v1/default/banks/{bank_id}/mental-models/{model_id}/versions/{version}: {error_detail}"
+                f"Error in POST /v1/default/banks/{bank_id}/reflections/{reflection_id}/refresh: {error_detail}"
             )
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.patch(
+        "/v1/default/banks/{bank_id}/reflections/{reflection_id}",
+        response_model=ReflectionResponse,
+        summary="Update reflection",
+        description="Update a reflection's name.",
+        operation_id="update_reflection",
+        tags=["Reflections"],
+    )
+    async def api_update_reflection(
+        bank_id: str,
+        reflection_id: str,
+        body: UpdateReflectionRequest,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Update a reflection."""
+        try:
+            reflection = await app.state.memory.update_reflection(
+                bank_id=bank_id,
+                reflection_id=reflection_id,
+                name=body.name,
+                request_context=request_context,
+            )
+            if reflection is None:
+                raise HTTPException(status_code=404, detail=f"Reflection '{reflection_id}' not found")
+            return ReflectionResponse(**reflection)
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in PATCH /v1/default/banks/{bank_id}/reflections/{reflection_id}: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.delete(
+        "/v1/default/banks/{bank_id}/reflections/{reflection_id}",
+        summary="Delete reflection",
+        description="Delete a reflection.",
+        operation_id="delete_reflection",
+        tags=["Reflections"],
+    )
+    async def api_delete_reflection(
+        bank_id: str,
+        reflection_id: str,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Delete a reflection."""
+        try:
+            deleted = await app.state.memory.delete_reflection(
+                bank_id=bank_id,
+                reflection_id=reflection_id,
+                request_context=request_context,
+            )
+            if not deleted:
+                raise HTTPException(status_code=404, detail=f"Reflection '{reflection_id}' not found")
+            return {"status": "deleted"}
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in DELETE /v1/default/banks/{bank_id}/reflections/{reflection_id}: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # =========================================================================
+    # DIRECTIVES ENDPOINTS
+    # =========================================================================
+
+    @app.get(
+        "/v1/default/banks/{bank_id}/directives",
+        response_model=DirectiveListResponse,
+        summary="List directives",
+        description="List hard rules that are injected into prompts.",
+        operation_id="list_directives",
+        tags=["Directives"],
+    )
+    async def api_list_directives(
+        bank_id: str,
+        tags_filter: list[str] | None = Query(None, alias="tags", description="Filter by tags"),
+        tags_match: Literal["any", "all", "exact"] = Query("any", description="How to match tags"),
+        active_only: bool = Query(True, description="Only return active directives"),
+        limit: int = Query(100, ge=1, le=1000),
+        offset: int = Query(0, ge=0),
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """List directives for a bank."""
+        try:
+            directives = await app.state.memory.list_directives(
+                bank_id=bank_id,
+                tags=tags_filter,
+                tags_match=tags_match,
+                active_only=active_only,
+                limit=limit,
+                offset=offset,
+                request_context=request_context,
+            )
+            return DirectiveListResponse(items=[DirectiveResponse(**d) for d in directives])
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in GET /v1/default/banks/{bank_id}/directives: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get(
+        "/v1/default/banks/{bank_id}/directives/{directive_id}",
+        response_model=DirectiveResponse,
+        summary="Get directive",
+        description="Get a specific directive by ID.",
+        operation_id="get_directive",
+        tags=["Directives"],
+    )
+    async def api_get_directive(
+        bank_id: str,
+        directive_id: str,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Get a directive by ID."""
+        try:
+            directive = await app.state.memory.get_directive(
+                bank_id=bank_id,
+                directive_id=directive_id,
+                request_context=request_context,
+            )
+            if directive is None:
+                raise HTTPException(status_code=404, detail=f"Directive '{directive_id}' not found")
+            return DirectiveResponse(**directive)
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in GET /v1/default/banks/{bank_id}/directives/{directive_id}: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post(
+        "/v1/default/banks/{bank_id}/directives",
+        response_model=DirectiveResponse,
+        summary="Create directive",
+        description="Create a hard rule that will be injected into prompts.",
+        operation_id="create_directive",
+        tags=["Directives"],
+    )
+    async def api_create_directive(
+        bank_id: str,
+        body: CreateDirectiveRequest,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Create a directive."""
+        try:
+            directive = await app.state.memory.create_directive(
+                bank_id=bank_id,
+                name=body.name,
+                content=body.content,
+                priority=body.priority,
+                is_active=body.is_active,
+                tags=body.tags,
+                request_context=request_context,
+            )
+            return DirectiveResponse(**directive)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in POST /v1/default/banks/{bank_id}/directives: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.patch(
+        "/v1/default/banks/{bank_id}/directives/{directive_id}",
+        response_model=DirectiveResponse,
+        summary="Update directive",
+        description="Update a directive's properties.",
+        operation_id="update_directive",
+        tags=["Directives"],
+    )
+    async def api_update_directive(
+        bank_id: str,
+        directive_id: str,
+        body: UpdateDirectiveRequest,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Update a directive."""
+        try:
+            directive = await app.state.memory.update_directive(
+                bank_id=bank_id,
+                directive_id=directive_id,
+                name=body.name,
+                content=body.content,
+                priority=body.priority,
+                is_active=body.is_active,
+                tags=body.tags,
+                request_context=request_context,
+            )
+            if directive is None:
+                raise HTTPException(status_code=404, detail=f"Directive '{directive_id}' not found")
+            return DirectiveResponse(**directive)
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in PATCH /v1/default/banks/{bank_id}/directives/{directive_id}: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.delete(
+        "/v1/default/banks/{bank_id}/directives/{directive_id}",
+        summary="Delete directive",
+        description="Delete a directive.",
+        operation_id="delete_directive",
+        tags=["Directives"],
+    )
+    async def api_delete_directive(
+        bank_id: str,
+        directive_id: str,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """Delete a directive."""
+        try:
+            deleted = await app.state.memory.delete_directive(
+                bank_id=bank_id,
+                directive_id=directive_id,
+                request_context=request_context,
+            )
+            if not deleted:
+                raise HTTPException(status_code=404, detail=f"Directive '{directive_id}' not found")
+            return {"status": "deleted"}
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in DELETE /v1/default/banks/{bank_id}/directives/{directive_id}: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.get(

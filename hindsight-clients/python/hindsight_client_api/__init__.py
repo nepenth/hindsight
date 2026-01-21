@@ -18,12 +18,14 @@ __version__ = "0.0.7"
 
 # import apis into sdk package
 from hindsight_client_api.api.banks_api import BanksApi
+from hindsight_client_api.api.directives_api import DirectivesApi
 from hindsight_client_api.api.documents_api import DocumentsApi
 from hindsight_client_api.api.entities_api import EntitiesApi
 from hindsight_client_api.api.memory_api import MemoryApi
 from hindsight_client_api.api.mental_models_api import MentalModelsApi
 from hindsight_client_api.api.monitoring_api import MonitoringApi
 from hindsight_client_api.api.operations_api import OperationsApi
+from hindsight_client_api.api.reflections_api import ReflectionsApi
 
 # import ApiClient
 from hindsight_client_api.api_response import ApiResponse
@@ -38,7 +40,6 @@ from hindsight_client_api.exceptions import ApiException
 
 # import models into sdk package
 from hindsight_client_api.models.add_background_request import AddBackgroundRequest
-from hindsight_client_api.models.async_operation_submit_response import AsyncOperationSubmitResponse
 from hindsight_client_api.models.background_response import BackgroundResponse
 from hindsight_client_api.models.bank_list_item import BankListItem
 from hindsight_client_api.models.bank_list_response import BankListResponse
@@ -50,10 +51,14 @@ from hindsight_client_api.models.chunk_data import ChunkData
 from hindsight_client_api.models.chunk_include_options import ChunkIncludeOptions
 from hindsight_client_api.models.chunk_response import ChunkResponse
 from hindsight_client_api.models.create_bank_request import CreateBankRequest
-from hindsight_client_api.models.create_mental_model_request import CreateMentalModelRequest
+from hindsight_client_api.models.create_directive_request import CreateDirectiveRequest
+from hindsight_client_api.models.create_reflection_request import CreateReflectionRequest
+from hindsight_client_api.models.create_reflection_response import CreateReflectionResponse
 from hindsight_client_api.models.created_mental_model import CreatedMentalModel
 from hindsight_client_api.models.delete_document_response import DeleteDocumentResponse
 from hindsight_client_api.models.delete_response import DeleteResponse
+from hindsight_client_api.models.directive_list_response import DirectiveListResponse
+from hindsight_client_api.models.directive_response import DirectiveResponse
 from hindsight_client_api.models.disposition_traits import DispositionTraits
 from hindsight_client_api.models.document_response import DocumentResponse
 from hindsight_client_api.models.entity_detail_response import EntityDetailResponse
@@ -70,15 +75,13 @@ from hindsight_client_api.models.list_documents_response import ListDocumentsRes
 from hindsight_client_api.models.list_memory_units_response import ListMemoryUnitsResponse
 from hindsight_client_api.models.list_tags_response import ListTagsResponse
 from hindsight_client_api.models.memory_item import MemoryItem
-from hindsight_client_api.models.mental_model_freshness_response import MentalModelFreshnessResponse
+from hindsight_client_api.models.mental_model_api_response import MentalModelApiResponse
 from hindsight_client_api.models.mental_model_list_response import MentalModelListResponse
-from hindsight_client_api.models.mental_model_observation_response import MentalModelObservationResponse
-from hindsight_client_api.models.mental_model_response import MentalModelResponse
-from hindsight_client_api.models.observation_evidence_response import ObservationEvidenceResponse
-from hindsight_client_api.models.observation_input import ObservationInput
 from hindsight_client_api.models.operation_response import OperationResponse
 from hindsight_client_api.models.operation_status_response import OperationStatusResponse
 from hindsight_client_api.models.operations_list_response import OperationsListResponse
+from hindsight_client_api.models.recall_mental_model_result import RecallMentalModelResult
+from hindsight_client_api.models.recall_reflection_result import RecallReflectionResult
 from hindsight_client_api.models.recall_request import RecallRequest
 from hindsight_client_api.models.recall_response import RecallResponse
 from hindsight_client_api.models.recall_result import RecallResult
@@ -91,13 +94,17 @@ from hindsight_client_api.models.reflect_request import ReflectRequest
 from hindsight_client_api.models.reflect_response import ReflectResponse
 from hindsight_client_api.models.reflect_tool_call import ReflectToolCall
 from hindsight_client_api.models.reflect_trace import ReflectTrace
-from hindsight_client_api.models.refresh_mental_models_request import RefreshMentalModelsRequest
+from hindsight_client_api.models.reflection_list_response import ReflectionListResponse
+from hindsight_client_api.models.reflection_response import ReflectionResponse
+from hindsight_client_api.models.reflections_include_options import ReflectionsIncludeOptions
 from hindsight_client_api.models.retain_request import RetainRequest
 from hindsight_client_api.models.retain_response import RetainResponse
+from hindsight_client_api.models.source_memory import SourceMemory
 from hindsight_client_api.models.tag_item import TagItem
 from hindsight_client_api.models.token_usage import TokenUsage
 from hindsight_client_api.models.tool_calls_include_options import ToolCallsIncludeOptions
+from hindsight_client_api.models.update_directive_request import UpdateDirectiveRequest
 from hindsight_client_api.models.update_disposition_request import UpdateDispositionRequest
-from hindsight_client_api.models.update_mental_model_request import UpdateMentalModelRequest
+from hindsight_client_api.models.update_reflection_request import UpdateReflectionRequest
 from hindsight_client_api.models.validation_error import ValidationError
 from hindsight_client_api.models.validation_error_loc_inner import ValidationErrorLocInner
