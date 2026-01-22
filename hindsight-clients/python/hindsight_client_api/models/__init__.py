@@ -43,6 +43,7 @@ from hindsight_client_api.models.entity_list_item import EntityListItem
 from hindsight_client_api.models.entity_list_response import EntityListResponse
 from hindsight_client_api.models.entity_observation_response import EntityObservationResponse
 from hindsight_client_api.models.entity_state_response import EntityStateResponse
+from hindsight_client_api.models.features_info import FeaturesInfo
 from hindsight_client_api.models.graph_data_response import GraphDataResponse
 from hindsight_client_api.models.http_validation_error import HTTPValidationError
 from hindsight_client_api.models.include_options import IncludeOptions
@@ -77,3 +78,4 @@ from hindsight_client_api.models.update_disposition_request import UpdateDisposi
 from hindsight_client_api.models.update_reflection_request import UpdateReflectionRequest
 from hindsight_client_api.models.validation_error import ValidationError
 from hindsight_client_api.models.validation_error_loc_inner import ValidationErrorLocInner
+from hindsight_client_api.models.version_response import VersionResponse

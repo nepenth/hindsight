@@ -779,6 +779,32 @@ export type FactsIncludeOptions = {
 };
 
 /**
+ * FeaturesInfo
+ *
+ * Feature flags indicating which capabilities are enabled.
+ */
+export type FeaturesInfo = {
+  /**
+   * Mental Models
+   *
+   * Whether mental models (auto-consolidation) are enabled
+   */
+  mental_models: boolean;
+  /**
+   * Mcp
+   *
+   * Whether MCP (Model Context Protocol) server is enabled
+   */
+  mcp: boolean;
+  /**
+   * Worker
+   *
+   * Whether the background worker is enabled
+   */
+  worker: boolean;
+};
+
+/**
  * GraphDataResponse
  *
  * Response model for graph data endpoint.
@@ -1732,6 +1758,24 @@ export type ValidationError = {
   type: string;
 };
 
+/**
+ * VersionResponse
+ *
+ * Response model for the version/info endpoint.
+ */
+export type VersionResponse = {
+  /**
+   * Api Version
+   *
+   * API version string
+   */
+  api_version: string;
+  /**
+   * Enabled feature flags
+   */
+  features: FeaturesInfo;
+};
+
 export type HealthEndpointHealthGetData = {
   body?: never;
   path?: never;
@@ -1745,6 +1789,22 @@ export type HealthEndpointHealthGetResponses = {
    */
   200: unknown;
 };
+
+export type GetVersionData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/version";
+};
+
+export type GetVersionResponses = {
+  /**
+   * Successful Response
+   */
+  200: VersionResponse;
+};
+
+export type GetVersionResponse = GetVersionResponses[keyof GetVersionResponses];
 
 export type MetricsEndpointMetricsGetData = {
   body?: never;

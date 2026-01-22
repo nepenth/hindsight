@@ -42,6 +42,7 @@ hindsight_client_api/models/entity_list_item.py
 hindsight_client_api/models/entity_list_response.py
 hindsight_client_api/models/entity_observation_response.py
 hindsight_client_api/models/entity_state_response.py
+hindsight_client_api/models/features_info.py
 hindsight_client_api/models/graph_data_response.py
 hindsight_client_api/models/http_validation_error.py
 hindsight_client_api/models/include_options.py
@@ -76,5 +77,6 @@ hindsight_client_api/models/update_disposition_request.py
 hindsight_client_api/models/update_reflection_request.py
 hindsight_client_api/models/validation_error.py
 hindsight_client_api/models/validation_error_loc_inner.py
+hindsight_client_api/models/version_response.py
 hindsight_client_api/rest.py
 hindsight_client_api_README.md

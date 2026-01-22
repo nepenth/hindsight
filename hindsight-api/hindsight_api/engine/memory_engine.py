@@ -519,8 +519,6 @@ class MemoryEngine(MemoryEngineInterface):
         if not bank_id:
             raise ValueError("bank_id is required for consolidation task")
 
-        logger.info(f"[CONSOLIDATION_TASK] Starting consolidation for bank_id={bank_id}")
-
         from hindsight_api.models import RequestContext
 
         from .consolidation import run_consolidation_job
@@ -532,7 +530,7 @@ class MemoryEngine(MemoryEngineInterface):
             request_context=internal_context,
         )
 
-        logger.info(f"[CONSOLIDATION_TASK] Completed consolidation for bank_id={bank_id}: {result}")
+        logger.info(f"[CONSOLIDATION] bank={bank_id} completed: {result.get('memories_processed', 0)} processed")
 
     async def _handle_create_reflection(self, task_dict: dict[str, Any]):
         """
@@ -1322,7 +1320,7 @@ class MemoryEngine(MemoryEngineInterface):
         from ..config import get_config
 
         config = get_config()
-        if config.enable_consolidation:
+        if config.enable_mental_models:
             try:
                 await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
             except Exception as e:

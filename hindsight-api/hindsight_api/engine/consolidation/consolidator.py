@@ -89,7 +89,7 @@ async def run_consolidation_job(
     max_memories_per_batch = config.consolidation_batch_size
 
     # Check if consolidation is enabled
-    if not config.enable_consolidation:
+    if not config.enable_mental_models:
         logger.debug(f"Consolidation disabled for bank {bank_id}")
         return {"status": "disabled", "bank_id": bank_id}
 
@@ -150,6 +150,10 @@ async def run_consolidation_job(
             await _update_last_consolidated_at(conn, bank_id)
             return {"status": "no_new_memories", "bank_id": bank_id, "memories_processed": 0}
 
+        logger.info(
+            f"[CONSOLIDATION] bank={bank_id} memories={len(memories)} "
+            f"batch_size={max_memories_per_batch} since={last_consolidated_at or 'beginning'}"
+        )
         perf.log(f"[1] Found {len(memories)} pending memories to consolidate")
 
         # Process each memory sequentially

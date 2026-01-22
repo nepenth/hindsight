@@ -1288,6 +1288,34 @@ class AsyncOperationSubmitResponse(BaseModel):
     status: str
 
 
+class FeaturesInfo(BaseModel):
+    """Feature flags indicating which capabilities are enabled."""
+
+    mental_models: bool = Field(description="Whether mental models (auto-consolidation) are enabled")
+    mcp: bool = Field(description="Whether MCP (Model Context Protocol) server is enabled")
+    worker: bool = Field(description="Whether the background worker is enabled")
+
+
+class VersionResponse(BaseModel):
+    """Response model for the version/info endpoint."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "api_version": "1.0.0",
+                "features": {
+                    "mental_models": False,
+                    "mcp": True,
+                    "worker": True,
+                },
+            }
+        }
+    )
+
+    api_version: str = Field(description="API version string")
+    features: FeaturesInfo = Field(description="Enabled feature flags")
+
+
 def create_app(
     memory: MemoryEngine,
     initialize_memory: bool = True,
@@ -1500,6 +1528,34 @@ def _register_routes(app: FastAPI):
         health = await app.state.memory.health_check()
         status_code = 200 if health.get("status") == "healthy" else 503
         return JSONResponse(content=health, status_code=status_code)
+
+    @app.get(
+        "/version",
+        response_model=VersionResponse,
+        summary="Get API version and feature flags",
+        description="Returns API version information and enabled feature flags. "
+        "Use this to check which capabilities are available in this deployment.",
+        tags=["Monitoring"],
+        operation_id="get_version",
+    )
+    async def version_endpoint() -> VersionResponse:
+        """
+        Get API version and enabled features.
+
+        Returns version info and feature flags that can be used by clients
+        to determine which capabilities are available.
+        """
+        from hindsight_api.config import get_config
+
+        config = get_config()
+        return VersionResponse(
+            api_version="1.0.0",
+            features=FeaturesInfo(
+                mental_models=config.enable_mental_models,
+                mcp=config.mcp_enabled,
+                worker=config.worker_enabled,
+            ),
+        )
 
     @app.get(
         "/metrics",

@@ -33,6 +33,28 @@
         }
       }
     },
+    "/version": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "Get API version and feature flags",
+        "description": "Returns API version information and enabled feature flags. Use this to check which capabilities are available in this deployment.",
+        "operationId": "get_version",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/metrics": {
       "get": {
         "tags": [
@@ -4163,6 +4185,33 @@
         "title": "FactsIncludeOptions",
         "description": "Options for including facts (based_on) in reflect results."
       },
+      "FeaturesInfo": {
+        "properties": {
+          "mental_models": {
+            "type": "boolean",
+            "title": "Mental Models",
+            "description": "Whether mental models (auto-consolidation) are enabled"
+          },
+          "mcp": {
+            "type": "boolean",
+            "title": "Mcp",
+            "description": "Whether MCP (Model Context Protocol) server is enabled"
+          },
+          "worker": {
+            "type": "boolean",
+            "title": "Worker",
+            "description": "Whether the background worker is enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mental_models",
+          "mcp",
+          "worker"
+        ],
+        "title": "FeaturesInfo",
+        "description": "Feature flags indicating which capabilities are enabled."
+      },
       "GraphDataResponse": {
         "properties": {
           "nodes": {
@@ -6029,6 +6078,34 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VersionResponse": {
+        "properties": {
+          "api_version": {
+            "type": "string",
+            "title": "Api Version",
+            "description": "API version string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/FeaturesInfo",
+            "description": "Enabled feature flags"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_version",
+          "features"
+        ],
+        "title": "VersionResponse",
+        "description": "Response model for the version/info endpoint.",
+        "example": {
+          "api_version": "1.0.0",
+          "features": {
+            "mcp": true,
+            "mental_models": false,
+            "worker": true
+          }
+        }
       }
     }
   }

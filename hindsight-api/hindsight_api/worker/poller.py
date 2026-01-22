@@ -8,6 +8,7 @@ FOR UPDATE SKIP LOCKED for safe concurrent claiming.
 import asyncio
 import json
 import logging
+import time
 import traceback
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     import asyncpg
 
 logger = logging.getLogger(__name__)
+
+# Progress logging interval in seconds
+PROGRESS_LOG_INTERVAL = 30
 
 
 def fq_table(table: str, schema: str | None = None) -> str:
@@ -66,6 +70,9 @@ class WorkerPoller:
         self._current_tasks: set[asyncio.Task] = set()
         self._in_flight_count = 0
         self._in_flight_lock = asyncio.Lock()
+        self._last_progress_log = 0.0
+        self._tasks_completed_since_log = 0
+        self._active_banks: set[str] = set()
 
     async def claim_batch(self) -> list[tuple[str, dict[str, Any]]]:
         """
@@ -281,6 +288,9 @@ class WorkerPoller:
                     except asyncio.TimeoutError:
                         pass  # Normal timeout, continue polling
 
+                # Log progress stats periodically
+                await self._log_progress_if_due()
+
             except asyncio.CancelledError:
                 logger.info(f"Worker {self._worker_id} polling loop cancelled")
                 break
@@ -316,6 +326,72 @@ class WorkerPoller:
             await asyncio.sleep(0.5)
 
         logger.warning(f"Worker {self._worker_id} shutdown timeout after {timeout}s")
+
+    async def _log_progress_if_due(self):
+        """Log progress stats every PROGRESS_LOG_INTERVAL seconds."""
+        now = time.time()
+        if now - self._last_progress_log < PROGRESS_LOG_INTERVAL:
+            return
+
+        self._last_progress_log = now
+
+        try:
+            table = fq_table("async_operations", self._schema)
+            async with self._pool.acquire() as conn:
+                # Get global stats by status
+                stats = await conn.fetch(
+                    f"""
+                    SELECT status, COUNT(*) as count
+                    FROM {table}
+                    WHERE created_at > now() - interval '24 hours'
+                    GROUP BY status
+                    """
+                )
+
+                # Get currently processing tasks grouped by type and bank
+                processing = await conn.fetch(
+                    f"""
+                    SELECT operation_type, bank_id, COUNT(*) as count
+                    FROM {table}
+                    WHERE status = 'processing'
+                    GROUP BY operation_type, bank_id
+                    """
+                )
+
+            # Build stats dict
+            status_counts = {row["status"]: row["count"] for row in stats}
+            pending = status_counts.get("pending", 0)
+            processing_count = status_counts.get("processing", 0)
+            completed = status_counts.get("completed", 0)
+            failed = status_counts.get("failed", 0)
+
+            # Build processing breakdown
+            processing_info = []
+            banks_working = set()
+            for row in processing:
+                op_type = row["operation_type"]
+                bank_id = row["bank_id"]
+                count = row["count"]
+                banks_working.add(bank_id)
+                processing_info.append(f"{op_type}:{bank_id}({count})")
+
+            # Format log
+            async with self._in_flight_lock:
+                in_flight = self._in_flight_count
+
+            processing_str = ", ".join(processing_info[:10]) if processing_info else "none"
+            if len(processing_info) > 10:
+                processing_str += f" +{len(processing_info) - 10} more"
+
+            logger.info(
+                f"[WORKER_STATS] worker={self._worker_id} in_flight={in_flight} | "
+                f"global: pending={pending} processing={processing_count} "
+                f"completed_24h={completed} failed_24h={failed} | "
+                f"active: {processing_str}"
+            )
+
+        except Exception as e:
+            logger.debug(f"Failed to log progress stats: {e}")
 
     @property
     def worker_id(self) -> str:

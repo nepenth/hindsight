@@ -93,8 +93,8 @@ ENV_RETAIN_EXTRACT_CAUSAL_LINKS = "HINDSIGHT_API_RETAIN_EXTRACT_CAUSAL_LINKS"
 ENV_RETAIN_EXTRACTION_MODE = "HINDSIGHT_API_RETAIN_EXTRACTION_MODE"
 ENV_RETAIN_OBSERVATIONS_ASYNC = "HINDSIGHT_API_RETAIN_OBSERVATIONS_ASYNC"
 
-# Consolidation settings
-ENV_ENABLE_CONSOLIDATION = "HINDSIGHT_API_ENABLE_CONSOLIDATION"
+# Mental models settings
+ENV_ENABLE_MENTAL_MODELS = "HINDSIGHT_API_ENABLE_MENTAL_MODELS"
 ENV_CONSOLIDATION_SIMILARITY_THRESHOLD = "HINDSIGHT_API_CONSOLIDATION_SIMILARITY_THRESHOLD"
 ENV_CONSOLIDATION_BATCH_SIZE = "HINDSIGHT_API_CONSOLIDATION_BATCH_SIZE"
 
@@ -176,8 +176,8 @@ DEFAULT_RETAIN_EXTRACTION_MODE = "concise"  # Extraction mode: "concise" or "ver
 RETAIN_EXTRACTION_MODES = ("concise", "verbose")  # Allowed extraction modes
 DEFAULT_RETAIN_OBSERVATIONS_ASYNC = False  # Run observation generation async (after retain completes)
 
-# Consolidation defaults
-DEFAULT_ENABLE_CONSOLIDATION = False  # Consolidation disabled by default (experimental)
+# Mental models defaults
+DEFAULT_ENABLE_MENTAL_MODELS = False  # Mental models disabled by default (experimental)
 DEFAULT_CONSOLIDATION_SIMILARITY_THRESHOLD = 0.75  # Minimum similarity to consider a learning related
 DEFAULT_CONSOLIDATION_BATCH_SIZE = 50  # Memories to load per batch (internal memory optimization)
 
@@ -334,8 +334,8 @@ class HindsightConfig:
     retain_extraction_mode: str
     retain_observations_async: bool
 
-    # Consolidation settings
-    enable_consolidation: bool
+    # Mental models settings
+    enable_mental_models: bool
     consolidation_similarity_threshold: float
     consolidation_batch_size: int
 
@@ -441,8 +441,8 @@ class HindsightConfig:
                 ENV_RETAIN_OBSERVATIONS_ASYNC, str(DEFAULT_RETAIN_OBSERVATIONS_ASYNC)
             ).lower()
             == "true",
-            # Consolidation settings
-            enable_consolidation=os.getenv(ENV_ENABLE_CONSOLIDATION, str(DEFAULT_ENABLE_CONSOLIDATION)).lower()
+            # Mental models settings
+            enable_mental_models=os.getenv(ENV_ENABLE_MENTAL_MODELS, str(DEFAULT_ENABLE_MENTAL_MODELS)).lower()
             == "true",
             consolidation_similarity_threshold=float(
                 os.getenv(ENV_CONSOLIDATION_SIMILARITY_THRESHOLD, str(DEFAULT_CONSOLIDATION_SIMILARITY_THRESHOLD))

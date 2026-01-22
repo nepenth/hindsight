@@ -19,15 +19,15 @@ from hindsight_api.engine.reflect.tools import (
 
 
 @pytest.fixture(autouse=True)
-def enable_consolidation():
-    """Enable consolidation for all tests in this module."""
+def enable_mental_models():
+    """Enable mental models for all tests in this module."""
     from hindsight_api.config import get_config
 
     config = get_config()
-    original_value = config.enable_consolidation
-    config.enable_consolidation = True
+    original_value = config.enable_mental_models
+    config.enable_mental_models = True
     yield
-    config.enable_consolidation = original_value
+    config.enable_mental_models = original_value
 
 
 class TestConsolidationIntegration:
@@ -551,7 +551,7 @@ class TestConsolidationDisabled:
     async def test_consolidation_returns_disabled_status(
         self, memory: MemoryEngine, request_context
     ):
-        """Test that consolidation returns disabled status when enable_consolidation is False."""
+        """Test that consolidation returns disabled status when enable_mental_models is False."""
         from unittest.mock import patch
 
         bank_id = f"test-consolidation-disabled-{uuid.uuid4().hex[:8]}"
@@ -559,9 +559,9 @@ class TestConsolidationDisabled:
         # Create the bank
         await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
 
-        # Disable consolidation via config
+        # Disable mental models via config
         with patch("hindsight_api.config.get_config") as mock_config:
-            mock_config.return_value.enable_consolidation = False
+            mock_config.return_value.enable_mental_models = False
 
             result = await run_consolidation_job(
                 memory_engine=memory,

@@ -66,6 +66,8 @@ import type {
   GetReflectionData,
   GetReflectionErrors,
   GetReflectionResponses,
+  GetVersionData,
+  GetVersionResponses,
   HealthEndpointHealthGetData,
   HealthEndpointHealthGetResponses,
   ListBanksData,
@@ -156,6 +158,19 @@ export const healthEndpointHealthGet = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({ url: "/health", ...options });
+
+/**
+ * Get API version and feature flags
+ *
+ * Returns API version information and enabled feature flags. Use this to check which capabilities are available in this deployment.
+ */
+export const getVersion = <ThrowOnError extends boolean = false>(
+  options?: Options<GetVersionData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetVersionResponses, unknown, ThrowOnError>({
+    url: "/version",
+    ...options,
+  });
 
 /**
  * Prometheus metrics endpoint
