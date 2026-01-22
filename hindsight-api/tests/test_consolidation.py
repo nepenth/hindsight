@@ -5,6 +5,7 @@ Note: Consolidation runs automatically after retain via SyncTaskBackend in tests
 """
 
 import uuid
+from unittest.mock import patch
 
 import pytest
 
@@ -15,6 +16,18 @@ from hindsight_api.engine.reflect.tools import (
     tool_search_mental_models,
     tool_search_reflections,
 )
+
+
+@pytest.fixture(autouse=True)
+def enable_consolidation():
+    """Enable consolidation for all tests in this module."""
+    from hindsight_api.config import get_config
+
+    config = get_config()
+    original_value = config.enable_consolidation
+    config.enable_consolidation = True
+    yield
+    config.enable_consolidation = original_value
 
 
 class TestConsolidationIntegration:

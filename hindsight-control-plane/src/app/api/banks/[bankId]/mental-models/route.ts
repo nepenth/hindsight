@@ -4,26 +4,17 @@ import { sdk, lowLevelClient } from "@/lib/hindsight-client";
 export async function GET(request: Request, { params }: { params: Promise<{ bankId: string }> }) {
   try {
     const { bankId } = await params;
-    const { searchParams } = new URL(request.url);
-    const tags = searchParams.getAll("tags");
-    const tagsMatch = searchParams.get("tags_match") as
-      | "any"
-      | "all"
-      | "any_strict"
-      | "all_strict"
-      | undefined;
 
     if (!bankId) {
       return NextResponse.json({ error: "bank_id is required" }, { status: 400 });
     }
 
+    // Note: tags filtering is not supported by the list_memories API endpoint
     const response = await sdk.listMemories({
       client: lowLevelClient,
       path: { bank_id: bankId },
       query: {
         type: "mental_model",
-        tags: tags.length > 0 ? tags : undefined,
-        tags_match: tagsMatch,
         limit: 1000,
       },
     });

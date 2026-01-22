@@ -103,9 +103,11 @@ interface BankStats {
 interface Operation {
   id: string;
   task_type: string;
+  items_count: number;
+  document_id: string | null;
   created_at: string;
   status: string;
-  error_message?: string;
+  error_message: string | null;
 }
 
 interface Directive {
@@ -874,7 +876,7 @@ export function BankProfileView() {
                           {op.status === "failed" && (
                             <span
                               className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
-                              title={op.error_message}
+                              title={op.error_message ?? undefined}
                             >
                               <AlertCircle className="w-3 h-3" />
                               failed

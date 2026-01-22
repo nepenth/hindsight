@@ -16,7 +16,7 @@ def _extract_directive_rules(directives: list[dict[str, Any]]) -> list[str]:
     Extract directive rules as a list of strings.
 
     Args:
-        directives: List of directive mental models with observations
+        directives: List of directives with name and content
 
     Returns:
         List of directive rule strings
@@ -24,25 +24,34 @@ def _extract_directive_rules(directives: list[dict[str, Any]]) -> list[str]:
     rules = []
     for directive in directives:
         directive_name = directive.get("name", "")
-        observations = directive.get("observations", [])
-        if observations:
-            for obs in observations:
-                # Support both Pydantic Observation objects and dicts
-                if hasattr(obs, "title"):
-                    title = obs.title
-                    content = obs.content
-                else:
-                    title = obs.get("title", "")
-                    content = obs.get("content", "")
-                if title and content:
-                    rules.append(f"**{title}**: {content}")
-                elif content:
-                    rules.append(content)
-        elif directive_name:
-            # Fallback to description if no observations
-            desc = directive.get("description", "")
-            if desc:
-                rules.append(f"**{directive_name}**: {desc}")
+        # New format: directives have direct content field
+        content = directive.get("content", "")
+        if content:
+            if directive_name:
+                rules.append(f"**{directive_name}**: {content}")
+            else:
+                rules.append(content)
+        else:
+            # Legacy format: check for observations
+            observations = directive.get("observations", [])
+            if observations:
+                for obs in observations:
+                    # Support both Pydantic Observation objects and dicts
+                    if hasattr(obs, "title"):
+                        title = obs.title
+                        obs_content = obs.content
+                    else:
+                        title = obs.get("title", "")
+                        obs_content = obs.get("content", "")
+                    if title and obs_content:
+                        rules.append(f"**{title}**: {obs_content}")
+                    elif obs_content:
+                        rules.append(obs_content)
+            elif directive_name:
+                # Fallback to description
+                desc = directive.get("description", "")
+                if desc:
+                    rules.append(f"**{directive_name}**: {desc}")
     return rules
 
 

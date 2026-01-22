@@ -1,7 +1,7 @@
-"""Tests for directive mental model functionality.
+"""Tests for directive functionality.
 
-Mental models now only support the 'directive' subtype - hard rules injected into prompts.
-Other types of consolidated knowledge are handled by Learnings and Pinned Reflections.
+Directives are hard rules injected into prompts.
+They are stored in the 'directives' table.
 """
 
 import uuid
@@ -69,34 +69,27 @@ class TestBankMission:
 
 
 class TestDirectives:
-    """Test directive mental model functionality."""
+    """Test directive functionality."""
 
     async def test_create_directive(self, memory: MemoryEngine, request_context):
-        """Test creating a directive mental model with user-provided observations."""
+        """Test creating a directive."""
         bank_id = f"test-directive-{uuid.uuid4().hex[:8]}"
 
         # Ensure bank exists
         await memory.get_bank_profile(bank_id, request_context=request_context)
 
-        # Create a directive with observations
-        model = await memory.create_mental_model(
+        # Create a directive
+        directive = await memory.create_directive(
             bank_id=bank_id,
             name="Competitor Policy",
-            description="Rules about mentioning competitors",
-            subtype="directive",
-            observations=[
-                {"title": "Never mention", "content": "Never mention competitor product names directly"},
-                {"title": "Redirect", "content": "If asked about competitors, redirect to our features"},
-            ],
+            content="Never mention competitor product names directly. If asked about competitors, redirect to our features.",
             request_context=request_context,
         )
 
-        assert model["name"] == "Competitor Policy"
-        assert model["description"] == "Rules about mentioning competitors"
-        assert model["subtype"] == "directive"
-        assert len(model["observations"]) == 2
-        assert model["observations"][0].title == "Never mention"
-        assert model["observations"][0].content == "Never mention competitor product names directly"
+        assert directive["name"] == "Competitor Policy"
+        assert "Never mention competitor" in directive["content"]
+        assert directive["is_active"] is True
+        assert directive["priority"] == 0
 
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
@@ -109,54 +102,53 @@ class TestDirectives:
         await memory.get_bank_profile(bank_id, request_context=request_context)
 
         # Create
-        model = await memory.create_mental_model(
+        directive = await memory.create_directive(
             bank_id=bank_id,
             name="Test Directive",
-            description="A test directive",
-            subtype="directive",
-            observations=[{"title": "Rule 1", "content": "Follow this rule"}],
+            content="Follow this rule",
             request_context=request_context,
         )
-        assert model["id"] == "directive-test-directive"
+        directive_id = directive["id"]
 
         # Read
-        retrieved = await memory.get_mental_model(
+        retrieved = await memory.get_directive(
             bank_id=bank_id,
-            model_id=model["id"],
+            directive_id=directive_id,
             request_context=request_context,
         )
         assert retrieved is not None
         assert retrieved["name"] == "Test Directive"
-        assert retrieved["subtype"] == "directive"
+        assert retrieved["content"] == "Follow this rule"
 
         # List
-        models = await memory.list_mental_models(
+        directives = await memory.list_directives(
             bank_id=bank_id,
-            request_context=request_context,
-        )
-        assert len(models) == 1
-        assert models[0]["id"] == model["id"]
-
-        # List with subtype filter
-        directives = await memory.list_mental_models(
-            bank_id=bank_id,
-            subtype="directive",
             request_context=request_context,
         )
         assert len(directives) == 1
+        assert directives[0]["id"] == directive_id
+
+        # Update
+        updated = await memory.update_directive(
+            bank_id=bank_id,
+            directive_id=directive_id,
+            content="Updated rule content",
+            request_context=request_context,
+        )
+        assert updated["content"] == "Updated rule content"
 
         # Delete
-        deleted = await memory.delete_mental_model(
+        deleted = await memory.delete_directive(
             bank_id=bank_id,
-            model_id=model["id"],
+            directive_id=directive_id,
             request_context=request_context,
         )
         assert deleted is True
 
         # Verify deletion
-        retrieved_after = await memory.get_mental_model(
+        retrieved_after = await memory.get_directive(
             bank_id=bank_id,
-            model_id=model["id"],
+            directive_id=directive_id,
             request_context=request_context,
         )
         assert retrieved_after is None
@@ -164,116 +156,82 @@ class TestDirectives:
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
 
-    async def test_directive_get_includes_observations(self, memory: MemoryEngine, request_context):
-        """Test that getting a directive returns its user-provided observations."""
-        bank_id = f"test-directive-get-{uuid.uuid4().hex[:8]}"
+    async def test_directive_priority(self, memory: MemoryEngine, request_context):
+        """Test that directive priority works correctly."""
+        bank_id = f"test-directive-priority-{uuid.uuid4().hex[:8]}"
 
         # Ensure bank exists
         await memory.get_bank_profile(bank_id, request_context=request_context)
 
-        # Create a directive with observations
-        created = await memory.create_mental_model(
+        # Create directives with different priorities
+        await memory.create_directive(
             bank_id=bank_id,
-            name="Meeting Rules",
-            description="Rules for scheduling meetings",
-            subtype="directive",
-            observations=[
-                {"title": "No mornings", "content": "Never schedule meetings before noon"},
-                {"title": "Max duration", "content": "Meetings should be 30 minutes max"},
-            ],
+            name="Low Priority",
+            content="Low priority rule",
+            priority=1,
             request_context=request_context,
         )
 
-        # Get the directive
-        retrieved = await memory.get_mental_model(
+        await memory.create_directive(
             bank_id=bank_id,
-            model_id=created["id"],
+            name="High Priority",
+            content="High priority rule",
+            priority=10,
             request_context=request_context,
         )
 
-        assert retrieved is not None
-        assert retrieved["subtype"] == "directive"
-        assert len(retrieved["observations"]) == 2
-        assert retrieved["observations"][0].title == "No mornings"
-        assert retrieved["observations"][1].title == "Max duration"
+        # List should order by priority (desc)
+        directives = await memory.list_directives(
+            bank_id=bank_id,
+            request_context=request_context,
+        )
+        assert len(directives) == 2
+        assert directives[0]["name"] == "High Priority"
+        assert directives[1]["name"] == "Low Priority"
 
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
 
-    async def test_directive_requires_observations(self, memory: MemoryEngine, request_context):
-        """Test that creating a directive without observations fails."""
-        bank_id = f"test-directive-no-obs-{uuid.uuid4().hex[:8]}"
+    async def test_directive_is_active(self, memory: MemoryEngine, request_context):
+        """Test that inactive directives are filtered by default."""
+        bank_id = f"test-directive-active-{uuid.uuid4().hex[:8]}"
 
         # Ensure bank exists
         await memory.get_bank_profile(bank_id, request_context=request_context)
 
-        # Try to create directive without observations
-        with pytest.raises(ValueError) as exc_info:
-            await memory.create_mental_model(
-                bank_id=bank_id,
-                name="Bad Directive",
-                description="A directive without observations",
-                subtype="directive",
-                # No observations provided
-                request_context=request_context,
-            )
-
-        assert "observations" in str(exc_info.value).lower()
-
-        # Cleanup
-        await memory.delete_bank(bank_id, request_context=request_context)
-
-    async def test_create_duplicate_directive_fails(self, memory: MemoryEngine, request_context):
-        """Test that creating a duplicate directive fails."""
-        bank_id = f"test-directive-dup-{uuid.uuid4().hex[:8]}"
-
-        # Ensure bank exists
-        await memory.get_bank_profile(bank_id, request_context=request_context)
-
-        # Create first directive
-        await memory.create_mental_model(
+        # Create active and inactive directives
+        await memory.create_directive(
             bank_id=bank_id,
-            name="Test Rule",
-            description="First directive",
-            subtype="directive",
-            observations=[{"title": "Rule", "content": "Follow this"}],
+            name="Active Rule",
+            content="This is active",
+            is_active=True,
             request_context=request_context,
         )
 
-        # Try to create duplicate
-        with pytest.raises(ValueError) as exc_info:
-            await memory.create_mental_model(
-                bank_id=bank_id,
-                name="Test Rule",
-                description="Second directive",
-                subtype="directive",
-                observations=[{"title": "Rule 2", "content": "Follow this too"}],
-                request_context=request_context,
-            )
+        await memory.create_directive(
+            bank_id=bank_id,
+            name="Inactive Rule",
+            content="This is inactive",
+            is_active=False,
+            request_context=request_context,
+        )
 
-        assert "already exists" in str(exc_info.value).lower()
+        # List active only (default)
+        active_directives = await memory.list_directives(
+            bank_id=bank_id,
+            active_only=True,
+            request_context=request_context,
+        )
+        assert len(active_directives) == 1
+        assert active_directives[0]["name"] == "Active Rule"
 
-        # Cleanup
-        await memory.delete_bank(bank_id, request_context=request_context)
-
-    async def test_only_directive_subtype_supported(self, memory: MemoryEngine, request_context):
-        """Test that only directive subtype is supported."""
-        bank_id = f"test-unsupported-{uuid.uuid4().hex[:8]}"
-
-        # Ensure bank exists
-        await memory.get_bank_profile(bank_id, request_context=request_context)
-
-        # Try to create with pinned subtype (no longer supported)
-        with pytest.raises(ValueError) as exc_info:
-            await memory.create_mental_model(
-                bank_id=bank_id,
-                name="Pinned Model",
-                description="Should fail",
-                subtype="pinned",
-                request_context=request_context,
-            )
-
-        assert "unsupported" in str(exc_info.value).lower() or "only" in str(exc_info.value).lower()
+        # List all
+        all_directives = await memory.list_directives(
+            bank_id=bank_id,
+            active_only=False,
+            request_context=request_context,
+        )
+        assert len(all_directives) == 2
 
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)
@@ -290,22 +248,20 @@ class TestDirectiveTags:
         await memory.get_bank_profile(bank_id, request_context=request_context)
 
         # Create a directive with tags
-        model = await memory.create_mental_model(
+        directive = await memory.create_directive(
             bank_id=bank_id,
             name="Tagged Rule",
-            description="A rule with tags",
-            subtype="directive",
-            observations=[{"title": "Rule", "content": "Follow this rule"}],
+            content="Follow this rule",
             tags=["project-a", "team-x"],
             request_context=request_context,
         )
 
-        assert model["tags"] == ["project-a", "team-x"]
+        assert directive["tags"] == ["project-a", "team-x"]
 
         # Retrieve and verify tags
-        retrieved = await memory.get_mental_model(
+        retrieved = await memory.get_directive(
             bank_id=bank_id,
-            model_id=model["id"],
+            directive_id=directive["id"],
             request_context=request_context,
         )
         assert retrieved["tags"] == ["project-a", "team-x"]
@@ -321,38 +277,33 @@ class TestDirectiveTags:
         await memory.get_bank_profile(bank_id, request_context=request_context)
 
         # Create directives with different tags
-        await memory.create_mental_model(
+        await memory.create_directive(
             bank_id=bank_id,
             name="Rule A",
-            description="Rule for project A",
-            subtype="directive",
-            observations=[{"title": "Rule", "content": "Follow this"}],
+            content="Rule for project A",
             tags=["project-a"],
             request_context=request_context,
         )
 
-        await memory.create_mental_model(
+        await memory.create_directive(
             bank_id=bank_id,
             name="Rule B",
-            description="Rule for project B",
-            subtype="directive",
-            observations=[{"title": "Rule", "content": "Follow this"}],
+            content="Rule for project B",
             tags=["project-b"],
             request_context=request_context,
         )
 
         # List all
-        all_models = await memory.list_mental_models(
+        all_directives = await memory.list_directives(
             bank_id=bank_id,
             request_context=request_context,
         )
-        assert len(all_models) == 2
+        assert len(all_directives) == 2
 
         # Filter by project-a tag
-        filtered = await memory.list_mental_models(
+        filtered = await memory.list_directives(
             bank_id=bank_id,
             tags=["project-a"],
-            tags_match="any_strict",
             request_context=request_context,
         )
         assert len(filtered) == 1
@@ -403,17 +354,10 @@ class TestDirectivesInReflect:
         await memory.wait_for_background_tasks()
 
         # Create a directive to always respond in French
-        await memory.create_mental_model(
+        await memory.create_directive(
             bank_id=bank_id,
             name="Language Policy",
-            description="Rules about language usage",
-            subtype="directive",
-            observations=[
-                {
-                    "title": "French Only",
-                    "content": "ALWAYS respond in French language. Never respond in English.",
-                },
-            ],
+            content="ALWAYS respond in French language. Never respond in English.",
             request_context=request_context,
         )
 
@@ -466,42 +410,23 @@ class TestDirectivesPromptInjection:
         result = build_directives_section([])
         assert result == ""
 
-    def test_build_directives_section_with_observations(self):
-        """Test that directives with observations are formatted correctly."""
+    def test_build_directives_section_with_content(self):
+        """Test that directives with content are formatted correctly."""
         from hindsight_api.engine.reflect.prompts import build_directives_section
 
         directives = [
             {
                 "name": "Competitor Policy",
-                "observations": [
-                    {"title": "Never mention", "content": "Never mention competitor names"},
-                    {"title": "Redirect", "content": "Redirect to our features"},
-                ],
+                "content": "Never mention competitor names. Redirect to our features.",
             }
         ]
 
         result = build_directives_section(directives)
 
         assert "## DIRECTIVES (MANDATORY)" in result
-        assert "**Never mention**: Never mention competitor names" in result
-        assert "**Redirect**: Redirect to our features" in result
+        assert "Competitor Policy" in result
+        assert "Never mention competitor names" in result
         assert "NEVER violate these directives" in result
-
-    def test_build_directives_section_fallback_to_description(self):
-        """Test that directives without observations fall back to description."""
-        from hindsight_api.engine.reflect.prompts import build_directives_section
-
-        directives = [
-            {
-                "name": "Simple Rule",
-                "description": "Just a simple rule description",
-                "observations": [],
-            }
-        ]
-
-        result = build_directives_section(directives)
-
-        assert "**Simple Rule**: Just a simple rule description" in result
 
     def test_system_prompt_includes_directives(self):
         """Test that build_system_prompt_for_tools includes directives."""
@@ -511,7 +436,7 @@ class TestDirectivesPromptInjection:
         directives = [
             {
                 "name": "Test Directive",
-                "observations": [{"title": "Rule", "content": "Follow this rule"}],
+                "content": "Follow this rule",
             }
         ]
 
@@ -521,7 +446,7 @@ class TestDirectivesPromptInjection:
         )
 
         assert "## DIRECTIVES (MANDATORY)" in prompt
-        assert "**Rule**: Follow this rule" in prompt
+        assert "Follow this rule" in prompt
         # Directives should appear before CRITICAL RULES
         directives_pos = prompt.find("## DIRECTIVES")
         critical_rules_pos = prompt.find("## CRITICAL RULES")

@@ -4159,10 +4159,10 @@ class MemoryEngine(MemoryEngineInterface):
         fact_ids: list[str],
     ) -> int:
         """
-        Remove fact IDs from mental model observations when memories are deleted.
+        Remove fact IDs from mental model source_memory_ids when memories are deleted.
 
-        Uses JSONB path operations to find and update mental models that reference
-        the deleted fact IDs in their observations.
+        Mental models are now stored in memory_units with fact_type='mental_model'
+        and have a source_memory_ids column (UUID[]) tracking their source memories.
 
         Args:
             conn: Database connection
@@ -4175,45 +4175,29 @@ class MemoryEngine(MemoryEngineInterface):
         if not fact_ids:
             return 0
 
-        # Convert fact_ids to a jsonb array for efficient comparison
-        import json
+        # Convert string IDs to UUIDs for the array comparison
+        import uuid as uuid_module
 
-        fact_ids_json = json.dumps(fact_ids)
+        fact_uuids = [uuid_module.UUID(fid) for fid in fact_ids]
 
-        # Update mental models by removing the deleted fact IDs from all observations
-        # This uses jsonb_set to update each observation's fact_ids array
+        # Update mental models (memory_units with fact_type='mental_model')
+        # by removing the deleted fact IDs from source_memory_ids
+        # Use array subtraction: source_memory_ids - deleted_ids
         result = await conn.execute(
             f"""
-            UPDATE {fq_table("mental_models")}
-            SET observations = jsonb_set(
-                observations,
-                '{{observations}}',
-                (
-                    SELECT COALESCE(jsonb_agg(
-                        jsonb_set(
-                            observation,
-                            '{{fact_ids}}',
-                            (
-                                SELECT COALESCE(jsonb_agg(fid), '[]'::jsonb)
-                                FROM jsonb_array_elements_text(observation->'fact_ids') AS fid
-                                WHERE NOT (fid::text = ANY($2::text[]))
-                            )
-                        )
-                    ), '[]'::jsonb)
-                    FROM jsonb_array_elements(observations->'observations') AS observation
-                )
+            UPDATE {fq_table("memory_units")}
+            SET source_memory_ids = (
+                SELECT COALESCE(array_agg(elem), ARRAY[]::uuid[])
+                FROM unnest(source_memory_ids) AS elem
+                WHERE elem != ALL($2::uuid[])
             ),
-            last_updated = NOW()
+                updated_at = NOW()
             WHERE bank_id = $1
-            AND EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements(observations->'observations') AS observation,
-                     jsonb_array_elements_text(observation->'fact_ids') AS fid
-                WHERE fid::text = ANY($2::text[])
-            )
+            AND fact_type = 'mental_model'
+            AND source_memory_ids && $2::uuid[]
             """,
             bank_id,
-            fact_ids,
+            fact_uuids,
         )
 
         # Parse the result to get number of updated rows
