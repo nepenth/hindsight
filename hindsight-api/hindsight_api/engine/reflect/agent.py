@@ -51,6 +51,32 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_ITERATIONS = 10
 
 
+def _normalize_tool_name(name: str) -> str:
+    """Normalize tool name from various LLM output formats.
+
+    Some LLMs output tool names in non-standard formats:
+    - 'functions.done' (OpenAI-style prefix)
+    - 'call=functions.done' (some models)
+    - 'call=done' (some models)
+
+    Returns the normalized tool name (e.g., 'done', 'recall', etc.)
+    """
+    # Handle 'call=functions.name' or 'call=name' format
+    if name.startswith("call="):
+        name = name[len("call=") :]
+
+    # Handle 'functions.name' format
+    if name.startswith("functions."):
+        name = name[len("functions.") :]
+
+    return name
+
+
+def _is_done_tool(name: str) -> bool:
+    """Check if the tool name represents the 'done' tool."""
+    return _normalize_tool_name(name) == "done"
+
+
 async def _generate_structured_output(
     answer: str,
     response_schema: dict,
@@ -391,8 +417,8 @@ async def run_reflect_agent(
                 directives_applied=directives_applied,
             )
 
-        # Check for done tool call (handle both 'done' and 'functions.done')
-        done_call = next((tc for tc in result.tool_calls if tc.name == "done" or tc.name == "functions.done"), None)
+        # Check for done tool call (handle various LLM output formats)
+        done_call = next((tc for tc in result.tool_calls if _is_done_tool(tc.name)), None)
         if done_call:
             # Guardrail: Require evidence before done
             has_gathered_evidence = (
@@ -436,8 +462,8 @@ async def run_reflect_agent(
                 response_schema=response_schema,
             )
 
-        # Execute other tools in parallel (exclude done and functions.done)
-        other_tools = [tc for tc in result.tool_calls if tc.name not in ("done", "functions.done")]
+        # Execute other tools in parallel (exclude done tool in all its format variants)
+        other_tools = [tc for tc in result.tool_calls if not _is_done_tool(tc.name)]
         if other_tools:
             # Add assistant message with tool calls
             messages.append(
@@ -464,29 +490,42 @@ async def run_reflect_agent(
             # Process results and add to messages
             for tc, result_data in zip(other_tools, tool_results):
                 if isinstance(result_data, Exception):
-                    # Tool execution failed - log and raise to fail the request
-                    logger.error(f"[REFLECT {reflect_id}] Tool {tc.name} failed with exception: {result_data}")
-                    raise RuntimeError(f"Reflect tool '{tc.name}' failed: {result_data}")
+                    # Tool execution failed - send error back to LLM so it can try again
+                    logger.warning(f"[REFLECT {reflect_id}] Tool {tc.name} failed with exception: {result_data}")
+                    output = {"error": f"Tool execution failed: {result_data}"}
+                    duration_ms = 0
+                else:
+                    output, duration_ms = result_data
 
-                output, duration_ms = result_data
+                # Normalize tool name for consistent tracking
+                normalized_tool_name = _normalize_tool_name(tc.name)
 
-                # Check if tool returned an error response
+                # Check if tool returned an error response - log but continue (LLM will see the error)
                 if isinstance(output, dict) and "error" in output:
-                    logger.error(f"[REFLECT {reflect_id}] Tool {tc.name} returned error: {output['error']}")
-                    raise RuntimeError(f"Reflect tool '{tc.name}' error: {output['error']}")
+                    logger.warning(
+                        f"[REFLECT {reflect_id}] Tool {normalized_tool_name} returned error: {output['error']}"
+                    )
 
-                # Track available IDs from tool results
-                if tc.name == "search_reflections" and isinstance(output, dict) and "reflections" in output:
+                # Track available IDs from tool results (only for successful responses)
+                if (
+                    normalized_tool_name == "search_reflections"
+                    and isinstance(output, dict)
+                    and "reflections" in output
+                ):
                     for reflection in output["reflections"]:
                         if "id" in reflection:
                             available_reflection_ids.add(reflection["id"])
 
-                if tc.name == "search_mental_models" and isinstance(output, dict) and "mental_models" in output:
+                if (
+                    normalized_tool_name == "search_mental_models"
+                    and isinstance(output, dict)
+                    and "mental_models" in output
+                ):
                     for mm in output["mental_models"]:
                         if "id" in mm:
                             available_mental_model_ids.add(mm["id"])
 
-                if tc.name == "recall" and isinstance(output, dict) and "memories" in output:
+                if normalized_tool_name == "recall" and isinstance(output, dict) and "memories" in output:
                     for memory in output["memories"]:
                         if "id" in memory:
                             available_memory_ids.add(memory["id"])
@@ -629,9 +668,8 @@ async def _execute_tool(
     expand_fn: Callable[[list[str], str], Awaitable[dict[str, Any]]],
 ) -> dict[str, Any]:
     """Execute a single tool by name."""
-    # Normalize tool name - some LLMs return 'functions.done' instead of 'done'
-    if tool_name.startswith("functions."):
-        tool_name = tool_name[len("functions.") :]
+    # Normalize tool name for various LLM output formats
+    tool_name = _normalize_tool_name(tool_name)
 
     if tool_name == "search_reflections":
         query = args.get("query")
