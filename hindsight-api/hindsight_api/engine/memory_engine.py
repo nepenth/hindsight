@@ -222,6 +222,10 @@ class MemoryEngine(MemoryEngineInterface):
         reflect_llm_api_key: str | None = None,
         reflect_llm_model: str | None = None,
         reflect_llm_base_url: str | None = None,
+        consolidation_llm_provider: str | None = None,
+        consolidation_llm_api_key: str | None = None,
+        consolidation_llm_model: str | None = None,
+        consolidation_llm_base_url: str | None = None,
         embeddings: Embeddings | None = None,
         cross_encoder: CrossEncoderModel | None = None,
         query_analyzer: QueryAnalyzer | None = None,
@@ -257,6 +261,10 @@ class MemoryEngine(MemoryEngineInterface):
             reflect_llm_api_key: API key for reflect LLM. Falls back to memory_llm_api_key.
             reflect_llm_model: Model for reflect operations. Falls back to memory_llm_model.
             reflect_llm_base_url: Base URL for reflect LLM. Falls back to memory_llm_base_url.
+            consolidation_llm_provider: LLM provider for consolidation operations. Falls back to memory_llm_provider.
+            consolidation_llm_api_key: API key for consolidation LLM. Falls back to memory_llm_api_key.
+            consolidation_llm_model: Model for consolidation operations. Falls back to memory_llm_model.
+            consolidation_llm_base_url: Base URL for consolidation LLM. Falls back to memory_llm_base_url.
             embeddings: Embeddings implementation. If not provided, created from env vars.
             cross_encoder: Cross-encoder model. If not provided, created from env vars.
             query_analyzer: Query analyzer implementation. If not provided, uses DateparserQueryAnalyzer.
@@ -396,6 +404,27 @@ class MemoryEngine(MemoryEngineInterface):
             api_key=reflect_api_key,
             base_url=reflect_base_url,
             model=reflect_model,
+        )
+
+        # Consolidation LLM config - for mental model consolidation (can use efficient models)
+        consolidation_provider = consolidation_llm_provider or config.consolidation_llm_provider or memory_llm_provider
+        consolidation_api_key = consolidation_llm_api_key or config.consolidation_llm_api_key or memory_llm_api_key
+        consolidation_model = consolidation_llm_model or config.consolidation_llm_model or memory_llm_model
+        consolidation_base_url = consolidation_llm_base_url or config.consolidation_llm_base_url or memory_llm_base_url
+        # Apply provider-specific base URL defaults for consolidation
+        if consolidation_base_url is None:
+            if consolidation_provider.lower() == "groq":
+                consolidation_base_url = "https://api.groq.com/openai/v1"
+            elif consolidation_provider.lower() == "ollama":
+                consolidation_base_url = "http://localhost:11434/v1"
+            else:
+                consolidation_base_url = ""
+
+        self._consolidation_llm_config = LLMConfig(
+            provider=consolidation_provider,
+            api_key=consolidation_api_key,
+            base_url=consolidation_base_url,
+            model=consolidation_model,
         )
 
         # Initialize cross-encoder reranker (cached for performance)
@@ -792,6 +821,23 @@ class MemoryEngine(MemoryEngineInterface):
                 )
                 if reflect_is_different:
                     await self._reflect_llm_config.verify_connection()
+                # Verify consolidation config if different from all others
+                consolidation_is_different = (
+                    (
+                        self._consolidation_llm_config.provider != self._llm_config.provider
+                        or self._consolidation_llm_config.model != self._llm_config.model
+                    )
+                    and (
+                        self._consolidation_llm_config.provider != self._retain_llm_config.provider
+                        or self._consolidation_llm_config.model != self._retain_llm_config.model
+                    )
+                    and (
+                        self._consolidation_llm_config.provider != self._reflect_llm_config.provider
+                        or self._consolidation_llm_config.model != self._reflect_llm_config.model
+                    )
+                )
+                if consolidation_is_different:
+                    await self._consolidation_llm_config.verify_connection()
 
         # Build list of initialization tasks
         init_tasks = [

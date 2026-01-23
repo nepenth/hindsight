@@ -707,7 +707,7 @@ Focus on DURABLE knowledge that serves this mission, not ephemeral state.
     ]
 
     try:
-        result = await memory_engine._llm_config.call(
+        result = await memory_engine._consolidation_llm_config.call(
             messages=messages,
             skip_validation=True,  # Raw JSON response
             scope="consolidation",
