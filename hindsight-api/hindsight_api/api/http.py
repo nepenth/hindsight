@@ -3209,9 +3209,9 @@ def _register_routes(app: FastAPI):
         """Trigger consolidation for a bank."""
         try:
             result = await app.state.memory.run_consolidation(bank_id, request_context=request_context)
-            processed = result.get("processed", 0)
-            created = result.get("created", 0)
-            updated = result.get("updated", 0)
+            processed = result.get("memories_processed", 0)
+            created = result.get("mental_models_created", 0)
+            updated = result.get("mental_models_updated", 0)
             return ConsolidationResponse(
                 status="completed",
                 processed=processed,

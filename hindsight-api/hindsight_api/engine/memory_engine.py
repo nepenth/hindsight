@@ -2641,9 +2641,9 @@ class MemoryEngine(MemoryEngineInterface):
         )
 
         return {
-            "processed": result.get("processed", 0),
-            "created": result.get("created", 0),
-            "updated": result.get("updated", 0),
+            "memories_processed": result.get("memories_processed", 0),
+            "mental_models_created": result.get("mental_models_created", 0),
+            "mental_models_updated": result.get("mental_models_updated", 0),
             "skipped": result.get("skipped", 0),
         }
 
