@@ -22,7 +22,7 @@ _retain_errors_lock = threading.Lock()
 logger = logging.getLogger(__name__)
 
 
-def _get_client(api_url: str):
+def _get_client(api_url: str, api_key: Optional[str] = None):
     """Create a fresh Hindsight client for the given URL.
 
     Note: We create a fresh client each time because the hindsight_client
@@ -30,7 +30,7 @@ def _get_client(api_url: str):
     calls causes asyncio context issues.
     """
     from hindsight_client import Hindsight
-    return Hindsight(base_url=api_url, timeout=30.0)
+    return Hindsight(base_url=api_url, api_key=api_key, timeout=30.0)
 
 
 def _close_client():
@@ -145,7 +145,7 @@ def recall(
     client = None
     try:
         # Create fresh client for this operation
-        client = _get_client(api_url)
+        client = _get_client(api_url, config.api_key if config else None)
 
         # Call recall API
         results = client.recall(
@@ -308,7 +308,7 @@ def reflect(
     client = None
     try:
         # Create fresh client for this operation
-        client = _get_client(api_url)
+        client = _get_client(api_url, config.api_key if config else None)
 
         # Call reflect API
         reflect_kwargs = {
@@ -410,12 +410,13 @@ def _retain_sync(
     target_document_id: Optional[str],
     metadata: Optional[Dict[str, str]],
     verbose: bool,
+    api_key: Optional[str] = None,
 ) -> RetainResult:
     """Internal synchronous retain implementation."""
     client = None
     try:
         # Create fresh client for this operation
-        client = _get_client(api_url)
+        client = _get_client(api_url, api_key)
 
         # Call retain API
         result = client.retain(
@@ -467,6 +468,7 @@ def _retain_background(
     target_document_id: Optional[str],
     metadata: Optional[Dict[str, str]],
     verbose: bool,
+    api_key: Optional[str] = None,
 ) -> None:
     """Background thread worker for async retain."""
     global _retain_errors
@@ -479,6 +481,7 @@ def _retain_background(
             target_document_id=target_document_id,
             metadata=metadata,
             verbose=verbose,
+            api_key=api_key,
         )
     except Exception as e:
         with _retain_errors_lock:
@@ -571,6 +574,8 @@ def retain(
             "Hindsight not configured. Call configure() or provide bank_id and hindsight_api_url."
         )
 
+    api_key = config.api_key if config else None
+
     if sync:
         # Synchronous mode - block and return result
         return _retain_sync(
@@ -581,6 +586,7 @@ def retain(
             target_document_id=target_document_id,
             metadata=metadata,
             verbose=verbose,
+            api_key=api_key,
         )
     else:
         # Async mode - run in background thread
@@ -594,6 +600,7 @@ def retain(
                 target_document_id,
                 metadata,
                 verbose,
+                api_key,
             ),
             daemon=True,
         )
@@ -653,6 +660,7 @@ class HindsightOpenAI:
         client: Any,
         bank_id: str,
         hindsight_api_url: str = "http://localhost:8888",
+        api_key: Optional[str] = None,
         session_id: Optional[str] = None,
         store_conversations: bool = True,
         inject_memories: bool = True,
@@ -667,6 +675,7 @@ class HindsightOpenAI:
             bank_id: Memory bank ID for memory operations. For multi-user support,
                 use different bank_ids per user (e.g., f"user-{user_id}")
             hindsight_api_url: URL of the Hindsight API server
+            api_key: Optional API key for Hindsight authentication
             session_id: Session identifier for conversation grouping
             store_conversations: Whether to store conversations
             inject_memories: Whether to inject relevant memories
@@ -677,6 +686,7 @@ class HindsightOpenAI:
         self._client = client
         self._bank_id = bank_id
         self._api_url = hindsight_api_url
+        self._api_key = api_key
         self._session_id = session_id
         self._store_conversations = store_conversations
         self._inject_memories = inject_memories
@@ -694,6 +704,7 @@ class HindsightOpenAI:
             from hindsight_client import Hindsight
             self._hindsight_client = Hindsight(
                 base_url=self._api_url,
+                api_key=self._api_key,
                 timeout=30.0,
             )
         return self._hindsight_client
@@ -857,6 +868,7 @@ class HindsightAnthropic:
         client: Any,
         bank_id: str,
         hindsight_api_url: str = "http://localhost:8888",
+        api_key: Optional[str] = None,
         session_id: Optional[str] = None,
         store_conversations: bool = True,
         inject_memories: bool = True,
@@ -871,6 +883,7 @@ class HindsightAnthropic:
             bank_id: Memory bank ID for memory operations. For multi-user support,
                 use different bank_ids per user (e.g., f"user-{user_id}")
             hindsight_api_url: URL of the Hindsight API server
+            api_key: Optional API key for Hindsight authentication
             session_id: Session identifier for conversation grouping
             store_conversations: Whether to store conversations
             inject_memories: Whether to inject relevant memories
@@ -881,6 +894,7 @@ class HindsightAnthropic:
         self._client = client
         self._bank_id = bank_id
         self._api_url = hindsight_api_url
+        self._api_key = api_key
         self._session_id = session_id
         self._store_conversations = store_conversations
         self._inject_memories = inject_memories
@@ -898,6 +912,7 @@ class HindsightAnthropic:
             from hindsight_client import Hindsight
             self._hindsight_client = Hindsight(
                 base_url=self._api_url,
+                api_key=self._api_key,
                 timeout=30.0,
             )
         return self._hindsight_client
@@ -1033,6 +1048,7 @@ def wrap_openai(
     client: Any,
     bank_id: str,
     hindsight_api_url: str = "http://localhost:8888",
+    api_key: Optional[str] = None,
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
@@ -1050,6 +1066,7 @@ def wrap_openai(
         bank_id: Memory bank ID for memory operations. For multi-user support,
             use different bank_ids per user (e.g., f"user-{user_id}")
         hindsight_api_url: URL of the Hindsight API server
+        api_key: Optional API key for Hindsight authentication
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations
         inject_memories: Whether to inject relevant memories
@@ -1079,6 +1096,7 @@ def wrap_openai(
         client=client,
         bank_id=bank_id,
         hindsight_api_url=hindsight_api_url,
+        api_key=api_key,
         session_id=session_id,
         store_conversations=store_conversations,
         inject_memories=inject_memories,
@@ -1092,6 +1110,7 @@ def wrap_anthropic(
     client: Any,
     bank_id: str,
     hindsight_api_url: str = "http://localhost:8888",
+    api_key: Optional[str] = None,
     session_id: Optional[str] = None,
     store_conversations: bool = True,
     inject_memories: bool = True,
@@ -1109,6 +1128,7 @@ def wrap_anthropic(
         bank_id: Memory bank ID for memory operations. For multi-user support,
             use different bank_ids per user (e.g., f"user-{user_id}")
         hindsight_api_url: URL of the Hindsight API server
+        api_key: Optional API key for Hindsight authentication
         session_id: Session identifier for conversation grouping
         store_conversations: Whether to store conversations
         inject_memories: Whether to inject relevant memories
@@ -1139,6 +1159,7 @@ def wrap_anthropic(
         client=client,
         bank_id=bank_id,
         hindsight_api_url=hindsight_api_url,
+        api_key=api_key,
         session_id=session_id,
         store_conversations=store_conversations,
         inject_memories=inject_memories,
