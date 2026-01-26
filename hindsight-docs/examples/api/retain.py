@@ -102,13 +102,16 @@ client.retain_batch(
 
 # [docs:retain-list-tags]
 # List all tags in a bank
-tags = client.list_tags(bank_id="my-bank")
-for tag in tags.items:
-    print(f"{tag.tag}: {tag.count} memories")
+response = requests.get(f"{HINDSIGHT_URL}/v1/default/banks/my-bank/tags")
+tags = response.json()
+for tag in tags["items"]:
+    print(f"{tag['tag']}: {tag['count']} memories")
 
 # Search with wildcards (* matches any characters)
-user_tags = client.list_tags(bank_id="my-bank", q="user:*")
-admin_tags = client.list_tags(bank_id="my-bank", q="*-admin")
+response = requests.get(f"{HINDSIGHT_URL}/v1/default/banks/my-bank/tags", params={"q": "user:*"})
+user_tags = response.json()
+response = requests.get(f"{HINDSIGHT_URL}/v1/default/banks/my-bank/tags", params={"q": "*-admin"})
+admin_tags = response.json()
 # [/docs:retain-list-tags]
 
 

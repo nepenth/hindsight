@@ -81,6 +81,11 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'developer/api/reflections',
+          label: 'Reflections',
+        },
+        {
+          type: 'doc',
           id: 'developer/api/memory-banks',
           label: 'Memory Banks',
         },
