@@ -13,9 +13,52 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from hindsight_api.engine.reflect.agent import (
     _normalize_tool_name,
     _is_done_tool,
+    _clean_answer_text,
     run_reflect_agent,
 )
 from hindsight_api.engine.response_models import LLMToolCall, LLMToolCallResult, TokenUsage
+
+
+class TestCleanAnswerText:
+    """Test cleanup of answer text that includes done() tool call syntax."""
+
+    def test_clean_text_with_done_call(self):
+        """Text ending with done() call should have it stripped."""
+        text = '''The team's OKRs focus on performance.done({"answer":"The team's OKRs","memory_ids":[]})'''
+        cleaned = _clean_answer_text(text)
+        assert cleaned == "The team's OKRs focus on performance."
+        assert "done(" not in cleaned
+
+    def test_clean_text_with_done_call_and_whitespace(self):
+        """done() call with whitespace should be stripped."""
+        text = '''Answer text here. done( {"answer": "short", "memory_ids": []} )'''
+        cleaned = _clean_answer_text(text)
+        assert cleaned == "Answer text here."
+
+    def test_clean_text_without_done_call(self):
+        """Text without done() call should be unchanged."""
+        text = "This is a normal answer without any tool calls."
+        cleaned = _clean_answer_text(text)
+        assert cleaned == text
+
+    def test_clean_text_with_done_word_in_content(self):
+        """The word 'done' in regular text should not be stripped."""
+        text = "The task is done and completed successfully."
+        cleaned = _clean_answer_text(text)
+        assert cleaned == text
+
+    def test_clean_empty_text(self):
+        """Empty text should return empty."""
+        assert _clean_answer_text("") == ""
+
+    def test_clean_text_multiline_done(self):
+        """done() call spanning multiple lines should be stripped."""
+        text = '''Summary of findings.done({
+            "answer": "Summary",
+            "memory_ids": ["id1", "id2"]
+        })'''
+        cleaned = _clean_answer_text(text)
+        assert cleaned == "Summary of findings."
 
 
 class TestToolNameNormalization:

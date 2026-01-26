@@ -613,7 +613,10 @@ class MemoryEngine(MemoryEngineInterface):
                 ]
                 for fact_type, facts in reflect_result.based_on.items()
             },
-            "mental_models": [],  # Mental models are included in based_on["mental-models"]
+            # Extract mental models from based_on["mental-models"] for easy UI access
+            "mental_models": [
+                {"id": str(fact.id), "text": fact.text} for fact in reflect_result.based_on.get("mental-models", [])
+            ],
         }
 
         # Update the reflection with the generated content and reflect_response
@@ -626,6 +629,79 @@ class MemoryEngine(MemoryEngineInterface):
         )
 
         logger.info(f"[CREATE_REFLECTION_TASK] Completed for bank_id={bank_id}, reflection_id={reflection_id}")
+
+    async def _handle_refresh_reflection(self, task_dict: dict[str, Any]):
+        """
+        Handler for refresh_reflection tasks.
+
+        Re-runs the source query through reflect and updates the reflection content.
+
+        Args:
+            task_dict: Dict with 'bank_id', 'reflection_id', 'operation_id'
+
+        Raises:
+            ValueError: If required fields are missing
+            Exception: Any exception from reflect/update (propagates to execute_task for retry)
+        """
+        bank_id = task_dict.get("bank_id")
+        reflection_id = task_dict.get("reflection_id")
+
+        if not bank_id or not reflection_id:
+            raise ValueError("bank_id and reflection_id are required for refresh_reflection task")
+
+        logger.info(f"[REFRESH_REFLECTION_TASK] Starting for bank_id={bank_id}, reflection_id={reflection_id}")
+
+        from hindsight_api.models import RequestContext
+
+        internal_context = RequestContext()
+
+        # Get the current reflection to get source_query
+        reflection = await self.get_reflection(bank_id, reflection_id, request_context=internal_context)
+        if not reflection:
+            raise ValueError(f"Reflection {reflection_id} not found in bank {bank_id}")
+
+        source_query = reflection["source_query"]
+
+        # Run reflect to generate new content, excluding the reflection being refreshed
+        reflect_result = await self.reflect_async(
+            bank_id=bank_id,
+            query=source_query,
+            request_context=internal_context,
+            exclude_reflection_ids=[reflection_id],
+        )
+
+        generated_content = reflect_result.text or "No content generated"
+
+        # Build reflect_response payload to store
+        reflect_response = {
+            "text": reflect_result.text,
+            "based_on": {
+                fact_type: [
+                    {
+                        "id": str(fact.id),
+                        "text": fact.text,
+                        "type": fact_type,
+                    }
+                    for fact in facts
+                ]
+                for fact_type, facts in reflect_result.based_on.items()
+            },
+            # Extract mental models from based_on["mental-models"] for easy UI access
+            "mental_models": [
+                {"id": str(fact.id), "text": fact.text} for fact in reflect_result.based_on.get("mental-models", [])
+            ],
+        }
+
+        # Update the reflection with the generated content and reflect_response
+        await self.update_reflection(
+            bank_id=bank_id,
+            reflection_id=reflection_id,
+            content=generated_content,
+            reflect_response=reflect_response,
+            request_context=internal_context,
+        )
+
+        logger.info(f"[REFRESH_REFLECTION_TASK] Completed for bank_id={bank_id}, reflection_id={reflection_id}")
 
     async def execute_task(self, task_dict: dict[str, Any]):
         """
@@ -667,6 +743,8 @@ class MemoryEngine(MemoryEngineInterface):
                 await self._handle_consolidation(task_dict)
             elif task_type == "create_reflection":
                 await self._handle_create_reflection(task_dict)
+            elif task_type == "refresh_reflection":
+                await self._handle_refresh_reflection(task_dict)
             else:
                 logger.error(f"Unknown task type: {task_type}")
                 # Don't retry unknown task types
@@ -3041,11 +3119,11 @@ class MemoryEngine(MemoryEngineInterface):
         await self._authenticate_tenant(request_context)
         pool = await self._get_pool()
         async with acquire_with_retry(pool) as conn:
-            # Get the memory unit
+            # Get the memory unit (include source_memory_ids for mental models)
             row = await conn.fetchrow(
                 f"""
                 SELECT id, text, context, event_date, occurred_start, occurred_end,
-                       mentioned_at, fact_type, document_id, chunk_id, tags
+                       mentioned_at, fact_type, document_id, chunk_id, tags, source_memory_ids
                 FROM {fq_table("memory_units")}
                 WHERE id = $1 AND bank_id = $2
                 """,
@@ -3068,7 +3146,7 @@ class MemoryEngine(MemoryEngineInterface):
             )
             entities = [r["canonical_name"] for r in entities_rows]
 
-            return {
+            result = {
                 "id": str(row["id"]),
                 "text": row["text"],
                 "context": row["context"] if row["context"] else "",
@@ -3082,6 +3160,35 @@ class MemoryEngine(MemoryEngineInterface):
                 "chunk_id": str(row["chunk_id"]) if row["chunk_id"] else None,
                 "tags": row["tags"] if row["tags"] else [],
             }
+
+            # For mental models, include source_memory_ids and fetch source_memories
+            if row["fact_type"] == "mental_model" and row["source_memory_ids"]:
+                source_ids = row["source_memory_ids"]
+                result["source_memory_ids"] = [str(sid) for sid in source_ids]
+
+                # Fetch source memories
+                source_rows = await conn.fetch(
+                    f"""
+                    SELECT id, text, fact_type, context, occurred_start, mentioned_at
+                    FROM {fq_table("memory_units")}
+                    WHERE id = ANY($1::uuid[])
+                    ORDER BY mentioned_at DESC NULLS LAST
+                    """,
+                    source_ids,
+                )
+                result["source_memories"] = [
+                    {
+                        "id": str(r["id"]),
+                        "text": r["text"],
+                        "type": r["fact_type"],
+                        "context": r["context"],
+                        "occurred_start": r["occurred_start"].isoformat() if r["occurred_start"] else None,
+                        "mentioned_at": r["mentioned_at"].isoformat() if r["mentioned_at"] else None,
+                    }
+                    for r in source_rows
+                ]
+
+            return result
 
     async def list_documents(
         self,
@@ -5703,5 +5810,42 @@ class MemoryEngine(MemoryEngineInterface):
                 "max_tokens": max_tokens,
             },
             result_metadata={"reflection_id": reflection_id, "name": name, "source_query": source_query},
+            dedupe_by_bank=False,
+        )
+
+    async def submit_async_refresh_reflection(
+        self,
+        bank_id: str,
+        reflection_id: str,
+        *,
+        request_context: "RequestContext",
+    ) -> dict[str, Any]:
+        """Submit an async reflection refresh operation.
+
+        This schedules a background task to re-run the source query and update the content.
+
+        Args:
+            bank_id: Bank identifier
+            reflection_id: Reflection UUID to refresh
+            request_context: Request context for authentication
+
+        Returns:
+            Dict with operation_id
+        """
+        await self._authenticate_tenant(request_context)
+
+        # Verify reflection exists
+        reflection = await self.get_reflection(bank_id, reflection_id, request_context=request_context)
+        if not reflection:
+            raise ValueError(f"Reflection {reflection_id} not found in bank {bank_id}")
+
+        return await self._submit_async_operation(
+            bank_id=bank_id,
+            operation_type="refresh_reflection",
+            task_type="refresh_reflection",
+            task_payload={
+                "reflection_id": reflection_id,
+            },
+            result_metadata={"reflection_id": reflection_id, "name": reflection["name"]},
             dedupe_by_bank=False,
         )

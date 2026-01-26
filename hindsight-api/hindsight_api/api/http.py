@@ -1191,11 +1191,8 @@ class OperationResponse(BaseModel):
 class ConsolidationResponse(BaseModel):
     """Response model for consolidation trigger endpoint."""
 
-    status: str = Field(description="Status of the consolidation (completed or queued)")
-    processed: int = Field(description="Number of memories processed")
-    created: int = Field(description="Number of mental models created")
-    updated: int = Field(description="Number of mental models updated")
-    message: str = Field(description="Human-readable summary")
+    operation_id: str = Field(description="ID of the async consolidation operation")
+    deduplicated: bool = Field(default=False, description="True if an existing pending task was reused")
 
 
 class OperationsListResponse(BaseModel):
@@ -2331,9 +2328,9 @@ def _register_routes(app: FastAPI):
 
     @app.post(
         "/v1/default/banks/{bank_id}/reflections/{reflection_id}/refresh",
-        response_model=ReflectionResponse,
+        response_model=AsyncOperationSubmitResponse,
         summary="Refresh reflection",
-        description="Re-run the source query through reflect and update the content.",
+        description="Submit an async task to re-run the source query through reflect and update the content.",
         operation_id="refresh_reflection",
         tags=["Reflections"],
     )
@@ -2342,16 +2339,16 @@ def _register_routes(app: FastAPI):
         reflection_id: str,
         request_context: RequestContext = Depends(get_request_context),
     ):
-        """Refresh a reflection by re-running its source query."""
+        """Refresh a reflection by re-running its source query (async)."""
         try:
-            reflection = await app.state.memory.refresh_reflection(
+            result = await app.state.memory.submit_async_refresh_reflection(
                 bank_id=bank_id,
                 reflection_id=reflection_id,
                 request_context=request_context,
             )
-            if reflection is None:
-                raise HTTPException(status_code=404, detail=f"Reflection '{reflection_id}' not found")
-            return ReflectionResponse(**reflection)
+            return AsyncOperationSubmitResponse(operation_id=result["operation_id"], status="queued")
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except (AuthenticationError, HTTPException):
             raise
         except Exception as e:
@@ -3183,18 +3180,12 @@ def _register_routes(app: FastAPI):
         tags=["Banks"],
     )
     async def api_trigger_consolidation(bank_id: str, request_context: RequestContext = Depends(get_request_context)):
-        """Trigger consolidation for a bank."""
+        """Trigger consolidation for a bank (async)."""
         try:
-            result = await app.state.memory.run_consolidation(bank_id, request_context=request_context)
-            processed = result.get("processed", 0)
-            created = result.get("created", 0)
-            updated = result.get("updated", 0)
+            result = await app.state.memory.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
             return ConsolidationResponse(
-                status="completed",
-                processed=processed,
-                created=created,
-                updated=updated,
-                message=f"Consolidation completed: {processed} memories processed, {created} mental models created, {updated} updated",
+                operation_id=result["operation_id"],
+                deduplicated=result.get("deduplicated", False),
             )
         except (AuthenticationError, HTTPException):
             raise

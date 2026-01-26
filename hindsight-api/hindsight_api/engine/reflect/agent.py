@@ -10,6 +10,7 @@ Uses hierarchical retrieval:
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -75,6 +76,21 @@ def _normalize_tool_name(name: str) -> str:
 def _is_done_tool(name: str) -> bool:
     """Check if the tool name represents the 'done' tool."""
     return _normalize_tool_name(name) == "done"
+
+
+# Pattern to match done() call as text - handles done({...}) with nested JSON
+_DONE_CALL_PATTERN = re.compile(r"done\s*\(\s*\{.*$", re.DOTALL)
+
+
+def _clean_answer_text(text: str) -> str:
+    """Clean up answer text by removing any done() tool call syntax.
+
+    Some LLMs output the done() call as text instead of a proper tool call.
+    This strips out patterns like: done({"answer": "...", ...})
+    """
+    # Remove done() call pattern from the end of the text
+    cleaned = _DONE_CALL_PATTERN.sub("", text).strip()
+    return cleaned if cleaned else text
 
 
 async def _generate_structured_output(
@@ -327,7 +343,7 @@ async def run_reflect_agent(
                     "output_tokens": usage.output_tokens,
                 }
             )
-            answer = response.strip()
+            answer = _clean_answer_text(response.strip())
 
             # Generate structured output if schema provided
             structured_output = None
@@ -404,7 +420,7 @@ async def run_reflect_agent(
                     "output_tokens": usage.output_tokens,
                 }
             )
-            answer = response.strip()
+            answer = _clean_answer_text(response.strip())
 
             # Generate structured output if schema provided
             structured_output = None
@@ -430,7 +446,7 @@ async def run_reflect_agent(
         # No tool calls - LLM wants to respond with text
         if not result.tool_calls:
             if result.content:
-                answer = result.content.strip()
+                answer = _clean_answer_text(result.content.strip())
 
                 # Generate structured output if schema provided
                 structured_output = None
@@ -475,7 +491,7 @@ async def run_reflect_agent(
                     "output_tokens": usage.output_tokens,
                 }
             )
-            answer = response.strip()
+            answer = _clean_answer_text(response.strip())
 
             # Generate structured output if schema provided
             structured_output = None

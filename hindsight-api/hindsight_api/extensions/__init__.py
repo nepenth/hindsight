@@ -37,6 +37,7 @@ from hindsight_api.extensions.operation_validator import (
 )
 from hindsight_api.extensions.tenant import (
     AuthenticationError,
+    Tenant,
     TenantContext,
     TenantExtension,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "ApiKeyTenantExtension",
     "AuthenticationError",
     "RequestContext",
+    "Tenant",
     "TenantContext",
     "TenantExtension",
 ]

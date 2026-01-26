@@ -153,7 +153,7 @@ async def run_consolidation_job(
             t0 = time.time()
             memories = await conn.fetch(
                 f"""
-                SELECT id, text, fact_type, occurred_start, event_date, tags
+                SELECT id, text, fact_type, occurred_start, event_date, tags, mentioned_at
                 FROM {fq_table("memory_units")}
                 WHERE bank_id = $1
                   AND consolidated_at IS NULL
@@ -328,6 +328,7 @@ async def _process_memory(
                 memory_id=memory_id,
                 action=action,
                 mental_models=related_mental_models,
+                source_mentioned_at=memory.get("mentioned_at"),
                 perf=perf,
             )
             results.append(result)
@@ -340,6 +341,7 @@ async def _process_memory(
                 action=action,
                 event_date=memory.get("event_date"),
                 occurred_start=memory.get("occurred_start"),
+                mentioned_at=memory.get("mentioned_at"),
                 perf=perf,
             )
             results.append(result)
@@ -372,12 +374,14 @@ async def _execute_update_action(
     memory_id: uuid.UUID,
     action: dict[str, Any],
     mental_models: list[dict[str, Any]],
+    source_mentioned_at: datetime | None = None,
     perf: ConsolidationPerfLog | None = None,
 ) -> dict[str, Any]:
     """
     Execute an update action on an existing mental model.
 
-    Updates the mental model text, adds to history, and increments proof_count.
+    Updates the mental model text, adds to history, increments proof_count,
+    and updates mentioned_at if the new source memory has a more recent date.
     """
     learning_id = action.get("learning_id")
     new_text = action.get("text")
@@ -414,6 +418,7 @@ async def _execute_update_action(
         perf.record_timing("embedding", time.time() - t0)
 
     # Update the mental model
+    # Update mentioned_at if source memory has a more recent date
     t0 = time.time()
     await conn.execute(
         f"""
@@ -423,7 +428,8 @@ async def _execute_update_action(
             history = $3,
             source_memory_ids = $4,
             proof_count = $5,
-            updated_at = now()
+            updated_at = now(),
+            mentioned_at = GREATEST(mentioned_at, COALESCE($7, mentioned_at))
         WHERE id = $6
         """,
         new_text,
@@ -432,6 +438,7 @@ async def _execute_update_action(
         source_ids,
         len(source_ids),
         uuid.UUID(learning_id),
+        source_mentioned_at,
     )
 
     # Create links from memory to mental model
@@ -452,6 +459,7 @@ async def _execute_create_action(
     action: dict[str, Any],
     event_date: datetime | None = None,
     occurred_start: datetime | None = None,
+    mentioned_at: datetime | None = None,
     perf: ConsolidationPerfLog | None = None,
 ) -> dict[str, Any]:
     """
@@ -476,6 +484,7 @@ async def _execute_create_action(
         tags=tags,
         event_date=event_date,
         occurred_start=occurred_start,
+        mentioned_at=mentioned_at,
         perf=perf,
     )
 
@@ -746,6 +755,7 @@ async def _create_mental_model_directly(
     tags: list[str] | None = None,
     event_date: datetime | None = None,
     occurred_start: datetime | None = None,
+    mentioned_at: datetime | None = None,
     perf: ConsolidationPerfLog | None = None,
 ) -> dict[str, Any]:
     """
@@ -765,6 +775,7 @@ async def _create_mental_model_directly(
     now = datetime.now(timezone.utc)
     mm_event_date = event_date or now
     mm_occurred_start = occurred_start or now
+    mm_mentioned_at = mentioned_at or now
     mm_tags = tags or []
 
     t0 = time.time()
@@ -773,9 +784,9 @@ async def _create_mental_model_directly(
         f"""
         INSERT INTO {fq_table("memory_units")} (
             id, bank_id, text, fact_type, embedding, proof_count, source_memory_ids, history,
-            tags, event_date, occurred_start
+            tags, event_date, occurred_start, mentioned_at
         )
-        VALUES ($1, $2, $3, 'mental_model', $4::vector, 1, $5, '[]'::jsonb, $6, $7, $8)
+        VALUES ($1, $2, $3, 'mental_model', $4::vector, 1, $5, '[]'::jsonb, $6, $7, $8, $9)
         RETURNING id
         """,
         mental_model_id,
@@ -786,6 +797,7 @@ async def _create_mental_model_directly(
         mm_tags,
         mm_event_date,
         mm_occurred_start,
+        mm_mentioned_at,
     )
 
     # Create links between memory and mental model (includes entity links, memory_links)

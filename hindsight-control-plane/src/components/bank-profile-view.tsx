@@ -394,12 +394,10 @@ export function BankProfileView() {
 
     setIsConsolidating(true);
     try {
-      const result = await client.triggerConsolidation(currentBank);
+      await client.triggerConsolidation(currentBank);
+      // Reload to show the new operation in the list
       await loadData();
-      alert(
-        result.message ||
-          `Consolidation completed: ${result.created} created, ${result.updated} updated`
-      );
+      await loadOperations();
     } catch (error) {
       console.error("Error triggering consolidation:", error);
       alert("Error triggering consolidation: " + (error as Error).message);
