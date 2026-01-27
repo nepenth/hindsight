@@ -3607,6 +3607,7 @@ class MemoryEngine(MemoryEngineInterface):
         tool_trace_result = [
             ToolCallTrace(
                 tool=tc.tool,
+                reason=tc.reason,
                 input=tc.input,
                 output=tc.output,
                 duration_ms=tc.duration_ms,
@@ -4558,6 +4559,7 @@ class MemoryEngine(MemoryEngineInterface):
         source_query: str,
         content: str,
         *,
+        mental_model_id: str | None = None,
         tags: list[str] | None = None,
         max_tokens: int | None = None,
         trigger: dict[str, Any] | None = None,
@@ -4570,6 +4572,7 @@ class MemoryEngine(MemoryEngineInterface):
             name: Human-readable name for the mental model
             source_query: The query that generated this mental model
             content: The synthesized content
+            mental_model_id: Optional UUID for the mental model (auto-generated if not provided)
             tags: Optional tags for scoped visibility
             max_tokens: Token limit for content generation during refresh
             trigger: Trigger settings (e.g., refresh_after_consolidation)
@@ -4588,24 +4591,45 @@ class MemoryEngine(MemoryEngineInterface):
         embedding_str = str(embedding[0]) if embedding else None
 
         async with acquire_with_retry(pool) as conn:
-            row = await conn.fetchrow(
-                f"""
-                INSERT INTO {fq_table("mental_models")}
-                (bank_id, name, source_query, content, embedding, tags, max_tokens, trigger)
-                VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 2048), COALESCE($8, '{{"refresh_after_consolidation": false}}'::jsonb))
-                RETURNING id, bank_id, name, source_query, content, tags,
-                          last_refreshed_at, created_at, reflect_response,
-                          max_tokens, trigger
-                """,
-                bank_id,
-                name,
-                source_query,
-                content,
-                embedding_str,
-                tags or [],
-                max_tokens,
-                json.dumps(trigger) if trigger else None,
-            )
+            if mental_model_id:
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO {fq_table("mental_models")}
+                    (id, bank_id, name, source_query, content, embedding, tags, max_tokens, trigger)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 2048), COALESCE($9, '{{"refresh_after_consolidation": false}}'::jsonb))
+                    RETURNING id, bank_id, name, source_query, content, tags,
+                              last_refreshed_at, created_at, reflect_response,
+                              max_tokens, trigger
+                    """,
+                    mental_model_id,
+                    bank_id,
+                    name,
+                    source_query,
+                    content,
+                    embedding_str,
+                    tags or [],
+                    max_tokens,
+                    json.dumps(trigger) if trigger else None,
+                )
+            else:
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO {fq_table("mental_models")}
+                    (bank_id, name, source_query, content, embedding, tags, max_tokens, trigger)
+                    VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 2048), COALESCE($8, '{{"refresh_after_consolidation": false}}'::jsonb))
+                    RETURNING id, bank_id, name, source_query, content, tags,
+                              last_refreshed_at, created_at, reflect_response,
+                              max_tokens, trigger
+                    """,
+                    bank_id,
+                    name,
+                    source_query,
+                    content,
+                    embedding_str,
+                    tags or [],
+                    max_tokens,
+                    json.dumps(trigger) if trigger else None,
+                )
 
         logger.info(f"[MENTAL_MODELS] Created pinned mental model '{name}' for bank {bank_id}")
         return self._row_to_mental_model(row)

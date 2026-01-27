@@ -99,21 +99,24 @@ async def test_link_expansion_observation_graph_retrieval(memory, request_contex
         # Consolidation runs automatically after retain - wait for it to complete
         # by querying for observations (consolidation creates them)
         import asyncio
-        await asyncio.sleep(1)  # Give consolidation time to start
-
-        # Verify we have observations
         from hindsight_api.engine.memory_engine import Budget
 
-        obs_result = await memory.recall_async(
-            bank_id=bank_id,
-            query="Python developer",
-            fact_type=["observation"],
-            budget=Budget.MID,
-            max_tokens=2048,
-            request_context=request_context,
-        )
+        # Wait for consolidation to complete with retry logic
+        obs_result = None
+        for _ in range(10):  # Try up to 10 times
+            await asyncio.sleep(1)  # Wait 1 second between attempts
+            obs_result = await memory.recall_async(
+                bank_id=bank_id,
+                query="Python developer",
+                fact_type=["observation"],
+                budget=Budget.MID,
+                max_tokens=2048,
+                request_context=request_context,
+            )
+            if obs_result.results and len(obs_result.results) >= 1:
+                break
 
-        assert obs_result.results is not None, "Should have observations after consolidation"
+        assert obs_result is not None and obs_result.results is not None, "Should have observations after consolidation"
         # We should have observations from consolidation
         assert len(obs_result.results) >= 1, f"Should have at least 1 observation about Python, got {len(obs_result.results)}"
 
