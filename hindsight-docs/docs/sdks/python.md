@@ -43,7 +43,7 @@ from hindsight import HindsightServer, HindsightClient
 
 with HindsightServer(
     llm_provider="openai",
-    llm_model="gpt-4.1-mini",
+    llm_model="gpt-4o-mini",
     llm_api_key=os.environ["OPENAI_API_KEY"]
 ) as server:
     client = HindsightClient(base_url=server.url)

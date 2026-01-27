@@ -291,6 +291,10 @@ class ReflectResult(BaseModel):
         default_factory=list,
         description="Trace of LLM calls made during reflection. Only present when include.tool_calls is enabled.",
     )
+    directives_applied: list[DirectiveRef] = Field(
+        default_factory=list,
+        description="Directive mental models that were applied during this reflection.",
+    )
 
 
 class Opinion(BaseModel):

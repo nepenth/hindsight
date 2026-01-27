@@ -2330,12 +2330,21 @@ def _register_routes(app: FastAPI):
     ):
         """Create a mental model (async - returns operation_id)."""
         try:
-            result = await app.state.memory.submit_async_create_mental_model(
+            # 1. Create the mental model with placeholder content
+            mental_model = await app.state.memory.create_mental_model(
                 bank_id=bank_id,
                 name=body.name,
                 source_query=body.source_query,
+                content="Generating content...",
                 tags=body.tags if body.tags else None,
                 max_tokens=body.max_tokens,
+                trigger=body.trigger.model_dump() if body.trigger else None,
+                request_context=request_context,
+            )
+            # 2. Schedule a refresh to generate the actual content
+            result = await app.state.memory.submit_async_refresh_mental_model(
+                bank_id=bank_id,
+                mental_model_id=mental_model["id"],
                 request_context=request_context,
             )
             return CreateMentalModelResponse(operation_id=result["operation_id"])

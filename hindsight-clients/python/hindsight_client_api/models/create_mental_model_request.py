@@ -32,7 +32,8 @@ class CreateMentalModelRequest(BaseModel):
     source_query: StrictStr = Field(description="The query to run to generate content")
     tags: Optional[List[StrictStr]] = Field(default=None, description="Tags for scoped visibility")
     max_tokens: Optional[Annotated[int, Field(le=8192, strict=True, ge=256)]] = Field(default=2048, description="Maximum tokens for generated content")
-    __properties: ClassVar[List[str]] = ["name", "source_query", "tags", "max_tokens"]
+    trigger: Optional[MentalModelTrigger] = Field(default=None, description="Trigger settings")
+    __properties: ClassVar[List[str]] = ["name", "source_query", "tags", "max_tokens", "trigger"]
 
     model_config = ConfigDict(
         populate_by_name=True,

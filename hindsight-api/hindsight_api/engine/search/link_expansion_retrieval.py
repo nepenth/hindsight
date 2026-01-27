@@ -155,7 +155,7 @@ class LinkExpansionRetriever(GraphRetriever):
                 all_seeds.extend(temporal_seeds)
 
             if not all_seeds:
-                logger.debug("[LinkExpansion] No seeds found, returning empty results")
+                logger.info("[LinkExpansion] No seeds found, returning empty results")
                 return [], timings
 
             seed_ids = list({s.id for s in all_seeds})
@@ -164,30 +164,83 @@ class LinkExpansionRetriever(GraphRetriever):
             # Run entity and causal expansion sequentially on same connection
             query_start = time.time()
 
-            entity_rows = await conn.fetch(
-                f"""
-                SELECT
-                    mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
-                    mu.occurred_end, mu.mentioned_at, mu.embedding,
-                    mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
-                    COUNT(*)::float AS score
-                FROM {fq_table("unit_entities")} seed_ue
-                JOIN {fq_table("entities")} e ON seed_ue.entity_id = e.id
-                JOIN {fq_table("unit_entities")} other_ue ON seed_ue.entity_id = other_ue.entity_id
-                JOIN {fq_table("memory_units")} mu ON other_ue.unit_id = mu.id
-                WHERE seed_ue.unit_id = ANY($1::uuid[])
-                  AND e.mention_count < $2
-                  AND mu.id != ALL($1::uuid[])
-                  AND mu.fact_type = $3
-                GROUP BY mu.id
-                ORDER BY score DESC
-                LIMIT $4
-                """,
-                seed_ids,
-                self.max_entity_frequency,
-                fact_type,
-                budget,
-            )
+            # For observations, traverse through source_memory_ids to find entity connections.
+            # Observations don't have direct unit_entities - they inherit entities via their
+            # source world/experience facts.
+            #
+            # Path: observation → source_memory_ids → world fact → entities →
+            #       ALL world facts with those entities → their observations (excluding seeds)
+            if fact_type == "observation":
+                entity_rows = await conn.fetch(
+                    f"""
+                    WITH seed_sources AS (
+                        -- Get source memory IDs from seed observations
+                        SELECT DISTINCT unnest(source_memory_ids) AS source_id
+                        FROM {fq_table("memory_units")}
+                        WHERE id = ANY($1::uuid[])
+                          AND source_memory_ids IS NOT NULL
+                    ),
+                    source_entities AS (
+                        -- Get entities from those source memories (filtered by frequency)
+                        SELECT DISTINCT ue.entity_id
+                        FROM seed_sources ss
+                        JOIN {fq_table("unit_entities")} ue ON ss.source_id = ue.unit_id
+                        JOIN {fq_table("entities")} e ON ue.entity_id = e.id
+                        WHERE e.mention_count < $2
+                    ),
+                    all_connected_sources AS (
+                        -- Find ALL world facts sharing those entities (don't exclude seed sources)
+                        -- The exclusion happens at the observation level, not the source level
+                        SELECT DISTINCT other_ue.unit_id AS source_id
+                        FROM source_entities se
+                        JOIN {fq_table("unit_entities")} other_ue ON se.entity_id = other_ue.entity_id
+                    )
+                    -- Find observations derived from connected source memories
+                    -- Only exclude the actual seed observations
+                    SELECT
+                        mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
+                        mu.occurred_end, mu.mentioned_at, mu.embedding,
+                        mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
+                        COUNT(DISTINCT cs.source_id)::float AS score
+                    FROM all_connected_sources cs
+                    JOIN {fq_table("memory_units")} mu
+                        ON mu.source_memory_ids @> ARRAY[cs.source_id]
+                    WHERE mu.fact_type = 'observation'
+                      AND mu.id != ALL($1::uuid[])
+                    GROUP BY mu.id
+                    ORDER BY score DESC
+                    LIMIT $3
+                    """,
+                    seed_ids,
+                    self.max_entity_frequency,
+                    budget,
+                )
+            else:
+                # For world/experience facts, use direct entity lookup
+                entity_rows = await conn.fetch(
+                    f"""
+                    SELECT
+                        mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
+                        mu.occurred_end, mu.mentioned_at, mu.embedding,
+                        mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
+                        COUNT(*)::float AS score
+                    FROM {fq_table("unit_entities")} seed_ue
+                    JOIN {fq_table("entities")} e ON seed_ue.entity_id = e.id
+                    JOIN {fq_table("unit_entities")} other_ue ON seed_ue.entity_id = other_ue.entity_id
+                    JOIN {fq_table("memory_units")} mu ON other_ue.unit_id = mu.id
+                    WHERE seed_ue.unit_id = ANY($1::uuid[])
+                      AND e.mention_count < $2
+                      AND mu.id != ALL($1::uuid[])
+                      AND mu.fact_type = $3
+                    GROUP BY mu.id
+                    ORDER BY score DESC
+                    LIMIT $4
+                    """,
+                    seed_ids,
+                    self.max_entity_frequency,
+                    fact_type,
+                    budget,
+                )
 
             causal_rows = await conn.fetch(
                 f"""

@@ -520,16 +520,17 @@ async def _create_memory_links(
     This:
     1. Creates bidirectional semantic links between memory and observation
     2. Copies existing memory_links from the source memory to the observation
-    3. Copies entity links from the source memory to the observation
 
-    This enables graph traversal to find related memories via their observations.
+    Note: We intentionally do NOT copy entity links (unit_entities) to observations.
+    Instead, the retriever traverses through source_memory_ids to find entity
+    connections. This avoids duplicating entity data and ensures observations
+    are connected via their source facts' entity relationships.
 
     Note: Uses EXISTS checks to handle the case where source memory was deleted
     by a concurrent operation between fetching and link creation.
     """
     mu_table = fq_table("memory_units")
     ml_table = fq_table("memory_links")
-    ue_table = fq_table("unit_entities")
 
     # 1. Bidirectional link between memory and observation
     # Only insert if both units exist (handles concurrent deletion)
@@ -588,19 +589,9 @@ async def _create_memory_links(
         memory_id,
     )
 
-    # 4. Copy entity links from source memory to observation
-    await conn.execute(
-        f"""
-        INSERT INTO {ue_table} (unit_id, entity_id)
-        SELECT $1, ue.entity_id
-        FROM {ue_table} ue
-        WHERE ue.unit_id = $2
-          AND EXISTS (SELECT 1 FROM {mu_table} WHERE id = $1)
-        ON CONFLICT DO NOTHING
-        """,
-        observation_id,
-        memory_id,
-    )
+    # Note: Entity links (unit_entities) are NOT copied to observations.
+    # The retriever uses source_memory_ids to traverse through source facts'
+    # entity connections, avoiding data duplication.
 
 
 async def _find_related_observations(

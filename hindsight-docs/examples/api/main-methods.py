@@ -83,11 +83,12 @@ results = client.recall(
     max_chunk_tokens=500
 )
 
-# Check chunk details
+# Check chunk details (chunks are on response level, keyed by memory ID)
 for result in results.results:
     print(f"Memory: {result.text}")
-    if result.chunks:
-        print(f"  Source: {result.chunks[0].text[:100]}...")
+    if results.chunks and result.id in results.chunks:
+        chunk = results.chunks[result.id]
+        print(f"  Source: {chunk.text[:100]}...")
 # [/docs:main-recall]
 
 
