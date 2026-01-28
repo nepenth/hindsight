@@ -6,20 +6,21 @@ image: /img/reflect-operation.webp
 hide_table_of_contents: false
 ---
 
-Today we're releasing Hindsight 0.4.0, which introduces two powerful learning capabilities for AI agents: **Observations** for automatic knowledge consolidation, and **Mental Models** for user-curated summaries.
+Today we're releasing Hindsight 0.4.0, which introduces powerful capabilities for AI agent memory: **Observations** for automatic knowledge consolidation, **Mental Models** for user-curated summaries, and **Directives** for enforcing hard rules.
 
 <!-- truncate -->
 
-## Two Levels of Learning
+## Three Layers of Knowledge
 
-Hindsight 0.4.0 introduces a hierarchical learning system:
+Hindsight 0.4.0 introduces a hierarchical knowledge system:
 
-| Level | What It Is | How It's Created |
-|-------|------------|------------------|
-| **Mental Models** | User-curated summaries for common queries | Manually created via API |
-| **Observations** | Consolidated knowledge from facts | Automatically after retain |
+| Layer | What It Is | How It's Created | Purpose |
+|-------|------------|------------------|---------|
+| **Directives** | Hard rules that must be followed | Manually created via API | Compliance, guardrails, style |
+| **Mental Models** | User-curated summaries for common queries | Manually created via API | Consistent answers to key questions |
+| **Observations** | Consolidated knowledge from facts | Automatically after retain | Patterns learned from evidence |
 
-During `reflect`, the agent checks these in priority order — mental models first (your curated knowledge), then observations (automatic synthesis), then raw facts.
+During `reflect`, the agent enforces directives as hard rules, checks mental models for curated knowledge, uses observations for consolidated insights, and falls back to raw facts for ground truth.
 
 ---
 
@@ -172,6 +173,20 @@ response = client.create_mental_model(
 
 ---
 
+## Directives: Compliance and Guardrails
+
+In addition to learning capabilities, **directives** provide hard rules that your agent must always follow during reflect operations. Unlike disposition traits which *influence* reasoning style, directives are absolute requirements that are enforced in every response.
+
+Use directives for compliance, privacy, and safety constraints:
+- "Never provide medical diagnoses or treatment advice"
+- "Always respond in formal English"
+- "Never share personally identifiable information"
+- "Always cite sources when making factual claims"
+
+Directives are injected into reflect prompts as hard constraints and are included in the response's `based_on` field. See the [Directives documentation](../developer/api/memory-banks#directives) for how to create and manage them.
+
+---
+
 ## What Changes from 0.3.0
 
 ### Unified Memory Types
@@ -266,4 +281,5 @@ These learning capabilities are the foundation for more sophisticated agent memo
 - [Reflect API](../developer/api/reflect) — responses now include supporting observations
 - [Mental Models API](../developer/api/mental-models) — create and manage curated summaries
 - [Observations Guide](../developer/observations) — deep dive into knowledge consolidation
+- [Directives](../developer/api/memory-banks#directives) — hard rules for compliance and guardrails
 - [Full Changelog](../changelog)
