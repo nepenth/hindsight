@@ -895,33 +895,37 @@ class LiteLLMCrossEncoder(CrossEncoderModel):
 
 def create_cross_encoder_from_env() -> CrossEncoderModel:
     """
-    Create a CrossEncoderModel instance based on environment variables.
+    Create a CrossEncoderModel instance based on configuration.
 
-    See hindsight_api.config for environment variable names and defaults.
+    Reads configuration via get_config() to ensure consistency across the codebase.
 
     Returns:
         Configured CrossEncoderModel instance
     """
-    provider = os.environ.get(ENV_RERANKER_PROVIDER, DEFAULT_RERANKER_PROVIDER).lower()
+    from ..config import get_config
+
+    config = get_config()
+    provider = config.reranker_provider.lower()
 
     if provider == "tei":
-        url = os.environ.get(ENV_RERANKER_TEI_URL)
+        url = config.reranker_tei_url
         if not url:
             raise ValueError(f"{ENV_RERANKER_TEI_URL} is required when {ENV_RERANKER_PROVIDER} is 'tei'")
-        batch_size = int(os.environ.get(ENV_RERANKER_TEI_BATCH_SIZE, str(DEFAULT_RERANKER_TEI_BATCH_SIZE)))
-        max_concurrent = int(os.environ.get(ENV_RERANKER_TEI_MAX_CONCURRENT, str(DEFAULT_RERANKER_TEI_MAX_CONCURRENT)))
-        return RemoteTEICrossEncoder(base_url=url, batch_size=batch_size, max_concurrent=max_concurrent)
+        return RemoteTEICrossEncoder(
+            base_url=url,
+            batch_size=config.reranker_tei_batch_size,
+            max_concurrent=config.reranker_tei_max_concurrent,
+        )
     elif provider == "local":
-        model = os.environ.get(ENV_RERANKER_LOCAL_MODEL)
-        model_name = model or DEFAULT_RERANKER_LOCAL_MODEL
+        # Note: max_concurrent is not in config, read from env directly
         max_concurrent = int(
             os.environ.get(ENV_RERANKER_LOCAL_MAX_CONCURRENT, str(DEFAULT_RERANKER_LOCAL_MAX_CONCURRENT))
         )
-        force_cpu = os.getenv(ENV_RERANKER_LOCAL_FORCE_CPU, str(DEFAULT_RERANKER_LOCAL_FORCE_CPU)).lower() in (
-            "true",
-            "1",
+        return LocalSTCrossEncoder(
+            model_name=config.reranker_local_model,
+            max_concurrent=max_concurrent,
+            force_cpu=config.reranker_local_force_cpu,
         )
-        return LocalSTCrossEncoder(model_name=model_name, max_concurrent=max_concurrent, force_cpu=force_cpu)
     elif provider == "cohere":
         api_key = os.environ.get(ENV_COHERE_API_KEY)
         if not api_key:

@@ -792,28 +792,28 @@ class LiteLLMEmbeddings(Embeddings):
 
 def create_embeddings_from_env() -> Embeddings:
     """
-    Create an Embeddings instance based on environment variables.
+    Create an Embeddings instance based on configuration.
 
-    See hindsight_api.config for environment variable names and defaults.
+    Reads configuration via get_config() to ensure consistency across the codebase.
 
     Returns:
         Configured Embeddings instance
     """
-    provider = os.environ.get(ENV_EMBEDDINGS_PROVIDER, DEFAULT_EMBEDDINGS_PROVIDER).lower()
+    from ..config import get_config
+
+    config = get_config()
+    provider = config.embeddings_provider.lower()
 
     if provider == "tei":
-        url = os.environ.get(ENV_EMBEDDINGS_TEI_URL)
+        url = config.embeddings_tei_url
         if not url:
             raise ValueError(f"{ENV_EMBEDDINGS_TEI_URL} is required when {ENV_EMBEDDINGS_PROVIDER} is 'tei'")
         return RemoteTEIEmbeddings(base_url=url)
     elif provider == "local":
-        model = os.environ.get(ENV_EMBEDDINGS_LOCAL_MODEL)
-        model_name = model or DEFAULT_EMBEDDINGS_LOCAL_MODEL
-        force_cpu = os.getenv(ENV_EMBEDDINGS_LOCAL_FORCE_CPU, str(DEFAULT_EMBEDDINGS_LOCAL_FORCE_CPU)).lower() in (
-            "true",
-            "1",
+        return LocalSTEmbeddings(
+            model_name=config.embeddings_local_model,
+            force_cpu=config.embeddings_local_force_cpu,
         )
-        return LocalSTEmbeddings(model_name=model_name, force_cpu=force_cpu)
     elif provider == "openai":
         # Use dedicated embeddings API key, or fall back to LLM API key
         api_key = os.environ.get(ENV_EMBEDDINGS_OPENAI_API_KEY) or os.environ.get(ENV_LLM_API_KEY)
