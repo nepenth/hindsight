@@ -8,13 +8,25 @@ Zero-configuration local memory system with automatic daemon management. Perfect
 
 ## Overview
 
-`hindsight-embed` wraps the Hindsight API in a local daemon that:
-- **Starts automatically** on first command
-- **No setup required** — uses embedded PostgreSQL (pg0)
-- **Auto-exits when idle** — configurable timeout
-- **Localhost only** — binds to `127.0.0.1:8889`
+`hindsight-embed` is a zero-configuration SDK that wraps the Hindsight API and PostgreSQL database into a single auto-managed local daemon. It's designed for development, prototyping, and single-user applications where you want memory capabilities without infrastructure overhead.
 
-Think of it as SQLite for long-term memory — perfect for getting started or building local-first applications.
+**How it works:**
+
+1. **First command triggers startup**: When you run any `hindsight-embed` command, it checks if a local daemon is running
+2. **Auto-daemon management**: If no daemon exists, it automatically spawns `hindsight-api --daemon` in the background
+3. **Embedded database**: The daemon uses `pg0` (embedded PostgreSQL) — no separate database installation required
+4. **Command forwarding**: Your command is forwarded to the local daemon via HTTP (localhost:8889)
+5. **Auto-shutdown**: After 5 minutes of inactivity (configurable), the daemon gracefully shuts down to free resources
+
+**Key features:**
+
+- **Zero setup** — One `configure` command and you're ready
+- **Automatic lifecycle** — Daemon starts on-demand, stops when idle
+- **Isolated storage** — Each bank gets its own embedded PostgreSQL database
+- **Local-only** — Binds to `127.0.0.1:8889`, not accessible from network
+- **Production-grade engine** — Uses the same memory engine as the full API service
+
+Think of it as SQLite for long-term memory — all the power of Hindsight without managing servers.
 
 ## Installation
 
@@ -183,74 +195,6 @@ hindsight-embed bank name <bank_id> "My Assistant"
 hindsight-embed bank mission <bank_id> "I am a helpful AI assistant"
 ```
 
-## Platform-Specific Behavior
-
-### macOS
-
-Automatically forces CPU-only inference for embeddings and reranking to avoid MPS (Metal Performance Shaders) stability issues in background daemon processes. This is transparent and configured automatically during `hindsight-embed configure`.
-
-### Linux
-
-Can use GPU acceleration (CUDA) if available. The CPU-only restrictions are macOS-specific.
-
-## Use Cases
-
-### Development & Prototyping
-
-Perfect for trying out Hindsight without infrastructure:
-
-```bash
-# Quick experiment
-uvx hindsight-embed@latest configure
-uvx hindsight-embed@latest memory retain demo "Test memory"
-uvx hindsight-embed@latest memory recall demo "test"
-```
-
-### Local-First Applications
-
-Build applications that store memory locally:
-
-```python
-import subprocess
-
-# Store memory from your app
-subprocess.run([
-    "hindsight-embed", "memory", "retain", "myapp",
-    "User completed tutorial"
-])
-
-# Query memories
-result = subprocess.run([
-    "hindsight-embed", "memory", "recall", "myapp",
-    "what has the user done?",
-    "-o", "json"
-], capture_output=True, text=True)
-```
-
-### Personal AI Assistant
-
-Use as a memory layer for your personal assistant:
-
-```bash
-# Configure once with your preferred LLM
-hindsight-embed configure
-
-# Your assistant can now remember context
-hindsight-embed memory retain assistant "User's favorite color is blue"
-hindsight-embed memory reflect assistant "What should I paint my room?"
-```
-
-## Comparison with Regular CLI
-
-| Feature | hindsight-embed | hindsight (CLI) |
-|---------|----------------|-----------------|
-| **Setup** | Zero-config | Requires API server |
-| **Database** | Embedded (pg0) | External PostgreSQL |
-| **Daemon** | Auto-managed | Manual setup |
-| **Deployment** | Local only | Any network |
-| **Use Case** | Development, single-user | Production, multi-user |
-| **Installation** | `uvx hindsight-embed` | `curl -fsSL ...` |
-
 ## Troubleshooting
 
 ### Daemon Won't Start
@@ -301,11 +245,18 @@ HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbose
 
 See [Configuration](/developer/configuration) for all available `HINDSIGHT_API_*` options.
 
-## Limitations
+## When to Use
 
-- **Single user**: No authentication/multi-tenancy
-- **Local only**: Not accessible from network
-- **Development database**: pg0 is not production-grade
-- **Auto-exit**: Daemon stops after idle timeout (configurable)
+**Perfect for:**
+- Development and prototyping
+- Single-user applications
+- Local-first tools
+- Quick experiments with Hindsight
 
-For production deployments with multiple users, use the [API Service](/developer/services) directly with external PostgreSQL.
+**Not suitable for:**
+- Production multi-user deployments
+- Network-accessible services
+- High-availability requirements
+- Multi-tenant applications
+
+For production deployments, use the [API Service](/developer/services) with external PostgreSQL instead.
