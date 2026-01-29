@@ -436,11 +436,13 @@ class LLMProvider:
                         schema_msg = f"\n\nYou must respond with valid JSON matching this schema:\n{json.dumps(schema, indent=2)}"
 
                         if call_params["messages"] and call_params["messages"][0].get("role") == "system":
-                            call_params["messages"][0]["content"] += schema_msg
+                            first_msg = call_params["messages"][0]
+                            if isinstance(first_msg, dict) and isinstance(first_msg.get("content"), str):
+                                first_msg["content"] += schema_msg
                         elif call_params["messages"]:
-                            call_params["messages"][0]["content"] = (
-                                schema_msg + "\n\n" + call_params["messages"][0]["content"]
-                            )
+                            first_msg = call_params["messages"][0]
+                            if isinstance(first_msg, dict) and isinstance(first_msg.get("content"), str):
+                                first_msg["content"] = schema_msg + "\n\n" + first_msg["content"]
                     if self.provider not in ("lmstudio", "ollama"):
                         # LM Studio and Ollama don't support json_object response format reliably
                         # We rely on the schema in the system message instead
@@ -1011,18 +1013,20 @@ class LLMProvider:
                 tool_calls: list[LLMToolCall] = []
 
                 if response.candidates and response.candidates[0].content:
-                    for part in response.candidates[0].content.parts:
-                        if hasattr(part, "text") and part.text:
-                            content = part.text
-                        if hasattr(part, "function_call") and part.function_call:
-                            fc = part.function_call
-                            tool_calls.append(
-                                LLMToolCall(
-                                    id=f"gemini_{len(tool_calls)}",
-                                    name=fc.name,
-                                    arguments=dict(fc.args) if fc.args else {},
+                    parts = response.candidates[0].content.parts
+                    if parts:
+                        for part in parts:
+                            if hasattr(part, "text") and part.text:
+                                content = part.text
+                            if hasattr(part, "function_call") and part.function_call:
+                                fc = part.function_call
+                                tool_calls.append(
+                                    LLMToolCall(
+                                        id=f"gemini_{len(tool_calls)}",
+                                        name=fc.name,
+                                        arguments=dict(fc.args) if fc.args else {},
+                                    )
                                 )
-                            )
 
                 finish_reason = "tool_calls" if tool_calls else "stop"
 

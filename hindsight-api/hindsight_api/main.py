@@ -383,7 +383,7 @@ def main():
 
         threading.Thread(target=run_idle_checker, daemon=True).start()
 
-    uvicorn.run(**uvicorn_config)  # type: ignore[invalid-argument-type] - dict kwargs
+    uvicorn.run(**uvicorn_config)
 
 
 if __name__ == "__main__":
