@@ -346,6 +346,7 @@ def main():
     # Start idle checker in daemon mode
     if idle_middleware is not None:
         # Start the idle checker in a background thread with its own event loop
+        import logging
         import threading
 
         def run_idle_checker():
@@ -356,8 +357,8 @@ def main():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(idle_middleware._check_idle())
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"Idle checker error: {e}", exc_info=True)
 
         threading.Thread(target=run_idle_checker, daemon=True).start()
 
