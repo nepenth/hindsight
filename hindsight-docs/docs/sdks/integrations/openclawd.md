@@ -71,9 +71,12 @@ Think of hooks as "forced automation" - they always run.
                   ↓
        uvx hindsight-embed
        • Daemon on port 8889
-       • PostgreSQL (pg0)
+       • PostgreSQL (pg0://hindsight-embed)
+       • Bank: 'openclawd' (isolated within shared database)
        • Fact extraction
 ```
+
+**Database Architecture:** All banks share a single pg0 database instance (`pg0://hindsight-embed`). Bank isolation happens within the database via separate tables/schemas per bank ID. The 'openclawd' bank is automatically created when the plugin stores its first memory.
 
 ## Installation
 

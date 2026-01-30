@@ -28,6 +28,24 @@ export class HindsightClient {
     this.bankId = bankId;
   }
 
+  async setBankMission(mission: string): Promise<void> {
+    if (!mission || mission.trim().length === 0) {
+      return;
+    }
+
+    const escapedMission = mission.replace(/'/g, "'\\''"); // Escape single quotes
+    const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
+    const cmd = `uvx ${embedPackage} bank mission ${this.bankId} '${escapedMission}'`;
+
+    try {
+      const { stdout } = await execAsync(cmd, { env: this.getEnv() });
+      console.log(`[Hindsight] Bank mission set: ${stdout.trim()}`);
+    } catch (error) {
+      // Don't fail if mission set fails - bank might not exist yet, will be created on first retain
+      console.warn(`[Hindsight] Could not set bank mission (bank may not exist yet): ${error}`);
+    }
+  }
+
   private getEnv(): Record<string, string> {
     const env: Record<string, string> = {
       ...process.env,

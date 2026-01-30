@@ -115,8 +115,10 @@ function detectLLMConfig(api: MoltbotPluginAPI): {
 
 function getPluginConfig(api: MoltbotPluginAPI): PluginConfig {
   const config = api.config.plugins?.entries?.['hindsight-openclawd']?.config || {};
+  const defaultMission = 'You are an AI assistant helping users across multiple communication channels (Telegram, Slack, Discord, etc.). Remember user preferences, instructions, and important context from conversations to provide personalized assistance.';
+
   return {
-    bankMission: config.bankMission,
+    bankMission: config.bankMission || defaultMission,
     embedPort: config.embedPort || 0,
     daemonIdleTimeout: config.daemonIdleTimeout !== undefined ? config.daemonIdleTimeout : 0,
     embedVersion: config.embedVersion || 'latest',
@@ -171,9 +173,15 @@ export default function (api: MoltbotPluginAPI) {
         console.log('[Hindsight] Creating HindsightClient...');
         client = new HindsightClient(llmConfig.provider, llmConfig.apiKey, llmConfig.model, pluginConfig.embedVersion);
 
-        // Use moltbot bank
+        // Use openclawd bank
         console.log(`[Hindsight] Using bank: ${BANK_NAME}`);
         client.setBankId(BANK_NAME);
+
+        // Set bank mission
+        if (pluginConfig.bankMission) {
+          console.log(`[Hindsight] Setting bank mission...`);
+          await client.setBankMission(pluginConfig.bankMission);
+        }
 
         isInitialized = true;
         console.log('[Hindsight] ✓ Ready');

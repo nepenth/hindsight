@@ -17,7 +17,8 @@
       },
       "bankMission": {
         "type": "string",
-        "description": "Custom mission/context for the memory bank"
+        "description": "Custom mission/context for the memory bank",
+        "default": "You are an AI assistant helping users across multiple communication channels (Telegram, Slack, Discord, etc.). Remember user preferences, instructions, and important context from conversations to provide personalized assistance."
       },
       "embedVersion": {
         "type": "string",
