@@ -176,8 +176,8 @@ class TestWorkerPoller:
             assert row["worker_id"] == "test-worker-1"
 
     @pytest.mark.asyncio
-    async def test_claim_batch_respects_batch_size(self, pool, clean_operations):
-        """Test that claim_batch respects the batch_size limit."""
+    async def test_claim_batch_respects_max_slots(self, pool, clean_operations):
+        """Test that claim_batch respects the max_slots limit."""
         from hindsight_api.worker import WorkerPoller
 
         # Create 10 pending tasks
@@ -199,6 +199,7 @@ class TestWorkerPoller:
             pool=pool,
             worker_id="test-worker-1",
             executor=lambda x: None,
+            max_slots=3,  # Limit to 3 concurrent tasks
         )
 
         claimed = await poller.claim_batch()
@@ -235,11 +236,14 @@ class TestWorkerPoller:
             executor=mock_executor,
         )
 
-        # Execute the task
+        # Execute the task (fire-and-forget)
         task_dict = json.loads(payload)
         claimed_task = ClaimedTask(operation_id=str(op_id), task_dict=task_dict, schema=None)
         await poller.execute_task(claimed_task)
 
+        # Wait for background task to complete
+        completed = await poller.wait_for_active_tasks(timeout=5.0)
+        assert completed, "Task did not complete within timeout"
         assert len(executed) == 1
 
         # Verify task is marked as completed
@@ -280,10 +284,14 @@ class TestWorkerPoller:
             max_retries=3,
         )
 
-        # Execute (should fail and retry)
+        # Execute (should fail and retry) - fire-and-forget
         task_dict = json.loads(payload)
         claimed_task = ClaimedTask(operation_id=str(op_id), task_dict=task_dict, schema=None)
         await poller.execute_task(claimed_task)
+
+        # Wait for background task to complete
+        completed = await poller.wait_for_active_tasks(timeout=5.0)
+        assert completed, "Task did not complete within timeout"
 
         # Verify task is back to pending with incremented retry_count
         row = await pool.fetchrow(
@@ -324,10 +332,14 @@ class TestWorkerPoller:
             max_retries=3,
         )
 
-        # Execute (should fail permanently)
+        # Execute (should fail permanently) - fire-and-forget
         task_dict = json.loads(payload)
         claimed_task = ClaimedTask(operation_id=str(op_id), task_dict=task_dict, schema=None)
         await poller.execute_task(claimed_task)
+
+        # Wait for background task to complete
+        completed = await poller.wait_for_active_tasks(timeout=5.0)
+        assert completed, "Task did not complete within timeout"
 
         # Verify task is marked as failed
         row = await pool.fetchrow(
@@ -1066,10 +1078,10 @@ async def test_worker_fire_and_forget_nonblocking(pool, clean_operations):
 
     try:
         # Wait for first 2 tasks to start executing (but not finish)
-        for i in range(20):  # Try for up to 1 second
-            await asyncio.sleep(0.05)
+        for i in range(100):  # Try for up to 1 second
             if len(task_started) >= 2:
                 break
+            await asyncio.sleep(0.01)
         assert len(task_started) == 2, f"Expected 2 tasks started, got {len(task_started)}"
 
         # Verify tasks are in_flight
@@ -1093,10 +1105,10 @@ async def test_worker_fire_and_forget_nonblocking(pool, clean_operations):
 
         # KEY ASSERTION: Worker should claim tasks 3-4 WITHOUT waiting for 1-2 to finish
         # This would FAIL with the old blocking behavior
-        for i in range(20):  # Try for up to 1 second
-            await asyncio.sleep(0.05)
+        for i in range(100):  # Try for up to 1 second
             if len(task_started) >= 4:
                 break
+            await asyncio.sleep(0.01)
 
         assert len(task_started) == 4, (
             f"Fire-and-forget FAILED: Expected 4 tasks started, got {len(task_started)}. "
@@ -1164,16 +1176,17 @@ async def test_worker_slot_limits_enforced(pool, clean_operations):
 
     try:
         # Wait for slots to fill
-        for i in range(20):
-            await asyncio.sleep(0.05)
+        for i in range(100):
             if len(tasks_started) >= 3:
                 break
+            await asyncio.sleep(0.01)
 
         # Should have claimed exactly 3 tasks (slot limit)
         assert len(tasks_started) == 3
 
-        # Wait a bit more to ensure no additional tasks are claimed
-        await asyncio.sleep(0.3)
+        # Wait to ensure no additional tasks are claimed
+        for i in range(30):
+            await asyncio.sleep(0.01)
         assert len(tasks_started) == 3, "Worker exceeded slot limit!"
 
         # Release tasks one by one and verify remaining are claimed
@@ -1186,10 +1199,10 @@ async def test_worker_slot_limits_enforced(pool, clean_operations):
             completed += len(events_to_release)
 
             # Wait for new tasks to be claimed
-            for i in range(20):
-                await asyncio.sleep(0.05)
+            for i in range(100):
                 if len(tasks_started) >= min(completed + 3, 10):
                     break
+                await asyncio.sleep(0.01)
 
         assert len(tasks_started) == 10
 

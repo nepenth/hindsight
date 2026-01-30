@@ -123,6 +123,32 @@ class WorkerPoller:
 
         return total_available, consolidation_available
 
+    async def wait_for_active_tasks(self, timeout: float = 10.0) -> bool:
+        """
+        Wait for all active background tasks to complete (test helper).
+
+        This is a test-only utility that allows tests to synchronize with
+        fire-and-forget background tasks without using sleep().
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if all tasks completed, False if timeout was reached
+        """
+        start_time = asyncio.get_event_loop().time()
+        while True:
+            async with self._in_flight_lock:
+                if self._in_flight_count == 0:
+                    return True
+
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= timeout:
+                return False
+
+            # Short sleep to avoid busy-waiting
+            await asyncio.sleep(0.01)
+
     async def claim_batch(self) -> list[ClaimedTask]:
         """
         Claim pending tasks atomically across all tenant schemas,
