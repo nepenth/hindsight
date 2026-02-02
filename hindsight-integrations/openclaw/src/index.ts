@@ -157,6 +157,7 @@ function getPluginConfig(api: MoltbotPluginAPI): PluginConfig {
     embedPort: config.embedPort || 0,
     daemonIdleTimeout: config.daemonIdleTimeout !== undefined ? config.daemonIdleTimeout : 0,
     embedVersion: config.embedVersion || 'latest',
+    embedPackagePath: config.embedPackagePath,
     llmProvider: config.llmProvider,
     llmModel: config.llmModel,
     llmApiKeyEnv: config.llmApiKeyEnv,
@@ -188,9 +189,9 @@ export default function (api: MoltbotPluginAPI) {
     }
     console.log(`[Hindsight] Daemon idle timeout: ${pluginConfig.daemonIdleTimeout}s (0 = never timeout)`);
 
-    // Determine port
-    const port = pluginConfig.embedPort || Math.floor(Math.random() * 10000) + 10000;
-    console.log(`[Hindsight] Port: ${port}`);
+    // Get API port from config (default: 9077)
+    const apiPort = pluginConfig.apiPort || 9077;
+    console.log(`[Hindsight] API Port: ${apiPort}`);
 
     // Initialize in background (non-blocking)
     console.log('[Hindsight] Starting initialization in background...');
@@ -199,13 +200,14 @@ export default function (api: MoltbotPluginAPI) {
         // Initialize embed manager
         console.log('[Hindsight] Creating HindsightEmbedManager...');
         embedManager = new HindsightEmbedManager(
-          port,
+          apiPort,
           llmConfig.provider,
           llmConfig.apiKey,
           llmConfig.model,
           llmConfig.baseUrl,
           pluginConfig.daemonIdleTimeout,
-          pluginConfig.embedVersion
+          pluginConfig.embedVersion,
+          pluginConfig.embedPackagePath
         );
 
         // Start the embedded server
@@ -214,7 +216,7 @@ export default function (api: MoltbotPluginAPI) {
 
         // Initialize client
         console.log('[Hindsight] Creating HindsightClient...');
-        client = new HindsightClient(llmConfig.provider, llmConfig.apiKey, llmConfig.model, pluginConfig.embedVersion);
+        client = new HindsightClient(llmConfig.provider, llmConfig.apiKey, llmConfig.model, pluginConfig.embedVersion, pluginConfig.embedPackagePath);
 
         // Use openclaw bank
         console.log(`[Hindsight] Using bank: ${BANK_NAME}`);
@@ -273,21 +275,22 @@ export default function (api: MoltbotPluginAPI) {
           console.log('[Hindsight] Reinitializing daemon...');
           const pluginConfig = getPluginConfig(api);
           const llmConfig = detectLLMConfig(pluginConfig);
-          const port = pluginConfig.embedPort || Math.floor(Math.random() * 10000) + 10000;
+          const apiPort = pluginConfig.apiPort || 9077;
 
           embedManager = new HindsightEmbedManager(
-            port,
+            apiPort,
             llmConfig.provider,
             llmConfig.apiKey,
             llmConfig.model,
             llmConfig.baseUrl,
             pluginConfig.daemonIdleTimeout,
-            pluginConfig.embedVersion
+            pluginConfig.embedVersion,
+            pluginConfig.embedPackagePath
           );
 
           await embedManager.start();
 
-          client = new HindsightClient(llmConfig.provider, llmConfig.apiKey, llmConfig.model, pluginConfig.embedVersion);
+          client = new HindsightClient(llmConfig.provider, llmConfig.apiKey, llmConfig.model, pluginConfig.embedVersion, pluginConfig.embedPackagePath);
           client.setBankId(BANK_NAME);
 
           if (pluginConfig.bankMission) {

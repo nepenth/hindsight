@@ -16,12 +16,28 @@ export class HindsightClient {
   private llmApiKey: string;
   private llmModel?: string;
   private embedVersion: string;
+  private embedPackagePath?: string;
 
-  constructor(llmProvider: string, llmApiKey: string, llmModel?: string, embedVersion: string = 'latest') {
+  constructor(llmProvider: string, llmApiKey: string, llmModel?: string, embedVersion: string = 'latest', embedPackagePath?: string) {
     this.llmProvider = llmProvider;
     this.llmApiKey = llmApiKey;
     this.llmModel = llmModel;
     this.embedVersion = embedVersion || 'latest';
+    this.embedPackagePath = embedPackagePath;
+  }
+
+  /**
+   * Get the command prefix to run hindsight-embed (either local or from PyPI)
+   */
+  private getEmbedCommandPrefix(): string {
+    if (this.embedPackagePath) {
+      // Local package: uv run --directory <path> hindsight-embed
+      return `uv run --directory ${this.embedPackagePath} hindsight-embed`;
+    } else {
+      // PyPI package: uvx hindsight-embed@version
+      const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
+      return `uvx ${embedPackage}`;
+    }
   }
 
   setBankId(bankId: string): void {
@@ -34,8 +50,8 @@ export class HindsightClient {
     }
 
     const escapedMission = mission.replace(/'/g, "'\\''"); // Escape single quotes
-    const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-    const cmd = `uvx ${embedPackage} --profile openclaw bank mission ${this.bankId} '${escapedMission}'`;
+    const embedCmd = this.getEmbedCommandPrefix();
+    const cmd = `${embedCmd} --profile openclaw bank mission ${this.bankId} '${escapedMission}'`;
 
     try {
       const { stdout } = await execAsync(cmd);
@@ -50,8 +66,8 @@ export class HindsightClient {
     const content = request.content.replace(/'/g, "'\\''"); // Escape single quotes
     const docId = request.document_id || 'conversation';
 
-    const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-    const cmd = `uvx ${embedPackage} --profile openclaw memory retain ${this.bankId} '${content}' --doc-id '${docId}' --async`;
+    const embedCmd = this.getEmbedCommandPrefix();
+    const cmd = `${embedCmd} --profile openclaw memory retain ${this.bankId} '${content}' --doc-id '${docId}' --async`;
 
     try {
       const { stdout } = await execAsync(cmd);
@@ -72,8 +88,8 @@ export class HindsightClient {
     const query = request.query.replace(/'/g, "'\\''"); // Escape single quotes
     const maxTokens = request.max_tokens || 1024;
 
-    const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-    const cmd = `uvx ${embedPackage} --profile openclaw memory recall ${this.bankId} '${query}' --output json --max-tokens ${maxTokens}`;
+    const embedCmd = this.getEmbedCommandPrefix();
+    const cmd = `${embedCmd} --profile openclaw memory recall ${this.bankId} '${query}' --output json --max-tokens ${maxTokens}`;
 
     try {
       const { stdout } = await execAsync(cmd);

@@ -15,6 +15,7 @@ export class HindsightEmbedManager {
   private llmBaseUrl?: string;
   private daemonIdleTimeout: number;
   private embedVersion: string;
+  private embedPackagePath?: string;
 
   constructor(
     port: number,
@@ -23,10 +24,12 @@ export class HindsightEmbedManager {
     llmModel?: string,
     llmBaseUrl?: string,
     daemonIdleTimeout: number = 0, // Default: never timeout
-    embedVersion: string = 'latest' // Default: latest
+    embedVersion: string = 'latest', // Default: latest
+    embedPackagePath?: string // Local path to hindsight package
   ) {
-    this.port = 8888; // hindsight-embed daemon uses same port as API
-    this.baseUrl = `http://127.0.0.1:8888`;
+    // Use the configured port (default: 9077 from config)
+    this.port = port;
+    this.baseUrl = `http://127.0.0.1:${port}`;
     this.embedDir = join(homedir(), '.openclaw', 'hindsight-embed');
     this.llmProvider = llmProvider;
     this.llmApiKey = llmApiKey;
@@ -34,23 +37,30 @@ export class HindsightEmbedManager {
     this.llmBaseUrl = llmBaseUrl;
     this.daemonIdleTimeout = daemonIdleTimeout;
     this.embedVersion = embedVersion || 'latest';
+    this.embedPackagePath = embedPackagePath;
+  }
+
+  /**
+   * Get the command to run hindsight-embed (either local or from PyPI)
+   */
+  private getEmbedCommand(): string[] {
+    if (this.embedPackagePath) {
+      // Local package: uv run --directory <path> hindsight-embed
+      return ['uv', 'run', '--directory', this.embedPackagePath, 'hindsight-embed'];
+    } else {
+      // PyPI package: uvx hindsight-embed@version
+      const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
+      return ['uvx', embedPackage];
+    }
   }
 
   async start(): Promise<void> {
     console.log(`[Hindsight] Starting hindsight-embed daemon...`);
 
-    // Map special providers to Hindsight API providers
-    let actualProvider = this.llmProvider;
-    if (this.llmProvider === 'openai-codex') {
-      actualProvider = 'openai';
-    } else if (this.llmProvider === 'claude-code') {
-      actualProvider = 'anthropic';
-    }
-
     // Build environment variables using standard HINDSIGHT_API_LLM_* variables
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      HINDSIGHT_API_LLM_PROVIDER: actualProvider,
+      HINDSIGHT_API_LLM_PROVIDER: this.llmProvider,
       HINDSIGHT_API_LLM_API_KEY: this.llmApiKey,
       HINDSIGHT_EMBED_DAEMON_IDLE_TIMEOUT: this.daemonIdleTimeout.toString(),
     };
@@ -75,10 +85,10 @@ export class HindsightEmbedManager {
     await this.configureProfile(env);
 
     // Start hindsight-embed daemon with openclaw profile
-    const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
+    const embedCmd = this.getEmbedCommand();
     const startDaemon = spawn(
-      'uvx',
-      [embedPackage, 'daemon', 'start', '--profile', 'openclaw'],
+      embedCmd[0],
+      [...embedCmd.slice(1), 'daemon', '--profile', 'openclaw', 'start'],
       {
         stdio: 'pipe',
       }
@@ -122,8 +132,8 @@ export class HindsightEmbedManager {
   async stop(): Promise<void> {
     console.log('[Hindsight] Stopping hindsight-embed daemon...');
 
-    const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-    const stopDaemon = spawn('uvx', [embedPackage, 'daemon', 'stop'], {
+    const embedCmd = this.getEmbedCommand();
+    const stopDaemon = spawn(embedCmd[0], [...embedCmd.slice(1), 'daemon', '--profile', 'openclaw', 'stop'], {
       stdio: 'pipe',
     });
 
@@ -181,10 +191,9 @@ export class HindsightEmbedManager {
   }
 
   private async configureProfile(env: NodeJS.ProcessEnv): Promise<void> {
-    const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-
-    // Build configure command args with --env flags
-    const configureArgs = ['configure', '--profile', 'openclaw'];
+    // Build profile create command args with --merge, --port and --env flags
+    // Use --merge to allow updating existing profile
+    const createArgs = ['profile', 'create', 'openclaw', '--merge', '--port', this.port.toString()];
 
     // Add all environment variables as --env flags
     const envVars = [
@@ -199,39 +208,40 @@ export class HindsightEmbedManager {
 
     for (const envVar of envVars) {
       if (env[envVar]) {
-        configureArgs.push('--env', `${envVar}=${env[envVar]}`);
+        createArgs.push('--env', `${envVar}=${env[envVar]}`);
       }
     }
 
-    // Run configure command
-    const configure = spawn('uvx', [embedPackage, ...configureArgs], {
+    // Run profile create command (non-interactive, overwrites if exists)
+    const embedCmd = this.getEmbedCommand();
+    const create = spawn(embedCmd[0], [...embedCmd.slice(1), ...createArgs], {
       stdio: 'pipe',
     });
 
     let output = '';
-    configure.stdout?.on('data', (data) => {
+    create.stdout?.on('data', (data) => {
       const text = data.toString();
       output += text;
       console.log(`[Hindsight] ${text.trim()}`);
     });
 
-    configure.stderr?.on('data', (data) => {
+    create.stderr?.on('data', (data) => {
       const text = data.toString();
       output += text;
       console.error(`[Hindsight] ${text.trim()}`);
     });
 
     await new Promise<void>((resolve, reject) => {
-      configure.on('exit', (code) => {
+      create.on('exit', (code) => {
         if (code === 0) {
           console.log('[Hindsight] Profile "openclaw" configured successfully');
           resolve();
         } else {
-          reject(new Error(`Configure failed with code ${code}: ${output}`));
+          reject(new Error(`Profile create failed with code ${code}: ${output}`));
         }
       });
 
-      configure.on('error', (error) => {
+      create.on('error', (error) => {
         reject(error);
       });
     });
