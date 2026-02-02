@@ -35,10 +35,10 @@ export class HindsightClient {
 
     const escapedMission = mission.replace(/'/g, "'\\''"); // Escape single quotes
     const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-    const cmd = `uvx ${embedPackage} bank mission ${this.bankId} '${escapedMission}'`;
+    const cmd = `uvx ${embedPackage} --profile openclaw bank mission ${this.bankId} '${escapedMission}'`;
 
     try {
-      const { stdout } = await execAsync(cmd, { env: this.getEnv() });
+      const { stdout } = await execAsync(cmd);
       console.log(`[Hindsight] Bank mission set: ${stdout.trim()}`);
     } catch (error) {
       // Don't fail if mission set fails - bank might not exist yet, will be created on first retain
@@ -46,29 +46,15 @@ export class HindsightClient {
     }
   }
 
-  private getEnv(): Record<string, string> {
-    const env: Record<string, string> = {
-      ...process.env,
-      HINDSIGHT_EMBED_LLM_PROVIDER: this.llmProvider,
-      HINDSIGHT_EMBED_LLM_API_KEY: this.llmApiKey,
-    };
-
-    if (this.llmModel) {
-      env.HINDSIGHT_EMBED_LLM_MODEL = this.llmModel;
-    }
-
-    return env;
-  }
-
   async retain(request: RetainRequest): Promise<RetainResponse> {
     const content = request.content.replace(/'/g, "'\\''"); // Escape single quotes
     const docId = request.document_id || 'conversation';
 
     const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-    const cmd = `uvx ${embedPackage} memory retain ${this.bankId} '${content}' --doc-id '${docId}' --async`;
+    const cmd = `uvx ${embedPackage} --profile openclaw memory retain ${this.bankId} '${content}' --doc-id '${docId}' --async`;
 
     try {
-      const { stdout } = await execAsync(cmd, { env: this.getEnv() });
+      const { stdout } = await execAsync(cmd);
       console.log(`[Hindsight] Retained (async): ${stdout.trim()}`);
 
       // Return a simple response
@@ -87,10 +73,10 @@ export class HindsightClient {
     const maxTokens = request.max_tokens || 1024;
 
     const embedPackage = this.embedVersion ? `hindsight-embed@${this.embedVersion}` : 'hindsight-embed@latest';
-    const cmd = `uvx ${embedPackage} memory recall ${this.bankId} '${query}' --output json --max-tokens ${maxTokens}`;
+    const cmd = `uvx ${embedPackage} --profile openclaw memory recall ${this.bankId} '${query}' --output json --max-tokens ${maxTokens}`;
 
     try {
-      const { stdout } = await execAsync(cmd, { env: this.getEnv() });
+      const { stdout } = await execAsync(cmd);
 
       // Parse JSON output - returns { entities: {...}, results: [...] }
       const response = JSON.parse(stdout);

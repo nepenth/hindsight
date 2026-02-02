@@ -35,6 +35,8 @@ const PROVIDER_DETECTION = [
   { name: 'gemini', keyEnv: 'GEMINI_API_KEY', defaultModel: 'gemini-2.5-flash' },
   { name: 'groq', keyEnv: 'GROQ_API_KEY', defaultModel: 'openai/gpt-oss-20b' },
   { name: 'ollama', keyEnv: '', defaultModel: 'llama3.2' },
+  { name: 'openai-codex', keyEnv: '', defaultModel: 'gpt-5.2-codex' },
+  { name: 'claude-code', keyEnv: '', defaultModel: 'claude-sonnet-4-5-20250929' },
 ];
 
 function detectLLMConfig(pluginConfig?: PluginConfig): {
@@ -52,7 +54,9 @@ function detectLLMConfig(pluginConfig?: PluginConfig): {
 
   // Priority 1: If provider is explicitly set via env var, use that
   if (overrideProvider) {
-    if (!overrideKey && overrideProvider !== 'ollama') {
+    // Providers that don't require an API key (use OAuth or local models)
+    const noKeyRequired = ['ollama', 'openai-codex', 'claude-code'];
+    if (!overrideKey && !noKeyRequired.includes(overrideProvider)) {
       throw new Error(
         `HINDSIGHT_API_LLM_PROVIDER is set to "${overrideProvider}" but HINDSIGHT_API_LLM_API_KEY is not set.\n` +
         `Please set: export HINDSIGHT_API_LLM_API_KEY=your-api-key`
@@ -81,7 +85,9 @@ function detectLLMConfig(pluginConfig?: PluginConfig): {
       apiKey = process.env[providerInfo.keyEnv] || '';
     }
 
-    if (!apiKey && pluginConfig.llmProvider !== 'ollama') {
+    // Providers that don't require an API key (use OAuth or local models)
+    const noKeyRequired = ['ollama', 'openai-codex', 'claude-code'];
+    if (!apiKey && !noKeyRequired.includes(pluginConfig.llmProvider)) {
       const keySource = pluginConfig.llmApiKeyEnv || providerInfo?.keyEnv || 'unknown';
       throw new Error(
         `Plugin config llmProvider is set to "${pluginConfig.llmProvider}" but no API key found.\n` +
@@ -103,8 +109,9 @@ function detectLLMConfig(pluginConfig?: PluginConfig): {
   for (const providerInfo of PROVIDER_DETECTION) {
     const apiKey = providerInfo.keyEnv ? process.env[providerInfo.keyEnv] : '';
 
-    // Skip ollama in auto-detection (must be explicitly requested)
-    if (providerInfo.name === 'ollama') {
+    // Skip providers that don't use API keys in auto-detection (must be explicitly requested)
+    const noKeyRequired = ['ollama', 'openai-codex', 'claude-code'];
+    if (noKeyRequired.includes(providerInfo.name)) {
       continue;
     }
 
@@ -125,11 +132,14 @@ function detectLLMConfig(pluginConfig?: PluginConfig): {
     `Option 1: Set a standard provider API key (auto-detect):\n` +
     `  export OPENAI_API_KEY=sk-your-key        # Uses gpt-4o-mini\n` +
     `  export ANTHROPIC_API_KEY=your-key       # Uses claude-3-5-haiku\n` +
-    `  export GEMINI_API_KEY=your-key          # Uses gemini-2.0-flash-exp\n` +
-    `  export GROQ_API_KEY=your-key            # Uses llama-3.3-70b-versatile\n\n` +
-    `Option 2: Set llmProvider in openclaw.json plugin config:\n` +
+    `  export GEMINI_API_KEY=your-key          # Uses gemini-2.5-flash\n` +
+    `  export GROQ_API_KEY=your-key            # Uses openai/gpt-oss-20b\n\n` +
+    `Option 2: Use Codex or Claude Code (no API key needed):\n` +
+    `  export HINDSIGHT_API_LLM_PROVIDER=openai-codex    # Requires 'codex auth login'\n` +
+    `  export HINDSIGHT_API_LLM_PROVIDER=claude-code     # Requires Claude Code CLI\n\n` +
+    `Option 3: Set llmProvider in openclaw.json plugin config:\n` +
     `  "llmProvider": "openai", "llmModel": "gpt-4o-mini"\n\n` +
-    `Option 3: Override with Hindsight-specific env vars:\n` +
+    `Option 4: Override with Hindsight-specific env vars:\n` +
     `  export HINDSIGHT_API_LLM_PROVIDER=openai\n` +
     `  export HINDSIGHT_API_LLM_MODEL=gpt-4o-mini\n` +
     `  export HINDSIGHT_API_LLM_API_KEY=sk-your-key\n` +
