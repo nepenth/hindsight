@@ -36,17 +36,6 @@ echo "  HINDSIGHT_EMBED_LLM_API_KEY: ${HINDSIGHT_EMBED_LLM_API_KEY:+set (hidden)
 echo "  Python: $(python3 --version 2>&1)"
 echo "  uv: $(uv --version 2>&1)"
 
-# Verify hindsight-embed command is available
-echo ""
-echo "Verifying hindsight-embed is available..."
-if uv run --project "$SCRIPT_DIR" hindsight-embed --version &> /dev/null; then
-    echo "  ✓ hindsight-embed command available"
-else
-    echo "  ERROR: hindsight-embed command not available"
-    echo "  This test requires hindsight-embed to be installed"
-    exit 1
-fi
-
 # Stop any existing daemon
 echo ""
 echo "Stopping any existing daemon..."
