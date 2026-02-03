@@ -17,8 +17,8 @@ if [ -f ~/.hindsight/config.env ]; then
     source ~/.hindsight/config.env
 fi
 
-if [ -z "$HINDSIGHT_EMBED_LLM_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
-    echo "Error: HINDSIGHT_EMBED_LLM_API_KEY or OPENAI_API_KEY is required"
+if [ -z "$HINDSIGHT_API_LLM_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+    echo "Error: HINDSIGHT_API_LLM_API_KEY or OPENAI_API_KEY is required"
     exit 1
 fi
 
@@ -31,9 +31,9 @@ echo "API dir: $API_DIR"
 # Show environment info for debugging
 echo ""
 echo "Environment:"
-echo "  HINDSIGHT_EMBED_LLM_PROVIDER: ${HINDSIGHT_EMBED_LLM_PROVIDER:-not set}"
-echo "  HINDSIGHT_EMBED_LLM_MODEL: ${HINDSIGHT_EMBED_LLM_MODEL:-not set}"
-echo "  HINDSIGHT_EMBED_LLM_API_KEY: ${HINDSIGHT_EMBED_LLM_API_KEY:+set (hidden)}"
+echo "  HINDSIGHT_API_LLM_PROVIDER: ${HINDSIGHT_API_LLM_PROVIDER:-not set}"
+echo "  HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_API_LLM_MODEL:-not set}"
+echo "  HINDSIGHT_API_LLM_API_KEY: ${HINDSIGHT_API_LLM_API_KEY:+set (hidden)}"
 echo "  Python: $(python3 --version 2>&1)"
 echo "  uv: $(uv --version 2>&1)"
 
