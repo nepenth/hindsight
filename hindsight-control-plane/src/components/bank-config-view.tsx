@@ -43,6 +43,7 @@ import { Loader2, AlertCircle, CheckCircle2, Pencil, RotateCcw, MoreVertical } f
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 // Field metadata for UI rendering
+// showWhen: { field, value } — field is only shown when config[field] === value
 const FIELD_CATEGORIES = {
   retention: {
     title: "Retain",
@@ -59,25 +60,27 @@ const FIELD_CATEGORIES = {
         label: "Extraction Mode",
         type: "select",
         description:
-          "Verbosity of fact extraction: concise (default), verbose (more detail), or custom (full prompt override)",
+          "How aggressively to extract facts: concise (default, selective), verbose (capture everything), custom (write your own extraction rules)",
         options: ["concise", "verbose", "custom"],
       },
       retain_spec: {
-        label: "Retain Spec",
+        label: "Focus",
         type: "textarea",
         description:
-          "Declarative description of what to focus on when retaining memories. Injected into the prompt alongside the extraction mode — no need to rewrite the full prompt.",
+          "What this bank should pay attention to. Steers the extraction without replacing it — works with any extraction mode.",
         placeholder:
-          "Focus on technical decisions, code architecture choices, and team member expertise...",
+          "Focus on technical decisions, architecture choices, and team member expertise. Ignore social conversation.",
         rows: 3,
       },
       retain_custom_instructions: {
-        label: "Custom Instructions",
+        label: "Custom Extraction Prompt",
         type: "textarea",
         description:
-          "Full prompt override for fact extraction (requires retain_extraction_mode='custom'). Replaces the built-in extraction rules entirely.",
-        placeholder: "Extract only facts about...",
-        rows: 3,
+          "Replaces the built-in extraction rules entirely. Only active when Extraction Mode is set to custom.",
+        placeholder:
+          "ONLY extract facts that are:\n✅ Technical decisions and rationale\n✅ Architecture and design choices\n\nDO NOT extract:\n❌ Greetings or social conversation",
+        rows: 5,
+        showWhen: { field: "retain_extraction_mode", value: "custom" },
       },
     },
   },
@@ -91,12 +94,12 @@ const FIELD_CATEGORIES = {
         description: "Enable automatic consolidation of facts into observations",
       },
       observations_spec: {
-        label: "Observations Spec",
+        label: "Observations Definition",
         type: "textarea",
         description:
-          "Declarative description of what observations are for this bank. Defines the type of knowledge to synthesize — replaces the built-in durable-knowledge rules.",
+          "What observations are for this bank. Replaces the built-in durable-knowledge rules — leave blank to use the default.",
         placeholder:
-          "Observations are weekly summaries of sprint outcomes, blockers encountered, and team dynamics patterns...",
+          "Observations are weekly summaries of sprint outcomes, blockers encountered, and team dynamics...",
         rows: 3,
       },
     },
@@ -154,6 +157,10 @@ export function BankConfigView() {
 
   const renderReadOnlyField = (fieldKey: string, fieldMeta: any) => {
     const value = config[fieldKey];
+
+    if (fieldMeta.showWhen && config[fieldMeta.showWhen.field] !== fieldMeta.showWhen.value) {
+      return null;
+    }
 
     return (
       <div
@@ -338,6 +345,10 @@ function ConfigEditDialog({
 
   const renderField = (fieldKey: string, fieldMeta: any) => {
     const value = config[fieldKey];
+
+    if (fieldMeta.showWhen && config[fieldMeta.showWhen.field] !== fieldMeta.showWhen.value) {
+      return null;
+    }
 
     if (fieldMeta.type === "boolean") {
       return (
