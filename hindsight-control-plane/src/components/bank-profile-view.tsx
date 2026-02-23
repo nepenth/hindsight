@@ -152,7 +152,7 @@ const TRAIT_LABELS: Record<
   },
 };
 
-export function BankProfileView() {
+export function BankProfileView({ hideReflectFields = false }: { hideReflectFields?: boolean }) {
   const router = useRouter();
   const { currentBank, setCurrentBank, loadBanks } = useBank();
   const { features } = useFeatures();
@@ -391,88 +391,90 @@ export function BankProfileView() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Disposition Chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Brain className="w-5 h-5 text-primary" />
-                  Disposition Profile
-                </CardTitle>
-                <CardDescription>Traits that shape the reasoning and perspective</CardDescription>
+      {!hideReflectFields && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Disposition Chart */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Brain className="w-5 h-5 text-primary" />
+                    Disposition Profile
+                  </CardTitle>
+                  <CardDescription>Traits that shape the reasoning and perspective</CardDescription>
+                </div>
+                <Button onClick={() => setShowDispositionDialog(true)} variant="ghost" size="sm">
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
-              <Button onClick={() => setShowDispositionDialog(true)} variant="ghost" size="sm">
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {profile && (
-              <div className="space-y-4">
-                {(Object.keys(TRAIT_LABELS) as Array<keyof DispositionTraits>).map((trait) => (
-                  <div key={trait} className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <label className="text-sm font-medium text-foreground">
-                          {TRAIT_LABELS[trait].label}
-                        </label>
-                        <p className="text-xs text-muted-foreground">
-                          {TRAIT_LABELS[trait].description}
-                        </p>
+            </CardHeader>
+            <CardContent>
+              {profile && (
+                <div className="space-y-4">
+                  {(Object.keys(TRAIT_LABELS) as Array<keyof DispositionTraits>).map((trait) => (
+                    <div key={trait} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <label className="text-sm font-medium text-foreground">
+                            {TRAIT_LABELS[trait].label}
+                          </label>
+                          <p className="text-xs text-muted-foreground">
+                            {TRAIT_LABELS[trait].description}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-primary">
+                          {profile.disposition[trait]}/5
+                        </span>
                       </div>
-                      <span className="text-sm font-bold text-primary">
-                        {profile.disposition[trait]}/5
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {TRAIT_LABELS[trait].lowLabel}
-                      </span>
-                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${((profile.disposition[trait] - 1) / 4) * 100}%` }}
-                        />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {TRAIT_LABELS[trait].lowLabel}
+                        </span>
+                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all"
+                            style={{ width: `${((profile.disposition[trait] - 1) / 4) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {TRAIT_LABELS[trait].highLabel}
+                        </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {TRAIT_LABELS[trait].highLabel}
-                      </span>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        {/* Mission */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Target className="w-5 h-5 text-primary" />
-                  Mission
-                </CardTitle>
-                <CardDescription>
-                  Affects how observations, reflect, and mental models are created
-                </CardDescription>
+          {/* Mission */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Target className="w-5 h-5 text-primary" />
+                    Mission
+                  </CardTitle>
+                  <CardDescription>
+                    Affects how observations, reflect, and mental models are created
+                  </CardDescription>
+                </div>
+                <Button onClick={() => setShowMissionDialog(true)} variant="ghost" size="sm">
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
-              <Button onClick={() => setShowMissionDialog(true)} variant="ghost" size="sm">
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-              {profile?.mission ||
-                "No mission set. Set a mission to derive structural mental models and personalize reflect responses."}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                {profile?.mission ||
+                  "No mission set. Set a mission to derive structural mental models and personalize reflect responses."}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Directives Section */}
       <Card>

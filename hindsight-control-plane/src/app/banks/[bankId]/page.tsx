@@ -239,12 +239,12 @@ export default function BankPage() {
                   {bankConfigTab === "configuration" && (
                     <div>
                       <p className="text-sm text-muted-foreground mb-6">
-                        Configure disposition traits, mission, directives, and behavioral settings
-                        for this bank.
+                        Configure behavioral settings, mission, disposition, and directives for this
+                        bank.
                       </p>
                       <div className="space-y-6">
-                        <BankProfileView />
-                        {bankConfigEnabled && <BankConfigView />}
+                        <BankConfigView />
+                        <BankProfileView hideReflectFields />
                       </div>
                     </div>
                   )}
