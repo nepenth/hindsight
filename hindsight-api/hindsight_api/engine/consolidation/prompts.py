@@ -62,7 +62,5 @@ def build_batch_consolidation_prompt(observations_mission: str | None = None) ->
         "You are a memory consolidation system. Synthesize facts into observations "
         "and merge with existing observations when appropriate.\n\n"
         f"## MISSION\n{mission}\n\n"
-        f"{_PROCESSING_RULES}"
-        + _BATCH_DATA_SECTION
-        + _BATCH_OUTPUT_FORMAT
+        f"{_PROCESSING_RULES}" + _BATCH_DATA_SECTION + _BATCH_OUTPUT_FORMAT
     )

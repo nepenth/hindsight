@@ -476,8 +476,7 @@ async def _process_memory_batch(
 
     # 2. Build per-fact observation sets (keyed by memory ID string) for secure action validation
     per_fact_obs_ids: dict[str, set[str]] = {
-        str(memories[i]["id"]): {str(obs.id) for obs in r.results}
-        for i, r in enumerate(per_fact_recalls)
+        str(memories[i]["id"]): {str(obs.id) for obs in r.results} for i, r in enumerate(per_fact_recalls)
     }
 
     # Union all observations (deduped by id)
@@ -568,8 +567,7 @@ async def _process_memory_batch(
         # Security: the observation must be present in the unioned recall
         if not any(str(obs.id) == delete.observation_id for obs in union_observations):
             logger.debug(
-                f"Batch consolidation: rejected delete — observation {delete.observation_id} "
-                f"not in unioned recall"
+                f"Batch consolidation: rejected delete — observation {delete.observation_id} not in unioned recall"
             )
             continue
         await _execute_delete_action(conn=conn, bank_id=bank_id, observation_id=delete.observation_id)
@@ -906,9 +904,7 @@ async def _consolidate_batch_with_llm(
             )
         except Exception as exc:
             last_exc = exc
-            logger.warning(
-                f"[CONSOLIDATION] LLM batch call failed (attempt {attempt}/{max_attempts}): {exc}"
-            )
+            logger.warning(f"[CONSOLIDATION] LLM batch call failed (attempt {attempt}/{max_attempts}): {exc}")
 
     logger.error(
         f"[CONSOLIDATION] LLM batch call failed after {max_attempts} attempts, skipping batch. Last error: {last_exc}"
