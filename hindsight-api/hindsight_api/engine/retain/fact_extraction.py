@@ -17,7 +17,13 @@ from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 from ...config import get_config
 from ..llm_wrapper import LLMConfig, OutputTooLongError
 from ..response_models import TokenUsage
-from .entity_labels import EntityLabelsConfig, build_labels_lookup, build_labels_model, parse_entity_labels
+from .entity_labels import (
+    EntityLabelsConfig,
+    build_labels_lookup,
+    build_labels_model,
+    is_label_entity,
+    parse_entity_labels,
+)
 
 
 def _infer_temporal_date(fact_text: str, event_date: datetime | None) -> str | None:
@@ -726,11 +732,18 @@ def _build_labels_prompt_section(labels_cfg: EntityLabelsConfig | list | None, f
     ]
 
     for attr in labels_cfg.attributes:
-        mode = "multi-value (list)" if attr.multi_value else "single value or null"
-        lines.append(f"- {attr.key} ({mode}): {attr.description}")
-        for v in attr.values:
-            desc = f" — {v.description}" if v.description else ""
-            lines.append(f'    • "{v.value}"{desc}')
+        if attr.free_values:
+            mode = "free text, multi-value (list)" if attr.multi_value else "free text or null"
+            lines.append(f"- {attr.key} ({mode}): {attr.description}")
+            if attr.values:
+                examples = ", ".join(f'"{v.value}"' for v in attr.values if v.value)
+                lines.append(f"    Examples: {examples} (write any relevant value, not limited to these)")
+        else:
+            mode = "multi-value (list)" if attr.multi_value else "single value or null"
+            lines.append(f"- {attr.key} ({mode}): {attr.description}")
+            for v in attr.values:
+                desc = f" — {v.description}" if v.description else ""
+                lines.append(f'    • "{v.value}"{desc}')
         lines.append("")
 
     lines.append("Only assign labels when clearly applicable. Leave null/empty if the fact does not match.")
@@ -1110,7 +1123,7 @@ async def _extract_facts_from_chunk(
                 if labels_cfg and labels_cfg.attributes:
                     labels_lookup = build_labels_lookup(labels_cfg)
                     labels_data = llm_fact.get("labels") or {}
-                    if isinstance(labels_data, dict) and labels_lookup:
+                    if isinstance(labels_data, dict):
                         existing_texts_lower = {e.text.lower() for e in validated_entities}
                         for group in labels_cfg.attributes:
                             value = labels_data.get(group.key)
@@ -1118,16 +1131,26 @@ async def _extract_facts_from_chunk(
                                 continue
                             values_list = value if isinstance(value, list) else [value]
                             for v in values_list:
-                                label_str = f"{group.key}:{v}"
-                                if label_str.lower() in labels_lookup and label_str.lower() not in existing_texts_lower:
+                                if not isinstance(v, str) or not v.strip() or v.lower() in ("none", "null", "n/a"):
+                                    continue
+                                label_str = f"{group.key}:{v.strip()}"
+                                if group.free_values:
+                                    if label_str.lower() not in existing_texts_lower:
+                                        validated_entities.append(Entity(text=label_str))
+                                        existing_texts_lower.add(label_str.lower())
+                                elif (
+                                    label_str.lower() in labels_lookup and label_str.lower() not in existing_texts_lower
+                                ):
                                     validated_entities.append(Entity(text=label_str))
                                     existing_texts_lower.add(label_str.lower())
-                                elif label_str.lower() not in labels_lookup:
+                                else:
                                     logger.warning(f"Label '{label_str}' not in valid label values, skipping")
 
                     # In labels-only mode, keep only label entities
-                    if not free_form_entities and labels_lookup:
-                        validated_entities = [e for e in validated_entities if e.text.lower() in labels_lookup]
+                    if not free_form_entities:
+                        validated_entities = [
+                            e for e in validated_entities if is_label_entity(e.text, labels_cfg, labels_lookup)
+                        ]
                 elif not free_form_entities:
                     # No labels but free_form disabled: clear all entities
                     validated_entities = []
@@ -1747,7 +1770,7 @@ async def extract_facts_from_contents_batch_api(
             if labels_cfg_batch and labels_cfg_batch.attributes:
                 labels_lookup_batch = build_labels_lookup(labels_cfg_batch)
                 labels_data = llm_fact.get("labels") or {}
-                if isinstance(labels_data, dict) and labels_lookup_batch:
+                if isinstance(labels_data, dict):
                     existing_texts_lower = {e.text.lower() for e in validated_entities}
                     for group in labels_cfg_batch.attributes:
                         value = labels_data.get(group.key)
@@ -1755,16 +1778,24 @@ async def extract_facts_from_contents_batch_api(
                             continue
                         values_list = value if isinstance(value, list) else [value]
                         for v in values_list:
-                            label_str = f"{group.key}:{v}"
-                            if (
+                            if not isinstance(v, str) or not v.strip() or v.lower() in ("none", "null", "n/a"):
+                                continue
+                            label_str = f"{group.key}:{v.strip()}"
+                            if group.free_values:
+                                if label_str.lower() not in existing_texts_lower:
+                                    validated_entities.append(Entity(text=label_str))
+                                    existing_texts_lower.add(label_str.lower())
+                            elif (
                                 label_str.lower() in labels_lookup_batch
                                 and label_str.lower() not in existing_texts_lower
                             ):
                                 validated_entities.append(Entity(text=label_str))
                                 existing_texts_lower.add(label_str.lower())
 
-                if not free_form_entities_batch and labels_lookup_batch:
-                    validated_entities = [e for e in validated_entities if e.text.lower() in labels_lookup_batch]
+                if not free_form_entities_batch:
+                    validated_entities = [
+                        e for e in validated_entities if is_label_entity(e.text, labels_cfg_batch, labels_lookup_batch)
+                    ]
             elif not free_form_entities_batch:
                 validated_entities = []
 

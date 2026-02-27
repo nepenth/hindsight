@@ -199,6 +199,92 @@ Set `retain_mission` and `retain_extraction_mode` via the [bank config API](/dev
 
 ---
 
+## Entity Labels
+
+**Entity labels** let you define a controlled vocabulary of classification labels that are extracted at retain time and stored as entities alongside regular named entities. Each label takes the form `key:value` (e.g. `pedagogy:scaffolding`, `engagement:active`).
+
+Because labels become entities, they automatically:
+- Appear in the **knowledge graph** — two memories with `pedagogy:scaffolding` are linked
+- Improve **semantic and BM25 retrieval** — label strings are included in both the dense embedding and the sparse `text_signals` field
+- Support **labels-only mode** — optionally disable free-form entity extraction so only labels are stored
+
+Labels are configured per bank via `entity_labels` in the bank config.
+
+### Defining Label Groups
+
+Each label group defines one classification dimension:
+
+```json
+{
+  "entity_labels": [
+    {
+      "key": "engagement",
+      "description": "Student engagement level during the session",
+      "optional": true,
+      "values": [
+        { "value": "active",  "description": "Student is actively participating" },
+        { "value": "passive", "description": "Student is listening but not participating" }
+      ]
+    },
+    {
+      "key": "pedagogy",
+      "description": "Teaching strategies used",
+      "multi_value": true,
+      "values": [
+        { "value": "scaffolding",           "description": "Breaking complex tasks into smaller steps" },
+        { "value": "direct_instruction",    "description": "Explicit explanation by the teacher" },
+        { "value": "socratic_questioning",  "description": "Guiding through questions rather than answers" }
+      ]
+    }
+  ]
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `key` | — | Label group identifier. Becomes the prefix in `key:value` entities. |
+| `description` | `""` | Shown to the LLM to help it assign the right label. |
+| `values` | `[]` | Allowed values (required for enum groups; optional hints for `free_values` groups). |
+| `multi_value` | `false` | `true` → the LLM can assign multiple values for a single fact. |
+| `optional` | `true` | `true` → the LLM may skip this label if not applicable (default). `false` → LLM must always assign a value. Has no effect on `multi_value` groups (always optional). |
+| `free_values` | `false` | `true` → accept any string value, not just those in `values`. See [Free-text labels](#free-text-labels). |
+
+### Enum vs Free-text Labels
+
+**Enum groups** (`free_values: false`, the default): the LLM must pick from the predefined `values` list. Values not in the list are silently dropped. This is the most reliable option — the vocabulary is stable and graph clustering is tight.
+
+**Free-text groups** (`free_values: true`): the LLM can write any string value. The `values` list becomes example hints shown in the prompt, not hard constraints. Use this for open-ended dimensions like topic or mood where you can't enumerate all possibilities upfront.
+
+```json
+{
+  "key": "topic",
+  "description": "The specific subject being discussed",
+  "free_values": true,
+  "optional": true,
+  "values": [
+    { "value": "algebra" },
+    { "value": "geometry" }
+  ]
+}
+```
+
+The trade-off with free-text: the LLM may use different phrasings for the same concept across sessions (`topic:fractions` vs `topic:fraction arithmetic`), so graph linking is less reliable than with enum groups.
+
+### Labels-only Mode
+
+By default, entity labels are extracted **alongside** regular named entities (people, places, concepts). Set `retain_free_form_entities: false` to disable free-form extraction and store only label entities:
+
+```json
+{
+  "entity_labels": [...],
+  "retain_free_form_entities": false
+}
+```
+
+Configure both via the [bank config API](/developer/api/memory-banks#retain-configuration).
+
+---
+
 ## Observation Consolidation
 
 After `retain()` completes, Hindsight automatically triggers **observation consolidation** in the background. This process:

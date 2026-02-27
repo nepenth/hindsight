@@ -47,6 +47,7 @@ type LabelGroup = {
   description: string;
   multi_value: boolean;
   optional: boolean;
+  free_values: boolean;
   values: LabelValue[];
 };
 
@@ -815,7 +816,14 @@ function TraitRow({
 // ─── EntityLabelsEditor ───────────────────────────────────────────────────────
 
 function emptyAttribute(): LabelGroup {
-  return { key: "", description: "", multi_value: false, optional: true, values: [] };
+  return {
+    key: "",
+    description: "",
+    multi_value: false,
+    optional: true,
+    free_values: false,
+    values: [],
+  };
 }
 
 function emptyValue(): LabelValue {
@@ -935,6 +943,15 @@ function EntityLabelsEditor({
                   />
                   optional
                 </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 cursor-pointer select-none">
+                  <Checkbox
+                    id={`free-values-${i}`}
+                    checked={attr.free_values}
+                    onCheckedChange={(checked) => updateAttr(i, { free_values: !!checked })}
+                    className="h-4 w-4"
+                  />
+                  free text
+                </label>
                 <button
                   type="button"
                   onClick={() => removeAttr(i)}
@@ -947,13 +964,20 @@ function EntityLabelsEditor({
               {/* Values list */}
               {isOpen && (
                 <div className="px-3 pb-3 space-y-1 border-t border-border/30 pt-2">
+                  {attr.free_values && (
+                    <p className="text-xs text-muted-foreground pl-5 pb-1">
+                      Example hints — the LLM may produce any value, not limited to these.
+                    </p>
+                  )}
                   {attr.values.length === 0 && (
-                    <p className="text-xs text-muted-foreground italic pl-5">No values yet.</p>
+                    <p className="text-xs text-muted-foreground italic pl-5">
+                      {attr.free_values ? "No example hints defined." : "No values yet."}
+                    </p>
                   )}
                   {attr.values.map((v, vi) => (
                     <div key={vi} className="flex items-center gap-2 pl-5">
                       <Input
-                        placeholder="value"
+                        placeholder={attr.free_values ? "example" : "value"}
                         value={v.value}
                         onChange={(e) => updateVal(i, vi, { value: e.target.value })}
                         className="h-8 text-xs font-mono w-32 shrink-0"

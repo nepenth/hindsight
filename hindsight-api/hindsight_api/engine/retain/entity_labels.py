@@ -26,6 +26,7 @@ class LabelGroup(BaseModel):
     description: str = ""
     multi_value: bool = False
     optional: bool = True
+    free_values: bool = False
     values: list[LabelValue] = []
 
 
@@ -77,50 +78,77 @@ def build_labels_model(labels_cfg: EntityLabelsConfig) -> type[BaseModel] | None
     Build a dynamic Pydantic model for structured label extraction.
 
     Each LabelGroup becomes a typed field:
-    - multi_value=False, optional=True  → Literal["v1", "v2"] | None  (nullable, absent = no label)
-    - multi_value=False, optional=False → Literal["v1", "v2"]          (required, always set)
-    - multi_value=True                  → list[Literal["v1", "v2"]]    (zero or more choices)
-
-    This produces a clean JSON schema like:
-        {"engagement": "active", "pedagogy": ["scaffolding"]}
+    - free_values=False, multi_value=False, optional=True  → Literal["v1","v2"] | None
+    - free_values=False, multi_value=False, optional=False → Literal["v1","v2"]  (required)
+    - free_values=False, multi_value=True                  → list[Literal["v1","v2"]]
+    - free_values=True,  multi_value=False, optional=True  → str | None
+    - free_values=True,  multi_value=False, optional=False → str  (required)
+    - free_values=True,  multi_value=True                  → list[str]
 
     Args:
         labels_cfg: Parsed EntityLabelsConfig
 
     Returns:
-        Dynamic Pydantic model class, or None if no groups with values
+        Dynamic Pydantic model class, or None if no groups defined
     """
     fields: dict = {}
     for group in labels_cfg.attributes:
-        if not group.key or not group.values:
+        if not group.key:
             continue
-        values = tuple(v.value for v in group.values if v.value)
-        if not values:
-            continue
-        # Literal[("v1", "v2")] is equivalent to Literal["v1", "v2"] in Python 3.11+
-        literal_type = Literal[values]  # type: ignore[valid-type]
         description = group.description or group.key
-        if group.multi_value:
-            fields[group.key] = (
-                list[literal_type],  # type: ignore[valid-type]
-                Field(default_factory=list, description=description),
-            )
-        elif group.optional:
-            fields[group.key] = (
-                literal_type | None,  # type: ignore[valid-type]
-                Field(default=None, description=description),
-            )
+
+        if group.free_values:
+            # Free-form: any string value accepted
+            if group.multi_value:
+                fields[group.key] = (list[str], Field(default_factory=list, description=description))
+            elif group.optional:
+                fields[group.key] = (str | None, Field(default=None, description=description))
+            else:
+                fields[group.key] = (str, Field(description=description))
         else:
-            # Required: no default → field appears in JSON schema required array
-            fields[group.key] = (
-                literal_type,  # type: ignore[valid-type]
-                Field(description=description),
-            )
+            # Enum-constrained: must have defined values
+            if not group.values:
+                continue
+            values = tuple(v.value for v in group.values if v.value)
+            if not values:
+                continue
+            # Literal[("v1", "v2")] is equivalent to Literal["v1", "v2"] in Python 3.11+
+            literal_type = Literal[values]  # type: ignore[valid-type]
+            if group.multi_value:
+                fields[group.key] = (
+                    list[literal_type],  # type: ignore[valid-type]
+                    Field(default_factory=list, description=description),
+                )
+            elif group.optional:
+                fields[group.key] = (
+                    literal_type | None,  # type: ignore[valid-type]
+                    Field(default=None, description=description),
+                )
+            else:
+                fields[group.key] = (
+                    literal_type,  # type: ignore[valid-type]
+                    Field(description=description),
+                )
 
     if not fields:
         return None
 
     return create_model("Labels", **fields)
+
+
+def is_label_entity(text: str, labels_cfg: EntityLabelsConfig, labels_lookup: set[str]) -> bool:
+    """
+    Return True if entity text belongs to any configured label group.
+
+    For enum groups: checks the pre-built lookup set.
+    For free_values groups: checks that the text starts with a known key prefix.
+    """
+    if text.lower() in labels_lookup:
+        return True
+    for group in labels_cfg.attributes:
+        if group.free_values and group.key and text.lower().startswith(f"{group.key.lower()}:"):
+            return True
+    return False
 
 
 def build_labels_lookup(labels_cfg: EntityLabelsConfig | list | None) -> set[str]:
@@ -147,6 +175,8 @@ def build_labels_lookup(labels_cfg: EntityLabelsConfig | list | None) -> set[str
 
     valid = set()
     for group in labels_cfg.attributes:
+        if group.free_values:
+            continue  # No fixed vocabulary — all values accepted in post-processing
         for v in group.values:
             if group.key and v.value:
                 valid.add(f"{group.key}:{v.value}".lower())

@@ -90,6 +90,8 @@ def test_parse_entity_labels_dict_format_defaults():
 
 # ─── build_labels_model ────────────────────────────────────────────────────────
 
+# free_values schema variants
+
 
 def test_build_labels_model_single_value():
     """Single-value group → Literal | None field (anyOf), defaults to None."""
@@ -168,6 +170,100 @@ def test_build_labels_model_none_when_no_values():
 
     labels_cfg = EntityLabelsConfig(attributes=[LabelGroup(key="empty", values=[])])
     assert build_labels_model(labels_cfg) is None
+
+
+def test_build_labels_model_free_values_optional():
+    """free_values=True, optional=True → str | None field."""
+    from hindsight_api.engine.retain.entity_labels import build_labels_model
+
+    labels_cfg = EntityLabelsConfig(
+        attributes=[LabelGroup(key="topic", free_values=True, optional=True, values=[])]
+    )
+    Model = build_labels_model(labels_cfg)
+    assert Model is not None
+    schema = Model.model_json_schema()
+    topic = schema["properties"]["topic"]
+    any_of_types = {branch.get("type") for branch in topic["anyOf"]}
+    assert "string" in any_of_types and "null" in any_of_types
+    assert Model().topic is None  # type: ignore[attr-defined]
+
+
+def test_build_labels_model_free_values_required():
+    """free_values=True, optional=False → str field (in required array)."""
+    from hindsight_api.engine.retain.entity_labels import build_labels_model
+
+    labels_cfg = EntityLabelsConfig(
+        attributes=[LabelGroup(key="topic", free_values=True, optional=False, values=[])]
+    )
+    Model = build_labels_model(labels_cfg)
+    assert Model is not None
+    schema = Model.model_json_schema()
+    assert "topic" in schema.get("required", [])
+    assert schema["properties"]["topic"]["type"] == "string"
+
+
+def test_build_labels_model_free_values_multi():
+    """free_values=True, multi_value=True → list[str] field."""
+    from hindsight_api.engine.retain.entity_labels import build_labels_model
+
+    labels_cfg = EntityLabelsConfig(
+        attributes=[LabelGroup(key="tags", free_values=True, multi_value=True, values=[])]
+    )
+    Model = build_labels_model(labels_cfg)
+    assert Model is not None
+    schema = Model.model_json_schema()
+    assert schema["properties"]["tags"]["type"] == "array"
+    assert schema["properties"]["tags"]["items"]["type"] == "string"
+
+
+def test_build_labels_model_free_values_no_values_still_creates_field():
+    """free_values group with no values still creates a field (values are just hints)."""
+    from hindsight_api.engine.retain.entity_labels import build_labels_model
+
+    labels_cfg = EntityLabelsConfig(
+        attributes=[LabelGroup(key="mood", free_values=True, values=[])]
+    )
+    Model = build_labels_model(labels_cfg)
+    assert Model is not None
+    assert "mood" in Model.model_json_schema()["properties"]
+
+
+# ─── is_label_entity ──────────────────────────────────────────────────────────
+
+
+def test_is_label_entity_enum_match():
+    from hindsight_api.engine.retain.entity_labels import build_labels_lookup, is_label_entity, parse_entity_labels
+
+    cfg = parse_entity_labels([{"key": "engagement", "values": [{"value": "active"}]}])
+    lookup = build_labels_lookup(cfg)
+    assert is_label_entity("engagement:active", cfg, lookup) is True
+
+
+def test_is_label_entity_enum_no_match():
+    from hindsight_api.engine.retain.entity_labels import build_labels_lookup, is_label_entity, parse_entity_labels
+
+    cfg = parse_entity_labels([{"key": "engagement", "values": [{"value": "active"}]}])
+    lookup = build_labels_lookup(cfg)
+    assert is_label_entity("engagement:unknown", cfg, lookup) is False
+    assert is_label_entity("Alice", cfg, lookup) is False
+
+
+def test_is_label_entity_free_values_prefix_match():
+    from hindsight_api.engine.retain.entity_labels import build_labels_lookup, is_label_entity, parse_entity_labels
+
+    cfg = parse_entity_labels([{"key": "topic", "free_values": True, "values": []}])
+    lookup = build_labels_lookup(cfg)
+    assert is_label_entity("topic:algebra", cfg, lookup) is True
+    assert is_label_entity("topic:anything at all", cfg, lookup) is True
+
+
+def test_is_label_entity_free_values_no_match_other_key():
+    from hindsight_api.engine.retain.entity_labels import build_labels_lookup, is_label_entity, parse_entity_labels
+
+    cfg = parse_entity_labels([{"key": "topic", "free_values": True, "values": []}])
+    lookup = build_labels_lookup(cfg)
+    assert is_label_entity("Alice", cfg, lookup) is False
+    assert is_label_entity("engagement:active", cfg, lookup) is False
 
 
 # ─── build_labels_lookup ───────────────────────────────────────────────────────
@@ -421,6 +517,140 @@ def test_label_entity_post_processing_multi_value():
     entity_texts = {e.text for e in validated_entities}
     assert "pedagogy:scaffolding" in entity_texts
     assert "pedagogy:active_engagement" in entity_texts
+
+
+def _run_label_post_processing(labels_cfg, labels_data: dict) -> set[str]:
+    """Helper: mirrors the production label post-processing logic, returns entity text set."""
+    from hindsight_api.engine.retain.entity_labels import build_labels_lookup
+    from hindsight_api.engine.retain.fact_extraction import Entity
+
+    labels_lookup = build_labels_lookup(labels_cfg)
+    validated_entities: list[Entity] = []
+    existing_texts_lower: set[str] = set()
+
+    effective_data = labels_data or {}
+    if isinstance(effective_data, dict):
+        for group in labels_cfg.attributes:
+            value = effective_data.get(group.key)
+            if not value:
+                continue
+            values_list = value if isinstance(value, list) else [value]
+            for v in values_list:
+                if not isinstance(v, str) or not v.strip() or v.lower() in ("none", "null", "n/a"):
+                    continue
+                label_str = f"{group.key}:{v.strip()}"
+                if group.free_values:
+                    if label_str.lower() not in existing_texts_lower:
+                        validated_entities.append(Entity(text=label_str))
+                        existing_texts_lower.add(label_str.lower())
+                elif label_str.lower() in labels_lookup and label_str.lower() not in existing_texts_lower:
+                    validated_entities.append(Entity(text=label_str))
+                    existing_texts_lower.add(label_str.lower())
+
+    return {e.text for e in validated_entities}
+
+
+def test_free_values_label_accepts_any_string():
+    """free_values group: any non-empty string produces a key:value entity."""
+    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+
+    labels_cfg = parse_entity_labels([{"key": "topic", "free_values": True, "values": []}])
+    entity_texts = _run_label_post_processing(labels_cfg, {"topic": "quadratic equations"})
+    assert "topic:quadratic equations" in entity_texts
+
+
+def test_free_values_label_rejects_none_sentinel():
+    """free_values group: string 'None' / 'null' / 'n/a' are rejected."""
+    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+
+    labels_cfg = parse_entity_labels([{"key": "topic", "free_values": True, "values": []}])
+    for sentinel in ("None", "null", "n/a", "NULL", "NONE"):
+        result = _run_label_post_processing(labels_cfg, {"topic": sentinel})
+        assert result == set(), f"Sentinel '{sentinel}' should not produce an entity, got: {result}"
+
+
+def test_free_values_label_multi_value():
+    """free_values + multi_value: each list item becomes a separate entity."""
+    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+
+    labels_cfg = parse_entity_labels(
+        [{"key": "topics", "free_values": True, "multi_value": True, "values": []}]
+    )
+    entity_texts = _run_label_post_processing(labels_cfg, {"topics": ["algebra", "quadratic equations"]})
+    assert "topics:algebra" in entity_texts
+    assert "topics:quadratic equations" in entity_texts
+
+
+def test_free_values_label_not_in_lookup():
+    """free_values group values do NOT appear in the lookup set (no fixed vocabulary)."""
+    from hindsight_api.engine.retain.entity_labels import build_labels_lookup, parse_entity_labels
+
+    labels_cfg = parse_entity_labels(
+        [{"key": "topic", "free_values": True, "values": [{"value": "algebra"}]}]
+    )
+    lookup = build_labels_lookup(labels_cfg)
+    assert "topic:algebra" not in lookup  # example hints not added to lookup
+    assert len(lookup) == 0
+
+
+def test_optional_label_null_produces_no_entity():
+    """JSON null (Python None) for an optional label → no entity created."""
+    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+
+    labels_cfg = parse_entity_labels(
+        [{"key": "engagement", "optional": True, "values": [{"value": "active"}, {"value": "passive"}]}]
+    )
+
+    # LLM returned null — content didn't match any value
+    entity_texts = _run_label_post_processing(labels_cfg, {"engagement": None})
+    assert entity_texts == set(), f"Expected no entities for null optional label, got: {entity_texts}"
+
+
+def test_optional_label_absent_key_produces_no_entity():
+    """Missing key in labels dict for an optional label → no entity created."""
+    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+
+    labels_cfg = parse_entity_labels(
+        [{"key": "engagement", "optional": True, "values": [{"value": "active"}, {"value": "passive"}]}]
+    )
+
+    # LLM omitted the key entirely
+    entity_texts = _run_label_post_processing(labels_cfg, {})
+    assert entity_texts == set(), f"Expected no entities for absent optional label, got: {entity_texts}"
+
+
+def test_optional_label_string_none_produces_no_entity():
+    """String 'None' from LLM for an optional label → no entity created (not in lookup)."""
+    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+
+    labels_cfg = parse_entity_labels(
+        [{"key": "engagement", "optional": True, "values": [{"value": "active"}, {"value": "passive"}]}]
+    )
+
+    # LLM returned the string "None" instead of JSON null — must not be stored
+    entity_texts = _run_label_post_processing(labels_cfg, {"engagement": "None"})
+    assert entity_texts == set(), (
+        f"String 'None' must not produce engagement:None entity, got: {entity_texts}"
+    )
+
+
+def test_optional_label_null_does_not_affect_other_labels():
+    """Null for one optional label doesn't suppress other valid labels on the same fact."""
+    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+
+    labels_cfg = parse_entity_labels(
+        [
+            {"key": "engagement", "optional": True, "values": [{"value": "active"}, {"value": "passive"}]},
+            {"key": "topic", "optional": True, "values": [{"value": "math"}, {"value": "science"}]},
+        ]
+    )
+
+    # engagement is null, but topic is set
+    entity_texts = _run_label_post_processing(labels_cfg, {"engagement": None, "topic": "math"})
+    assert "topic:math" in entity_texts, f"Expected topic:math entity, got: {entity_texts}"
+    assert not any("engagement" in t for t in entity_texts), (
+        f"engagement should not appear, got: {entity_texts}"
+    )
 
 
 def test_free_form_entities_false_clears_entities():
@@ -726,6 +956,75 @@ async def test_retain_extracts_multi_value_label(memory, request_context):
         pedagogy_labels = {n for n in entity_names if n.startswith("pedagogy:")}
         assert len(pedagogy_labels) > 0, (
             f"Expected at least one pedagogy:* label entity. Got: {entity_names}"
+        )
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+
+@pytest.mark.asyncio
+async def test_retain_extracts_free_values_label(memory, request_context):
+    """
+    End-to-end: retain content with a free_values entity_labels group.
+    Verify that the LLM produces a key:value entity with an open-ended value
+    (not constrained to a predefined enum list).
+    """
+    from hindsight_api.engine.memory_engine import fq_table
+
+    bank_id = f"test-labels-free-{uuid.uuid4().hex[:8]}"
+    try:
+        await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
+
+        await memory._config_resolver.update_bank_config(
+            bank_id=bank_id,
+            updates={
+                "entity_labels": [
+                    {
+                        "key": "topic",
+                        "description": "The specific subject being discussed in this session",
+                        "free_values": True,
+                        "optional": True,
+                        "values": [
+                            {"value": "algebra", "description": "Algebra"},
+                            {"value": "geometry", "description": "Geometry"},
+                        ],
+                    }
+                ],
+                "retain_free_form_entities": False,
+            },
+            context=request_context,
+        )
+
+        unit_ids = await memory.retain_async(
+            bank_id=bank_id,
+            content=(
+                "The student and tutor spent the session working through quadratic equations. "
+                "They factored several expressions and practised the quadratic formula."
+            ),
+            request_context=request_context,
+        )
+
+        assert len(unit_ids) > 0
+
+        async with memory._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"""
+                SELECT e.canonical_name
+                FROM {fq_table("unit_entities")} ue
+                JOIN {fq_table("entities")} e ON e.id = ue.entity_id
+                WHERE ue.unit_id = ANY($1::uuid[])
+                """,
+                [u for u in unit_ids],
+            )
+
+        entity_names = {r["canonical_name"].lower() for r in rows}
+        # A topic:* entity must exist — value is free-form so we only check the prefix
+        topic_entities = {n for n in entity_names if n.startswith("topic:")}
+        assert len(topic_entities) > 0, (
+            f"Expected at least one topic:* free-value entity. Got: {entity_names}"
+        )
+        # The value must not be the literal string "none" or "null"
+        assert not any(n in ("topic:none", "topic:null", "topic:n/a") for n in topic_entities), (
+            f"topic entity should not be a null sentinel. Got: {topic_entities}"
         )
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
