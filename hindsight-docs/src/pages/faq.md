@@ -193,6 +193,30 @@ client.recall(bank_id="my-bank", query="...", tags=["user:alice"])
 
 See [Tags](/developer/api/retain#tags-and-document_tags) for full details including document-level tagging.
 
+**What about filtering by entities?**
+
+Entities (people, places, concepts) extracted from memories are stored in the knowledge graph and drive graph-based retrieval — so querying "tell me about Alice" will naturally surface Alice-related memories without any manual filtering.
+
+If you need explicit tag-based filtering on entity-like values, use **entity labels** with `tag: true`. Entity labels let you define a controlled vocabulary of `key:value` classifiers (e.g. `user:alice`, `topic:algebra`) extracted at retain time. Setting `tag: true` on a label group automatically writes each extracted label as a tag on the memory unit, making them available for standard `tags`/`tags_match` filtering:
+
+```python
+# Bank config: entity label group with tag: true
+{
+    "entity_labels": [{
+        "key": "user",
+        "type": "text",
+        "tag": True,
+        "description": "The user this memory belongs to"
+    }]
+}
+
+# The label "user:alice" is extracted and also written as a tag
+# Filter at recall time using the standard tags parameter
+client.recall(bank_id="my-bank", query="...", tags=["user:alice"])
+```
+
+See [Entity Labels](/developer/retain#entity-labels) for configuration details.
+
 **What about document `metadata`?**
 
 Document metadata (the `metadata` key-value pairs on a retain item) serves a different purpose. It is:
