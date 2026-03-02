@@ -723,9 +723,7 @@ async def insert_entity_links_batch(conn, links: list[EntityLink], chunk_size: i
             chunk_end,
         )
         chunks += 1
-    logger.debug(
-        f"      [9.5] INSERT {total_rows} rows in {chunks} chunks: {time_mod.time() - insert_start:.3f}s"
-    )
+    logger.debug(f"      [9.5] INSERT {total_rows} rows in {chunks} chunks: {time_mod.time() - insert_start:.3f}s")
     logger.debug(f"      [9.TOTAL] Entity links batch insert: {time_mod.time() - total_start:.3f}s")
 
 

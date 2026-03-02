@@ -560,7 +560,7 @@ def _build_engine(*, disable_observations: bool = False) -> "Any":
 # ---------------------------------------------------------------------------
 
 
-async def _wait_for_operation(pool: Any, operation_id: str, timeout: float = 7200.0) -> str:
+async def _wait_for_operation(pool: Any, operation_id: str, timeout: float = 86400.0) -> str:
     """
     Poll async_operations every second until the parent reaches completed or failed.
 
