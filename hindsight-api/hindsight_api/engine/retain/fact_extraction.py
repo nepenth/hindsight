@@ -1898,6 +1898,9 @@ async def extract_facts_from_contents_batch_api(
     # Step 7: Add temporal offsets
     _add_temporal_offsets(extracted_facts, contents)
 
+    # Step 8: Auto-tag facts from label groups with tag=True
+    _inject_label_tags(extracted_facts, config)
+
     logger.info(f"Batch API extracted {len(extracted_facts)} facts from {len(all_chunks_info)} chunks")
 
     return extracted_facts, chunks_metadata, total_usage
@@ -2030,6 +2033,9 @@ async def extract_facts_from_contents(
     # Step 4: Add time offsets to preserve ordering within each content
     _add_temporal_offsets(extracted_facts, contents)
 
+    # Step 5: Auto-tag facts from label groups with tag=True
+    _inject_label_tags(extracted_facts, config)
+
     return extracted_facts, chunks_metadata, total_usage
 
 
@@ -2085,3 +2091,24 @@ def _add_temporal_offsets(facts: list[ExtractedFactType], contents: list[RetainC
             fact.occurred_end = parse_datetime_flexible(fact.occurred_end) + offset
         if fact.mentioned_at:
             fact.mentioned_at = parse_datetime_flexible(fact.mentioned_at) + offset
+
+
+def _inject_label_tags(facts: list[ExtractedFactType], config) -> None:
+    """
+    For label groups with tag=True, add extracted key:value label entities
+    to each fact's tags list. Modifies facts in place.
+
+    This lets entity labels double as tags, enabling filtering via the
+    existing tags API without any extra query infrastructure.
+    """
+    labels_cfg = parse_entity_labels(getattr(config, "entity_labels", None))
+    if not labels_cfg:
+        return
+    tag_group_keys = {g.key.lower() for g in labels_cfg.attributes if g.tag}
+    if not tag_group_keys:
+        return
+    for fact in facts:
+        label_tags = [e for e in fact.entities if ":" in e and e.split(":", 1)[0].lower() in tag_group_keys]
+        if label_tags:
+            existing = set(fact.tags)
+            fact.tags = fact.tags + [t for t in label_tags if t not in existing]

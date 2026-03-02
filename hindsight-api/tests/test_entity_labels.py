@@ -412,6 +412,92 @@ def test_augment_texts_with_entities():
     assert "User attended workshop" in augmented[0]
 
 
+# ─── _inject_label_tags ───────────────────────────────────────────────────────
+
+
+def test_inject_label_tags_adds_tagged_entities():
+    """tag=True group: extracted label entities are added to fact.tags."""
+    from unittest.mock import MagicMock
+
+    from hindsight_api.engine.retain.fact_extraction import _inject_label_tags
+    from hindsight_api.engine.retain.types import ExtractedFact
+
+    config = MagicMock()
+    config.entity_labels = [
+        {"key": "pedagogy", "type": "value", "tag": True, "values": [{"value": "scaffolding"}]},
+        {"key": "engagement", "type": "value", "tag": False, "values": [{"value": "active"}]},
+    ]
+
+    fact = ExtractedFact(
+        fact_text="Teacher used scaffolding",
+        fact_type="world",
+        entities=["pedagogy:scaffolding", "engagement:active"],
+        tags=["session-1"],
+    )
+    _inject_label_tags([fact], config)
+
+    # pedagogy group has tag=True → added to tags
+    assert "pedagogy:scaffolding" in fact.tags
+    # engagement group has tag=False → NOT added
+    assert "engagement:active" not in fact.tags
+    # original tag preserved
+    assert "session-1" in fact.tags
+
+
+def test_inject_label_tags_no_duplicate():
+    """No duplicate if label entity already in tags."""
+    from unittest.mock import MagicMock
+
+    from hindsight_api.engine.retain.fact_extraction import _inject_label_tags
+    from hindsight_api.engine.retain.types import ExtractedFact
+
+    config = MagicMock()
+    config.entity_labels = [
+        {"key": "pedagogy", "type": "value", "tag": True, "values": [{"value": "scaffolding"}]},
+    ]
+
+    fact = ExtractedFact(
+        fact_text="...",
+        fact_type="world",
+        entities=["pedagogy:scaffolding"],
+        tags=["pedagogy:scaffolding"],
+    )
+    _inject_label_tags([fact], config)
+    assert fact.tags.count("pedagogy:scaffolding") == 1
+
+
+def test_inject_label_tags_no_tag_groups_is_noop():
+    """When no groups have tag=True, tags are unchanged."""
+    from unittest.mock import MagicMock
+
+    from hindsight_api.engine.retain.fact_extraction import _inject_label_tags
+    from hindsight_api.engine.retain.types import ExtractedFact
+
+    config = MagicMock()
+    config.entity_labels = [
+        {"key": "pedagogy", "type": "value", "tag": False, "values": [{"value": "scaffolding"}]},
+    ]
+
+    fact = ExtractedFact(fact_text="...", fact_type="world", entities=["pedagogy:scaffolding"])
+    _inject_label_tags([fact], config)
+    assert fact.tags == []
+
+
+def test_inject_label_tags_no_labels_config_is_noop():
+    """When entity_labels is None, tags are unchanged."""
+    from unittest.mock import MagicMock
+
+    from hindsight_api.engine.retain.fact_extraction import _inject_label_tags
+    from hindsight_api.engine.retain.types import ExtractedFact
+
+    config = MagicMock()
+    config.entity_labels = None
+
+    fact = ExtractedFact(fact_text="...", fact_type="world", entities=["pedagogy:scaffolding"])
+    _inject_label_tags([fact], config)
+    assert fact.tags == []
+
+
 # ─── entity label post-processing ─────────────────────────────────────────────
 
 

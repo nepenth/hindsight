@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Loader2, AlertCircle, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -46,6 +47,7 @@ type LabelGroup = {
   description: string;
   type: "value" | "multi-values" | "text";
   optional: boolean;
+  tag: boolean;
   values: LabelValue[];
 };
 
@@ -822,6 +824,7 @@ function emptyAttribute(): LabelGroup {
     description: "",
     type: "value",
     optional: true,
+    tag: false,
     values: [],
   };
 }
@@ -953,6 +956,15 @@ function EntityLabelsEditor({
                     </SelectItem>
                   </SelectContent>
                 </Select>
+                {/* Tag checkbox — also write extracted labels as tags */}
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 cursor-pointer select-none">
+                  <Checkbox
+                    checked={attr.tag}
+                    onCheckedChange={(checked) => updateAttr(i, { tag: !!checked })}
+                    className="h-4 w-4"
+                  />
+                  tag
+                </label>
                 <button
                   type="button"
                   onClick={() => removeAttr(i)}

@@ -25,6 +25,7 @@ class LabelGroup(BaseModel):
     description: str = ""
     type: Literal["value", "multi-values", "text"] = "value"
     optional: bool = True
+    tag: bool = False
     values: list[LabelValue] = []
 
 

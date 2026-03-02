@@ -248,6 +248,7 @@ Each label group defines one classification dimension:
 | `type` | `"value"` | `"value"` → single enum value; `"multi-values"` → multiple enum values; `"text"` → free-form string. |
 | `values` | `[]` | Allowed values for `"value"` and `"multi-values"` types. Ignored for `"text"` type. |
 | `optional` | `true` | `true` → the LLM may skip this label if not applicable (default). `false` → LLM must always assign a value. Has no effect on `"multi-values"` groups (always optional). |
+| `tag` | `false` | `true` → also write extracted `key:value` entities as tags on the memory unit, enabling filtering via the standard `tags`/`tags_match` API parameters. |
 
 ### Enum vs Free-text Labels
 
