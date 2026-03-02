@@ -1530,66 +1530,29 @@ class MemoryEngine(MemoryEngineInterface):
         except OverflowError:
             time_upper = datetime.max
 
-        # Fetch ALL existing facts in time window ONCE (much faster than N queries)
-        import time as time_mod
-
-        fetch_start = time_mod.time()
-        existing_facts = await conn.fetch(
-            f"""
-            SELECT id, text, embedding
-            FROM {fq_table("memory_units")}
-            WHERE bank_id = $1
-              AND event_date BETWEEN $2 AND $3
-            """,
-            bank_id,
-            time_lower,
-            time_upper,
-        )
-
-        # If no existing facts, nothing is duplicate
-        if not existing_facts:
-            return [False] * len(texts)
-
-        # Compute similarities in Python (vectorized with numpy)
+        # Use pgvector ANN search (HNSW index) to find the nearest neighbor within the
+        # time window for each new fact.  This replaces the previous approach of fetching
+        # ALL facts in the window into Python and computing numpy dot products, which
+        # became O(N) at large scale and caused query timeouts beyond ~50K units.
         is_duplicate = []
-
-        # Convert existing embeddings to numpy for faster computation
-        embedding_arrays = []
-        for row in existing_facts:
-            raw_emb = row["embedding"]
-            # Handle different pgvector formats
-            if isinstance(raw_emb, str):
-                # Parse string format: "[1.0, 2.0, ...]"
-                import json
-
-                emb = np.array(json.loads(raw_emb), dtype=np.float32)
-            elif isinstance(raw_emb, (list, tuple)):
-                emb = np.array(raw_emb, dtype=np.float32)
-            else:
-                # Try direct conversion
-                emb = np.array(raw_emb, dtype=np.float32)
-            embedding_arrays.append(emb)
-
-        if not embedding_arrays:
-            existing_embeddings = np.array([])
-        elif len(embedding_arrays) == 1:
-            # Single embedding: reshape to (1, dim)
-            existing_embeddings = embedding_arrays[0].reshape(1, -1)
-        else:
-            # Multiple embeddings: vstack
-            existing_embeddings = np.vstack(embedding_arrays)
-
-        comp_start = time_mod.time()
         for embedding in embeddings:
-            # Compute cosine similarity with all existing facts
-            emb_array = np.array(embedding)
-            # Cosine similarity = 1 - cosine distance
-            # For normalized vectors: cosine_sim = dot product
-            similarities = np.dot(existing_embeddings, emb_array)
-
-            # Check if any existing fact is too similar
-            max_similarity = np.max(similarities) if len(similarities) > 0 else 0
-            is_duplicate.append(max_similarity > similarity_threshold)
+            emb_str = str(list(embedding) if not isinstance(embedding, list) else embedding)
+            rows = await conn.fetch(
+                f"""
+                SELECT 1 - (embedding <=> $1::vector) AS similarity
+                FROM {fq_table("memory_units")}
+                WHERE bank_id = $2
+                  AND event_date BETWEEN $3 AND $4
+                ORDER BY embedding <=> $1::vector
+                LIMIT 1
+                """,
+                emb_str,
+                bank_id,
+                time_lower,
+                time_upper,
+            )
+            max_sim = float(rows[0]["similarity"]) if rows else 0.0
+            is_duplicate.append(max_sim > similarity_threshold)
 
         return is_duplicate
 
