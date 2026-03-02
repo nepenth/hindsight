@@ -357,6 +357,7 @@ class MemoryEngine(MemoryEngineInterface):
         self._db_command_timeout = db_command_timeout if db_command_timeout is not None else config.db_command_timeout
         self._db_acquire_timeout = db_acquire_timeout if db_acquire_timeout is not None else config.db_acquire_timeout
         self._run_migrations = run_migrations
+        self._retain_entity_lookup = config.retain_entity_lookup
 
         # Initialize entity resolver (will be created in initialize())
         self.entity_resolver = None
@@ -1340,8 +1341,11 @@ class MemoryEngine(MemoryEngineInterface):
             timeout=self._db_acquire_timeout,  # Connection acquisition timeout (seconds)
         )
 
-        # Initialize entity resolver with pool
-        self.entity_resolver = EntityResolver(self._pool)
+        # Initialize entity resolver with pool and configured lookup strategy
+        self.entity_resolver = EntityResolver(
+            self._pool,
+            entity_lookup=self._retain_entity_lookup,
+        )
 
         # Initialize config resolver for hierarchical configuration
         from ..config_resolver import ConfigResolver
@@ -2575,6 +2579,11 @@ class MemoryEngine(MemoryEngineInterface):
                         "temporal_count": len(temporal_results) if temporal_results else 0,
                     },
                 )
+                # Also expose each retrieval method as its own phase so
+                # benchmarks can pinpoint which sub-query drives latency.
+                for _method, _dur in aggregated_timings.items():
+                    if _dur > 0:
+                        tracer.add_phase_metric(f"retrieval_{_method}", _dur)
 
             # Step 3: Merge with RRF
             step_start = time.time()
@@ -5117,31 +5126,8 @@ class MemoryEngine(MemoryEngineInterface):
                 bank_id,
             )
 
-            # Get link counts by link_type
-            link_stats = await conn.fetch(
-                f"""
-                SELECT ml.link_type, COUNT(*) as count
-                FROM {fq_table("memory_links")} ml
-                JOIN {fq_table("memory_units")} mu ON ml.from_unit_id = mu.id
-                WHERE mu.bank_id = $1
-                GROUP BY ml.link_type
-                """,
-                bank_id,
-            )
-
-            # Get link counts by fact_type (from nodes)
-            link_fact_type_stats = await conn.fetch(
-                f"""
-                SELECT mu.fact_type, COUNT(*) as count
-                FROM {fq_table("memory_links")} ml
-                JOIN {fq_table("memory_units")} mu ON ml.from_unit_id = mu.id
-                WHERE mu.bank_id = $1
-                GROUP BY mu.fact_type
-                """,
-                bank_id,
-            )
-
-            # Get link counts by fact_type AND link_type
+            # Single query for all link stats — avoids triple join on memory_links (can be 21M+ rows).
+            # link_counts and link_counts_by_fact_type are derived in Python from the breakdown.
             link_breakdown_stats = await conn.fetch(
                 f"""
                 SELECT mu.fact_type, ml.link_type, COUNT(*) as count
@@ -5153,7 +5139,14 @@ class MemoryEngine(MemoryEngineInterface):
                 bank_id,
             )
 
-            # Get pending and failed operations counts
+            link_counts: dict[str, int] = {}
+            link_counts_by_fact_type: dict[str, int] = {}
+            for row in link_breakdown_stats:
+                link_counts[row["link_type"]] = link_counts.get(row["link_type"], 0) + row["count"]
+                link_counts_by_fact_type[row["fact_type"]] = (
+                    link_counts_by_fact_type.get(row["fact_type"], 0) + row["count"]
+                )
+
             ops_stats = await conn.fetch(
                 f"""
                 SELECT status, COUNT(*) as count
@@ -5163,17 +5156,39 @@ class MemoryEngine(MemoryEngineInterface):
                 """,
                 bank_id,
             )
+            doc_count_row = await conn.fetchrow(
+                f"SELECT COUNT(*) as count FROM {fq_table('documents')} WHERE bank_id = $1",
+                bank_id,
+            )
+            consolidation_row = await conn.fetchrow(
+                f"""
+                SELECT
+                    MAX(consolidated_at) as last_consolidated_at,
+                    COUNT(*) FILTER (WHERE consolidated_at IS NULL AND fact_type IN ('experience', 'world')) as pending
+                FROM {fq_table("memory_units")}
+                WHERE bank_id = $1
+                """,
+                bank_id,
+            )
+
+            node_counts = {row["fact_type"]: row["count"] for row in node_stats}
+            ops_by_status = {row["status"]: row["count"] for row in ops_stats}
+            last_consolidated_at = consolidation_row["last_consolidated_at"] if consolidation_row else None
 
             return {
                 "bank_id": bank_id,
-                "node_counts": {row["fact_type"]: row["count"] for row in node_stats},
-                "link_counts": {row["link_type"]: row["count"] for row in link_stats},
-                "link_counts_by_fact_type": {row["fact_type"]: row["count"] for row in link_fact_type_stats},
+                "node_counts": node_counts,
+                "link_counts": link_counts,
+                "link_counts_by_fact_type": link_counts_by_fact_type,
                 "link_breakdown": [
                     {"fact_type": row["fact_type"], "link_type": row["link_type"], "count": row["count"]}
                     for row in link_breakdown_stats
                 ],
-                "operations": {row["status"]: row["count"] for row in ops_stats},
+                "operations": ops_by_status,
+                "total_documents": doc_count_row["count"] if doc_count_row else 0,
+                "last_consolidated_at": last_consolidated_at.isoformat() if last_consolidated_at else None,
+                "pending_consolidation": consolidation_row["pending"] if consolidation_row else 0,
+                "total_observations": node_counts.get("observation", 0),
             }
 
     async def get_entity(

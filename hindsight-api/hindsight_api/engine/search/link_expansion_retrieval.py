@@ -1,18 +1,24 @@
 """
 Link Expansion graph retrieval.
 
-A simple, fast graph retrieval that expands from seeds via:
-1. Entity links: Find facts sharing entities with seeds (filtered by entity frequency)
-2. Causal links: Find facts causally linked to seeds (top-k by weight)
+Expands from semantic/temporal seeds through three parallel, first-class signals
+stored in memory_links:
 
-Characteristics:
-- 2-3 DB queries (seed finding + parallel entity/causal expansion)
-- Sublinear: only touches connected facts via indexes
-- No iteration, no propagation, no normalization
-- Target: <100ms
+1. Entity links  — precomputed co-occurrence graph (created at retain time, bounded to
+                   MAX_LINKS_PER_ENTITY per entity). Score = number of distinct shared
+                   entities between the seed set and each candidate.
+2. Semantic links — precomputed kNN graph (each new fact linked to its top-5 most
+                    similar existing facts at insert time, similarity >= 0.7). Checked
+                    in both directions since the graph is not symmetric. Score = weight.
+3. Causal links  — explicit causal chains (causes/caused_by/enables/prevents).
+                   Score = weight + 1.0 (boosted as highest-quality signal).
+
+All three signals are bounded at retain time, so no LATERAL fan-out caps are needed
+at query time. Each expansion is a simple aggregation over a small result set.
 """
 
 import logging
+import math
 import time
 
 from ..db_utils import acquire_with_retry
@@ -65,27 +71,19 @@ class LinkExpansionRetriever(GraphRetriever):
     """
     Graph retrieval via direct link expansion from seeds.
 
-    Expands through entity co-occurrence and causal links in a single query.
-    Fast and simple alternative to MPFP.
+    Runs three parallel expansions through precomputed memory_links: entity
+    co-occurrence, semantic kNN, and causal chains.  All bounded at retain time.
     """
 
     def __init__(
         self,
-        max_entity_frequency: int = 500,
         causal_weight_threshold: float = 0.3,
-        causal_limit_per_seed: int = 10,
     ):
         """
-        Initialize link expansion retriever.
-
         Args:
-            max_entity_frequency: Skip entities appearing in more than this many facts
-            causal_weight_threshold: Minimum weight for causal links
-            causal_limit_per_seed: Max causal links to follow per seed
+            causal_weight_threshold: Minimum weight for causal links to follow.
         """
-        self.max_entity_frequency = max_entity_frequency
         self.causal_weight_threshold = causal_weight_threshold
-        self.causal_limit_per_seed = causal_limit_per_seed
 
     @property
     def name(self) -> str:
@@ -110,7 +108,7 @@ class LinkExpansionRetriever(GraphRetriever):
 
         Args:
             pool: Database connection pool
-            query_embedding_str: Query embedding (unused, kept for interface)
+            query_embedding_str: Query embedding as string
             bank_id: Memory bank ID
             fact_type: Fact type to filter
             budget: Maximum results to return
@@ -118,7 +116,7 @@ class LinkExpansionRetriever(GraphRetriever):
             semantic_seeds: Pre-computed semantic entry points
             temporal_seeds: Pre-computed temporal entry points
             adjacency: Unused, kept for interface compatibility
-            tags: Optional list of tags for visibility filtering (OR matching)
+            tags: Optional list of tags for visibility filtering
 
         Returns:
             Tuple of (results, timings)
@@ -126,8 +124,6 @@ class LinkExpansionRetriever(GraphRetriever):
         start_time = time.time()
         timings = MPFPTimings(fact_type=fact_type)
 
-        # Use single connection for all queries to reduce pool pressure
-        # (queries are fast ~50ms each, connection acquisition is the bottleneck)
         async with acquire_with_retry(pool) as conn:
             # Find seeds if not provided
             if semantic_seeds:
@@ -150,7 +146,6 @@ class LinkExpansionRetriever(GraphRetriever):
                     f"(tags={tags}, tags_match={tags_match})"
                 )
 
-            # Add temporal seeds if provided
             if temporal_seeds:
                 all_seeds.extend(temporal_seeds)
 
@@ -160,17 +155,18 @@ class LinkExpansionRetriever(GraphRetriever):
             seed_ids = list({s.id for s in all_seeds})
             timings.pattern_count = len(seed_ids)
 
-            # Run entity and causal expansion sequentially on same connection
             query_start = time.time()
 
-            # For observations, traverse through source_memory_ids to find entity connections.
-            # Observations don't have direct unit_entities - they inherit entities via their
-            # source world/experience facts.
+            # ── 1. Entity expansion ──────────────────────────────────────────────
+            # For observations: traverse source_memory_ids → world facts → entities
+            # → other world facts → their observations. Observations don't have
+            # direct entity links in memory_links (created by consolidation, not retain).
             #
-            # Path: observation → source_memory_ids → world fact → entities →
-            #       ALL world facts with those entities → their observations (excluding seeds)
+            # For all other fact types: use the precomputed entity co-occurrence links
+            # in memory_links. Score = number of distinct entities linking this
+            # candidate to the seed set. Links are bidirectional, so only outgoing
+            # direction is needed.
             if fact_type == "observation":
-                # Debug: Check what source_memory_ids exist on seed observations
                 debug_sources = await conn.fetch(
                     f"""
                     SELECT id, source_memory_ids
@@ -191,29 +187,21 @@ class LinkExpansionRetriever(GraphRetriever):
                 entity_rows = await conn.fetch(
                     f"""
                     WITH seed_sources AS (
-                        -- Get source memory IDs from seed observations
                         SELECT DISTINCT unnest(source_memory_ids) AS source_id
                         FROM {fq_table("memory_units")}
                         WHERE id = ANY($1::uuid[])
                           AND source_memory_ids IS NOT NULL
                     ),
                     source_entities AS (
-                        -- Get entities from those source memories (filtered by frequency)
                         SELECT DISTINCT ue.entity_id
                         FROM seed_sources ss
                         JOIN {fq_table("unit_entities")} ue ON ss.source_id = ue.unit_id
-                        JOIN {fq_table("entities")} e ON ue.entity_id = e.id
-                        WHERE e.mention_count < $2
                     ),
                     all_connected_sources AS (
-                        -- Find ALL world facts sharing those entities (don't exclude seed sources)
-                        -- The exclusion happens at the observation level, not the source level
                         SELECT DISTINCT other_ue.unit_id AS source_id
                         FROM source_entities se
                         JOIN {fq_table("unit_entities")} other_ue ON se.entity_id = other_ue.entity_id
                     )
-                    -- Find observations derived from connected source memories
-                    -- Only exclude the actual seed observations
                     SELECT
                         mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
                         mu.occurred_end, mu.mentioned_at,
@@ -226,47 +214,104 @@ class LinkExpansionRetriever(GraphRetriever):
                       AND mu.id != ALL($1::uuid[])
                     GROUP BY mu.id
                     ORDER BY score DESC
-                    LIMIT $3
+                    LIMIT $2
                     """,
                     seed_ids,
-                    self.max_entity_frequency,
                     budget,
                 )
                 logger.debug(f"[LinkExpansion] observation graph: found {len(entity_rows)} connected observations")
             else:
-                # For world/experience facts, use direct entity lookup
+                # Precomputed entity links are bidirectional and already capped at
+                # MAX_LINKS_PER_ENTITY=50 per entity at retain time. Score = number of
+                # distinct entities tying each candidate to the seed set — equivalent
+                # to the old unit_entities co-occurrence count but O(links) not O(fan-out).
                 entity_rows = await conn.fetch(
                     f"""
                     SELECT
                         mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
                         mu.occurred_end, mu.mentioned_at,
                         mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
-                        COUNT(*)::float AS score
-                    FROM {fq_table("unit_entities")} seed_ue
-                    JOIN {fq_table("entities")} e ON seed_ue.entity_id = e.id
-                    JOIN {fq_table("unit_entities")} other_ue ON seed_ue.entity_id = other_ue.entity_id
-                    JOIN {fq_table("memory_units")} mu ON other_ue.unit_id = mu.id
-                    WHERE seed_ue.unit_id = ANY($1::uuid[])
-                      AND e.mention_count < $2
+                        COUNT(DISTINCT ml.entity_id)::float AS score
+                    FROM {fq_table("memory_links")} ml
+                    JOIN {fq_table("memory_units")} mu ON mu.id = ml.to_unit_id
+                    WHERE ml.from_unit_id = ANY($1::uuid[])
+                      AND ml.link_type = 'entity'
+                      AND mu.fact_type = $2
                       AND mu.id != ALL($1::uuid[])
-                      AND mu.fact_type = $3
                     GROUP BY mu.id
                     ORDER BY score DESC
-                    LIMIT $4
+                    LIMIT $3
                     """,
                     seed_ids,
-                    self.max_entity_frequency,
                     fact_type,
                     budget,
                 )
 
+            # ── 2. Semantic expansion ────────────────────────────────────────────
+            # Semantic links are a bank-wide kNN graph: each fact is linked to its
+            # top-5 most similar facts at insert time (similarity >= 0.7). The graph
+            # is NOT symmetric — A→B exists when B was already in the bank when A was
+            # inserted, but B→A only exists if A was there when B was inserted.
+            # Checking both directions surfaces facts that point TO seeds (inserted
+            # after seeds and found them as nearest neighbors) as well as facts the
+            # seeds point to (their nearest neighbors at the time seeds were inserted).
+            semantic_rows = await conn.fetch(
+                f"""
+                WITH outgoing AS (
+                    -- Facts the seeds are similar to (seeds → their kNN at insert time)
+                    SELECT
+                        mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
+                        mu.occurred_end, mu.mentioned_at,
+                        mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
+                        ml.weight
+                    FROM {fq_table("memory_links")} ml
+                    JOIN {fq_table("memory_units")} mu ON mu.id = ml.to_unit_id
+                    WHERE ml.from_unit_id = ANY($1::uuid[])
+                      AND ml.link_type = 'semantic'
+                      AND mu.fact_type = $2
+                      AND mu.id != ALL($1::uuid[])
+                ),
+                incoming AS (
+                    -- Facts that consider seeds as their nearest neighbor (inserted after seeds)
+                    SELECT
+                        mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
+                        mu.occurred_end, mu.mentioned_at,
+                        mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
+                        ml.weight
+                    FROM {fq_table("memory_links")} ml
+                    JOIN {fq_table("memory_units")} mu ON mu.id = ml.from_unit_id
+                    WHERE ml.to_unit_id = ANY($1::uuid[])
+                      AND ml.link_type = 'semantic'
+                      AND mu.fact_type = $2
+                      AND mu.id != ALL($1::uuid[])
+                )
+                SELECT
+                    id, text, context, event_date, occurred_start,
+                    occurred_end, mentioned_at,
+                    fact_type, document_id, chunk_id, tags,
+                    MAX(weight) AS score
+                FROM (SELECT * FROM outgoing UNION ALL SELECT * FROM incoming) combined
+                GROUP BY id, text, context, event_date, occurred_start,
+                         occurred_end, mentioned_at,
+                         fact_type, document_id, chunk_id, tags
+                ORDER BY score DESC
+                LIMIT $3
+                """,
+                seed_ids,
+                fact_type,
+                budget,
+            )
+
+            # ── 3. Causal expansion ──────────────────────────────────────────────
+            # Explicit causal chains from seeds. Rare in practice, high signal when
+            # present. Score = weight ∈ [0, 1], combined additively with other signals.
             causal_rows = await conn.fetch(
                 f"""
                 SELECT DISTINCT ON (mu.id)
                     mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
                     mu.occurred_end, mu.mentioned_at,
                     mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
-                    ml.weight + 1.0 AS score
+                    ml.weight AS score
                 FROM {fq_table("memory_links")} ml
                 JOIN {fq_table("memory_units")} mu ON ml.to_unit_id = mu.id
                 WHERE ml.from_unit_id = ANY($1::uuid[])
@@ -282,101 +327,54 @@ class LinkExpansionRetriever(GraphRetriever):
                 budget,
             )
 
-            # Fallback: semantic/temporal/entity links from memory_links table
-            # These are secondary to entity links (via unit_entities) and causal links
-            # Weight is halved (0.5x) to prioritize primary link types
-            # Check both directions: seeds -> others AND others -> seeds
-            fallback_rows = await conn.fetch(
-                f"""
-                WITH outgoing AS (
-                    -- Links FROM seeds TO other facts
-                    SELECT mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
-                           mu.occurred_end, mu.mentioned_at,
-                           mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
-                           ml.weight
-                    FROM {fq_table("memory_links")} ml
-                    JOIN {fq_table("memory_units")} mu ON ml.to_unit_id = mu.id
-                    WHERE ml.from_unit_id = ANY($1::uuid[])
-                      AND ml.link_type IN ('semantic', 'temporal', 'entity')
-                      AND ml.weight >= $2
-                      AND mu.fact_type = $3
-                      AND mu.id != ALL($1::uuid[])
-                ),
-                incoming AS (
-                    -- Links FROM other facts TO seeds (reverse direction)
-                    SELECT mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
-                           mu.occurred_end, mu.mentioned_at,
-                           mu.fact_type, mu.document_id, mu.chunk_id, mu.tags,
-                           ml.weight
-                    FROM {fq_table("memory_links")} ml
-                    JOIN {fq_table("memory_units")} mu ON ml.from_unit_id = mu.id
-                    WHERE ml.to_unit_id = ANY($1::uuid[])
-                      AND ml.link_type IN ('semantic', 'temporal', 'entity')
-                      AND ml.weight >= $2
-                      AND mu.fact_type = $3
-                      AND mu.id != ALL($1::uuid[])
-                ),
-                combined AS (
-                    SELECT * FROM outgoing
-                    UNION ALL
-                    SELECT * FROM incoming
-                )
-                SELECT DISTINCT ON (id)
-                    id, text, context, event_date, occurred_start,
-                    occurred_end, mentioned_at,
-                    fact_type, document_id, chunk_id, tags,
-                    (MAX(weight) * 0.5) AS score
-                FROM combined
-                GROUP BY id, text, context, event_date, occurred_start,
-                         occurred_end, mentioned_at,
-                         fact_type, document_id, chunk_id, tags
-                ORDER BY id, score DESC
-                LIMIT $4
-                """,
-                seed_ids,
-                self.causal_weight_threshold,
-                fact_type,
-                budget,
-            )
-
             timings.edge_load_time = time.time() - query_start
             timings.db_queries = 3
-            timings.edge_count = len(entity_rows) + len(causal_rows) + len(fallback_rows)
+            timings.edge_count = len(entity_rows) + len(semantic_rows) + len(causal_rows)
 
-        # Merge results, taking max score per fact
-        # Priority: entity links (unit_entities) > causal links > fallback links
-        score_map: dict[str, float] = {}
+        # Merge results with additive intra-score: entity + semantic + causal ∈ [0, 3].
+        #
+        # Entity score: tanh(count × 0.5) maps shared-entity count to [0, 1]:
+        #   1 entity → 0.46,  2 → 0.76,  3 → 0.91,  4 → 0.96  (saturates naturally)
+        # Semantic score: similarity weight, already ∈ [0.7, 1.0].
+        # Causal score:   link weight, already ∈ [0, 1].
+        #
+        # Facts appearing in multiple signals accumulate higher scores, rewarding
+        # convergent evidence. The outer RRF uses rank position from this sorted list.
+        entity_scores: dict[str, float] = {}
+        semantic_scores: dict[str, float] = {}
+        causal_scores: dict[str, float] = {}
         row_map: dict[str, dict] = {}
 
         for row in entity_rows:
             fact_id = str(row["id"])
-            score_map[fact_id] = max(score_map.get(fact_id, 0), row["score"])
+            entity_scores[fact_id] = math.tanh(row["score"] * 0.5)
             row_map[fact_id] = dict(row)
+
+        for row in semantic_rows:
+            fact_id = str(row["id"])
+            semantic_scores[fact_id] = max(semantic_scores.get(fact_id, 0.0), row["score"])
+            row_map.setdefault(fact_id, dict(row))
 
         for row in causal_rows:
             fact_id = str(row["id"])
-            score_map[fact_id] = max(score_map.get(fact_id, 0), row["score"])
-            if fact_id not in row_map:
-                row_map[fact_id] = dict(row)
+            causal_scores[fact_id] = max(causal_scores.get(fact_id, 0.0), row["score"])
+            row_map.setdefault(fact_id, dict(row))
 
-        for row in fallback_rows:
-            fact_id = str(row["id"])
-            score_map[fact_id] = max(score_map.get(fact_id, 0), row["score"])
-            if fact_id not in row_map:
-                row_map[fact_id] = dict(row)
+        all_ids = set(entity_scores) | set(semantic_scores) | set(causal_scores)
+        score_map = {
+            fid: entity_scores.get(fid, 0.0) + semantic_scores.get(fid, 0.0) + causal_scores.get(fid, 0.0)
+            for fid in all_ids
+        }
 
-        # Sort by score and limit
         sorted_ids = sorted(score_map.keys(), key=lambda x: score_map[x], reverse=True)[:budget]
         rows = [row_map[fact_id] for fact_id in sorted_ids]
 
-        # Convert to results
         results = []
         for row in rows:
             result = RetrievalResult.from_db_row(dict(row))
             result.activation = row["score"]
             results.append(result)
 
-        # Apply tags filtering (graph expansion may reach untagged memories)
         if tags:
             results = filter_results_by_tags(results, tags, match=tags_match)
 
