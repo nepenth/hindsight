@@ -28,9 +28,9 @@ See [Configuration](./configuration#llm-provider) for setup examples.
 
 ### Benchmarks
 
-Not sure which model to use? The **[Retain Leaderboard](https://benchmarks.hindsight.vectorize.io/)** benchmarks models across accuracy, speed, cost, and reliability on the Hindsight retain pipeline so you can pick the right trade-off for your use case.
+Not sure which model to use? The **[Model Leaderboard](https://benchmarks.hindsight.vectorize.io/)** benchmarks models across accuracy, speed, cost, and reliability for retain, reflect, and observation consolidation so you can pick the right trade-off for your use case.
 
-[![Retain Leaderboard](/img/leaderboard.png)](https://benchmarks.hindsight.vectorize.io/)
+[![Model Leaderboard](/img/leaderboard.png)](https://benchmarks.hindsight.vectorize.io/)
 
 ### Tested Models
 

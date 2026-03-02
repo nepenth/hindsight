@@ -69,9 +69,9 @@ Configure your provider using the `HINDSIGHT_API_LLM_PROVIDER` environment varia
 
 ### Which model should I use with Hindsight?
 
-The **[Retain Leaderboard](https://benchmarks.hindsight.vectorize.io/)** benchmarks models across accuracy, speed, cost, and reliability on the Hindsight retain pipeline — it's the best place to find the right trade-off for your use case.
+The **[Model Leaderboard](https://benchmarks.hindsight.vectorize.io/)** benchmarks models across accuracy, speed, cost, and reliability for retain, reflect, and observation consolidation — it's the best place to find the right trade-off for your use case.
 
-[![Retain Leaderboard](/img/leaderboard.png)](https://benchmarks.hindsight.vectorize.io/)
+[![Model Leaderboard](/img/leaderboard.png)](https://benchmarks.hindsight.vectorize.io/)
 
 See [Models](/developer/models) for the full list of supported and tested models, provider defaults, and configuration examples.
 
