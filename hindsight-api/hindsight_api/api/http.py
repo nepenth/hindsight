@@ -365,6 +365,10 @@ class EntityInput(BaseModel):
     type: str | None = Field(default=None, description="Optional entity type (e.g., 'PERSON', 'ORG', 'CONCEPT')")
 
 
+# Sentinel object to distinguish "caller explicitly said no timestamp" from None (omitted).
+_TIMESTAMP_UNKNOWN = object()
+
+
 class MemoryItem(BaseModel):
     """Single memory item for retain."""
 
@@ -383,7 +387,15 @@ class MemoryItem(BaseModel):
     )
 
     content: str
-    timestamp: datetime | None = None
+    timestamp: datetime | None = Field(
+        default=None,
+        description=(
+            "When the content occurred. "
+            "Accepts an ISO 8601 datetime string (e.g. '2024-01-15T10:30:00Z'), null/omitted (defaults to now), "
+            "or the special string 'unset' to explicitly store without any timestamp "
+            "(use this for timeless content such as fictional documents or static reference material)."
+        ),
+    )
     context: str | None = None
     metadata: dict[str, str] | None = None
     document_id: str | None = Field(default=None, description="Optional document ID for this memory item.")
@@ -414,12 +426,15 @@ class MemoryItem(BaseModel):
         if isinstance(v, datetime):
             return v
         if isinstance(v, str):
+            # Special sentinel: caller explicitly requests no timestamp
+            if v.lower() == "unset":
+                return _TIMESTAMP_UNKNOWN
             try:
                 # Try parsing as ISO format
                 return datetime.fromisoformat(v.replace("Z", "+00:00"))
             except ValueError as e:
                 raise ValueError(
-                    f"Invalid timestamp/event_date format: '{v}'. Expected ISO format like '2024-01-15T10:30:00' or '2024-01-15T10:30:00Z'"
+                    f"Invalid timestamp/event_date format: '{v}'. Expected ISO format like '2024-01-15T10:30:00' or '2024-01-15T10:30:00Z', or the special value 'unset' to store without a timestamp."
                 ) from e
         raise ValueError(f"timestamp must be a string or datetime, got {type(v).__name__}")
 
@@ -3878,7 +3893,11 @@ def _register_routes(app: FastAPI):
             contents = []
             for item in request.items:
                 content_dict = {"content": item.content}
-                if item.timestamp:
+                if item.timestamp is _TIMESTAMP_UNKNOWN:
+                    # Caller explicitly opted into "no timestamp" — pass None so the
+                    # orchestrator skips the utcnow() fallback.
+                    content_dict["event_date"] = None
+                elif item.timestamp:
                     content_dict["event_date"] = item.timestamp
                 if item.context:
                     content_dict["context"] = item.context
