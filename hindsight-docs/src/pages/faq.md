@@ -1,7 +1,7 @@
 ---
 title: Frequently Asked Questions
 description: Common questions and answers about Hindsight
-hide_table_of_contents: true
+hide_table_of_contents: false
 ---
 
 # Frequently Asked Questions
@@ -110,7 +110,8 @@ There are two approaches for multi-user applications:
 
 Choose per-user banks for simplicity and privacy, or single bank with tags if you need holistic reasoning across users. See [Memory Banks](/developer/api/memory-banks) for management details.
 
---- 
+---
+
 ### What's the difference between retain, recall, and reflect?
 
 Hindsight has three core operations:
@@ -174,7 +175,7 @@ Typical latencies:
 
 See [Performance](/developer/performance) for tuning options.
 
-
+---
 
 ### Does Hindsight support metadata filtering?
 
