@@ -365,10 +365,6 @@ class EntityInput(BaseModel):
     type: str | None = Field(default=None, description="Optional entity type (e.g., 'PERSON', 'ORG', 'CONCEPT')")
 
 
-# Sentinel object to distinguish "caller explicitly said no timestamp" from None (omitted).
-_TIMESTAMP_UNKNOWN = object()
-
-
 class MemoryItem(BaseModel):
     """Single memory item for retain."""
 
@@ -387,7 +383,7 @@ class MemoryItem(BaseModel):
     )
 
     content: str
-    timestamp: datetime | None = Field(
+    timestamp: datetime | str | None = Field(
         default=None,
         description=(
             "When the content occurred. "
@@ -426,9 +422,8 @@ class MemoryItem(BaseModel):
         if isinstance(v, datetime):
             return v
         if isinstance(v, str):
-            # Special sentinel: caller explicitly requests no timestamp
             if v.lower() == "unset":
-                return _TIMESTAMP_UNKNOWN
+                return "unset"
             try:
                 # Try parsing as ISO format
                 return datetime.fromisoformat(v.replace("Z", "+00:00"))
@@ -3893,9 +3888,7 @@ def _register_routes(app: FastAPI):
             contents = []
             for item in request.items:
                 content_dict = {"content": item.content}
-                if item.timestamp is _TIMESTAMP_UNKNOWN:
-                    # Caller explicitly opted into "no timestamp" — pass None so the
-                    # orchestrator skips the utcnow() fallback.
+                if item.timestamp == "unset":
                     content_dict["event_date"] = None
                 elif item.timestamp:
                     content_dict["event_date"] = item.timestamp
