@@ -27,9 +27,7 @@ def _get_schema_prefix() -> str:
 
 def upgrade() -> None:
     schema = _get_schema_prefix()
-    op.execute(
-        f"ALTER TABLE {schema}memory_units ADD COLUMN IF NOT EXISTS observation_scopes JSONB"
-    )
+    op.execute(f"ALTER TABLE {schema}memory_units ADD COLUMN IF NOT EXISTS observation_scopes JSONB")
 
 
 def downgrade() -> None:
