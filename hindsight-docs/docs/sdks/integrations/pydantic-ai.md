@@ -182,10 +182,3 @@ instructions_fn = memory_instructions(
 | `recall_tags` | `None` | Default tags to filter recall |
 | `recall_tags_match` | `"any"` | Default tag matching mode |
 | `verbose` | `False` | Enable verbose logging |
-
-## Requirements
-
-- Python >= 3.10
-- pydantic-ai-slim >= 1.0.0
-- hindsight-client >= 0.4.0
-- A running Hindsight API server
