@@ -113,7 +113,9 @@ class EntityResolver:
                     if s.event_date is not None:
                         entry.max_date = s.event_date if entry.max_date is None else max(entry.max_date, s.event_date)
 
-                rows = [(eid, a.count, a.max_date) for eid, a in agg.items()]
+                # Sort by entity_id so all concurrent workers acquire row locks in
+                # the same order — prevents circular lock dependencies (deadlocks).
+                rows = sorted((eid, a.count, a.max_date) for eid, a in agg.items())
                 await conn.executemany(
                     f"""
                     UPDATE {fq_table("entities")} SET
@@ -132,6 +134,7 @@ class EntityResolver:
                     coo_agg[pair] = coo_agg.get(pair, 0) + 1
 
                 now = datetime.now(UTC)
+                # Sort by (entity_id_1, entity_id_2) for consistent lock ordering.
                 await conn.executemany(
                     f"""
                     INSERT INTO {fq_table("entity_cooccurrences")}
@@ -142,7 +145,7 @@ class EntityResolver:
                         cooccurrence_count = {fq_table("entity_cooccurrences")}.cooccurrence_count + EXCLUDED.cooccurrence_count,
                         last_cooccurred    = GREATEST({fq_table("entity_cooccurrences")}.last_cooccurred, EXCLUDED.last_cooccurred)
                     """,
-                    [(e1, e2, count, now) for (e1, e2), count in coo_agg.items()],
+                    sorted((e1, e2, count, now) for (e1, e2), count in coo_agg.items()),
                 )
 
     @staticmethod
