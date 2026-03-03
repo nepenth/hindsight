@@ -368,9 +368,10 @@ def process_applications(cookbook_dir: Path, apps_dir: Path) -> list[dict]:
 
         print(f"  Processing app: {entry.name} → {slug}.md")
 
-        # Read README content and strip existing frontmatter
+        # Read README content, strip existing frontmatter and local .md links
         readme_content = readme_path.read_text()
         readme_content = strip_frontmatter(readme_content)
+        readme_content = strip_local_md_links(readme_content)
 
         # Create application page with frontmatter
         app_url = f"https://github.com/vectorize-io/hindsight-cookbook/tree/main/applications/{entry.name}"
@@ -455,6 +456,14 @@ def update_sidebars(recipes: list[dict], apps: list[dict], sidebars_file: Path):
 
     sidebars_file.write_text(content)
     print("\nUpdated sidebars.ts")
+
+
+def strip_local_md_links(content: str) -> str:
+    """Replace relative .md links with plain text to avoid broken links in Docusaurus.
+
+    e.g. [see article](article.md) → see article
+    """
+    return re.sub(r"\[([^\]]+)\]\((?!https?://)([^)]+\.md)\)", r"\1", content)
 
 
 def clean_description(desc: str) -> str:

@@ -140,4 +140,4 @@ cable-co/
 
 ## How It Works
 
-See [article.md](article.md) for a detailed explanation of the agent learning architecture, including how Hindsight transforms CSR feedback into observations and mental models that improve the copilot's behavior over time.
+See article.md for a detailed explanation of the agent learning architecture, including how Hindsight transforms CSR feedback into observations and mental models that improve the copilot's behavior over time.
