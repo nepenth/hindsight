@@ -1489,73 +1489,6 @@ class MemoryEngine(MemoryEngineInterface):
         # Could check if day is significant (not 1st or 15th) and include it
         return f"{month_name} {year}"
 
-    async def _find_duplicate_facts_batch(
-        self,
-        conn,
-        bank_id: str,
-        texts: list[str],
-        embeddings: list[list[float]],
-        event_date: datetime,
-        time_window_hours: int = 24,
-        similarity_threshold: float = 0.95,
-    ) -> list[bool]:
-        """
-        Check which facts are duplicates using semantic similarity + temporal window.
-
-        For each new fact, checks if a semantically similar fact already exists
-        within the time window. Uses pgvector cosine similarity for efficiency.
-
-        Args:
-            conn: Database connection
-            bank_id: bank IDentifier
-            texts: List of fact texts to check
-            embeddings: Corresponding embeddings
-            event_date: Event date for temporal filtering
-            time_window_hours: Hours before/after event_date to search (default: 24)
-            similarity_threshold: Minimum cosine similarity to consider duplicate (default: 0.95)
-
-        Returns:
-            List of booleans - True if fact is a duplicate (should skip), False if new
-        """
-        if not texts:
-            return []
-
-        # Handle edge cases where event_date is at datetime boundaries
-        try:
-            time_lower = event_date - timedelta(hours=time_window_hours)
-        except OverflowError:
-            time_lower = datetime.min
-        try:
-            time_upper = event_date + timedelta(hours=time_window_hours)
-        except OverflowError:
-            time_upper = datetime.max
-
-        # Use pgvector ANN search (HNSW index) to find the nearest neighbor within the
-        # time window for each new fact.  This replaces the previous approach of fetching
-        # ALL facts in the window into Python and computing numpy dot products, which
-        # became O(N) at large scale and caused query timeouts beyond ~50K units.
-        is_duplicate = []
-        for embedding in embeddings:
-            emb_str = str(list(embedding) if not isinstance(embedding, list) else embedding)
-            rows = await conn.fetch(
-                f"""
-                SELECT 1 - (embedding <=> $1::vector) AS similarity
-                FROM {fq_table("memory_units")}
-                WHERE bank_id = $2
-                  AND event_date BETWEEN $3 AND $4
-                ORDER BY embedding <=> $1::vector
-                LIMIT 1
-                """,
-                emb_str,
-                bank_id,
-                time_lower,
-                time_upper,
-            )
-            max_sim = float(rows[0]["similarity"]) if rows else 0.0
-            is_duplicate.append(max_sim > similarity_threshold)
-
-        return is_duplicate
-
     def retain(
         self,
         bank_id: str,
@@ -1906,7 +1839,6 @@ class MemoryEngine(MemoryEngineInterface):
                     llm_config=self._retain_llm_config,
                     entity_resolver=self.entity_resolver,
                     format_date_fn=self._format_readable_date,
-                    duplicate_checker_fn=self._find_duplicate_facts_batch,
                     bank_id=bank_id,
                     contents_dicts=contents,
                     document_id=document_id,
