@@ -47,7 +47,7 @@ import {
   Pencil,
 } from "lucide-react";
 
-const AVAILABLE_EVENT_TYPES = ["consolidation.completed"];
+const AVAILABLE_EVENT_TYPES = ["consolidation.completed", "retain.completed"];
 
 interface KeyValuePair {
   key: string;
