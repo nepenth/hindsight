@@ -298,6 +298,7 @@ export function WebhooksView() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmWebhook, setDeleteConfirmWebhook] = useState<Webhook | null>(null);
   const [showSecret, setShowSecret] = useState(false);
 
   const [form, setForm] = useState<CreateWebhookForm>(DEFAULT_FORM);
@@ -362,6 +363,7 @@ export function WebhooksView() {
   const handleDelete = async (webhookId: string) => {
     if (!currentBank) return;
     setDeletingId(webhookId);
+    setDeleteConfirmWebhook(null);
     try {
       await client.deleteWebhook(currentBank, webhookId);
       await loadWebhooks();
@@ -567,7 +569,7 @@ export function WebhooksView() {
                         variant="ghost"
                         size="sm"
                         className="h-7 text-xs text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
-                        onClick={() => handleDelete(webhook.id)}
+                        onClick={() => setDeleteConfirmWebhook(webhook)}
                         disabled={deletingId === webhook.id}
                         title="Delete webhook"
                       >
@@ -982,6 +984,48 @@ export function WebhooksView() {
                 </>
               ) : (
                 "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!deleteConfirmWebhook}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmWebhook(null); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Webhook</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this webhook? This action cannot be undone and all
+              pending deliveries will be cancelled.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteConfirmWebhook && (
+            <div className="py-2">
+              <p className="font-mono text-sm truncate text-muted-foreground bg-muted px-3 py-2 rounded-md border border-border">
+                {deleteConfirmWebhook.url}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmWebhook(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteConfirmWebhook && handleDelete(deleteConfirmWebhook.id)}
+              disabled={!!deletingId}
+            >
+              {deletingId ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Webhook"
               )}
             </Button>
           </DialogFooter>
