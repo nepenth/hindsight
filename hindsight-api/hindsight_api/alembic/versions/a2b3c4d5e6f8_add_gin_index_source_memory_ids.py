@@ -16,7 +16,7 @@ emits an explicit COMMIT before the statement and uses IF NOT EXISTS for
 idempotency.
 
 Revision ID: a2b3c4d5e6f8
-Revises: z1u2v3w4x5y6
+Revises: f7g8h9i0j1k2
 Create Date: 2026-03-04
 """
 
@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from alembic import context, op
 
 revision: str = "a2b3c4d5e6f8"
-down_revision: str | Sequence[str] | None = "z1u2v3w4x5y6"
+down_revision: str | Sequence[str] | None = "f7g8h9i0j1k2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
