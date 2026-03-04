@@ -18,12 +18,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import tiktoken
 
 from ..config import get_config
 from ..metrics import get_metrics_collector
 from ..tracing import create_operation_span
 from ..utils import mask_network_location
+from ..worker.exceptions import RetryTaskAt
 from .db_budget import budgeted_operation
 from .operation_metadata import (
     BatchRetainChildMetadata,
@@ -359,6 +361,10 @@ class MemoryEngine(MemoryEngineInterface):
         self._run_migrations = run_migrations
         self._retain_entity_lookup = config.retain_entity_lookup
 
+        # Webhook manager (will be created in initialize() after pool is ready)
+        self._webhook_manager = None
+        self._http_client: httpx.AsyncClient | None = None
+
         # Initialize entity resolver (will be created in initialize())
         self.entity_resolver = None
 
@@ -584,6 +590,13 @@ class MemoryEngine(MemoryEngineInterface):
             operation_id=operation_id,
         )
 
+        await self._fire_retain_webhook(
+            bank_id=bank_id,
+            contents=contents,
+            operation_id=operation_id,
+            schema=context.tenant_id,
+        )
+
         # If this retain was triggered by file conversion, update document with file metadata
         file_metadata = task_dict.get("_file_metadata")
         if file_metadata and len(contents) == 1:
@@ -778,6 +791,7 @@ class MemoryEngine(MemoryEngineInterface):
         )
 
         logger.info(f"[CONSOLIDATION] bank={bank_id} completed: {result.get('memories_processed', 0)} processed")
+        return result
 
     async def _handle_refresh_mental_model(self, task_dict: dict[str, Any]):
         """
@@ -949,15 +963,18 @@ class MemoryEngine(MemoryEngineInterface):
                 logger.error(f"Failed to check operation status {operation_id}: {e}")
                 # Continue with processing if we can't check status
 
+        consolidation_result: dict | None = None
         try:
             if task_type == "batch_retain":
                 await self._handle_batch_retain(task_dict)
             elif task_type == "file_convert_retain":
                 await self._handle_file_convert_retain(task_dict)
             elif task_type == "consolidation":
-                await self._handle_consolidation(task_dict)
+                consolidation_result = await self._handle_consolidation(task_dict)
             elif task_type == "refresh_mental_model":
                 await self._handle_refresh_mental_model(task_dict)
+            elif task_type == "webhook_delivery":
+                await self._handle_webhook_delivery(task_dict)
             else:
                 logger.error(f"Unknown task type: {task_type}")
                 # Don't retry unknown task types
@@ -967,9 +984,22 @@ class MemoryEngine(MemoryEngineInterface):
 
             # Task succeeded - mark operation as completed
             # file_convert_retain marks itself as completed in a transaction, skip double-marking
-            if operation_id and task_type != "file_convert_retain":
+            if operation_id and task_type not in ("file_convert_retain",):
                 await self._mark_operation_completed(operation_id)
 
+            # Fire consolidation webhook after successful completion
+            if task_type == "consolidation" and operation_id and self._webhook_manager:
+                await self._fire_consolidation_webhook(
+                    bank_id=task_dict.get("bank_id", ""),
+                    operation_id=operation_id,
+                    status="completed",
+                    result=consolidation_result,
+                    schema=schema,
+                )
+
+        except RetryTaskAt:
+            # Task-owned retry: let the poller handle scheduling
+            raise
         except Exception as e:
             logger.error(f"Task execution failed: {task_type}, error: {e}")
             import traceback
@@ -984,9 +1014,181 @@ class MemoryEngine(MemoryEngineInterface):
                 if operation_id:
                     await self._mark_operation_failed(operation_id, str(e), error_traceback)
             else:
-                # Retryable: re-raise so the worker poller handles retry/fail via _retry_or_fail,
-                # which correctly resets status='pending' and increments the DB retry_count.
+                # Fire consolidation failure webhook before scheduling retry
+                if task_type == "consolidation" and operation_id and self._webhook_manager:
+                    await self._fire_consolidation_webhook(
+                        bank_id=task_dict.get("bank_id", ""),
+                        operation_id=operation_id,
+                        status="failed",
+                        result=None,
+                        error_message=str(e),
+                        schema=schema,
+                    )
+                # Retryable: use RetryTaskAt if under the retry limit, else re-raise (poller marks failed)
+                retry_count = task_dict.get("_retry_count", 0)
+                if retry_count < 3:
+                    raise RetryTaskAt(retry_at=datetime.now(UTC) + timedelta(seconds=60), message=str(e))
                 raise
+
+    async def _fire_consolidation_webhook(
+        self,
+        bank_id: str,
+        operation_id: str,
+        status: str,
+        result: dict | None,
+        error_message: str | None = None,
+        schema: str | None = None,
+    ) -> None:
+        """Fire a consolidation webhook event. Non-fatal - logs errors but does not raise."""
+        if not self._webhook_manager:
+            return
+        try:
+            from datetime import datetime, timezone
+
+            from ..webhooks.models import ConsolidationEventData, WebhookEvent, WebhookEventType
+
+            data = ConsolidationEventData(
+                observations_created=result.get("observations_created") if result else None,
+                observations_updated=result.get("observations_updated") if result else None,
+                observations_deleted=None,
+                error_message=error_message,
+            )
+            event = WebhookEvent(
+                event=WebhookEventType.CONSOLIDATION_COMPLETED,
+                bank_id=bank_id,
+                operation_id=operation_id,
+                status=status,
+                timestamp=datetime.now(timezone.utc),
+                data=data,
+            )
+            await self._webhook_manager.fire_event(event, schema=schema)
+        except Exception as e:
+            logger.error(f"Failed to fire consolidation webhook for operation {operation_id}: {e}")
+
+    async def _fire_retain_webhook(
+        self,
+        bank_id: str,
+        contents: list[dict],
+        operation_id: str | None,
+        schema: str | None = None,
+    ) -> None:
+        """Fire retain.completed webhook events (one per document). Non-fatal."""
+        if not self._webhook_manager:
+            return
+        try:
+            from datetime import datetime, timezone
+
+            from ..webhooks.models import RetainEventData, WebhookEvent, WebhookEventType
+
+            now = datetime.now(timezone.utc)
+            op_id = operation_id or uuid.uuid4().hex
+            for content in contents:
+                doc_id = content.get("document_id")
+                tags = content.get("tags")
+                data = RetainEventData(
+                    document_id=doc_id,
+                    tags=tags if isinstance(tags, list) else None,
+                )
+                event = WebhookEvent(
+                    event=WebhookEventType.RETAIN_COMPLETED,
+                    bank_id=bank_id,
+                    operation_id=op_id,
+                    status="completed",
+                    timestamp=now,
+                    data=data,
+                )
+                await self._webhook_manager.fire_event(event, schema=schema)
+        except Exception as e:
+            logger.error(f"Failed to fire retain webhook for bank {bank_id}: {e}")
+
+    async def _update_webhook_delivery_metadata(
+        self, operation_id: str, status_code: int | None, response_body: str | None
+    ) -> None:
+        """Persist last HTTP attempt info into async_operations.result_metadata."""
+        try:
+            pool = await self._get_pool()
+            meta = json.dumps(
+                {
+                    "last_status_code": status_code,
+                    "last_response_body": (response_body or "")[:2048],
+                    "last_attempt_at": datetime.now(UTC).isoformat(),
+                }
+            )
+            async with acquire_with_retry(pool) as conn:
+                await conn.execute(
+                    f"UPDATE {fq_table('async_operations')} SET result_metadata = $2::jsonb, updated_at = now() WHERE operation_id = $1",
+                    uuid.UUID(operation_id),
+                    meta,
+                )
+        except Exception as meta_err:
+            logger.debug(f"Failed to update webhook delivery metadata: {meta_err}")
+
+    async def _handle_webhook_delivery(self, task_dict: dict[str, Any]) -> None:
+        """Deliver a webhook event via HTTP.
+
+        Raises RetryTaskAt to schedule a retry on failure (up to MAX_ATTEMPTS).
+        Raises the original exception when retries are exhausted (poller marks failed).
+        Response status code and body are stored in result_metadata for debugging.
+        """
+        from ..webhooks.manager import MAX_ATTEMPTS, RETRY_DELAYS
+        from ..webhooks.models import WebhookHttpConfig
+
+        url = task_dict["url"]
+        secret = task_dict.get("secret")
+        event_type = task_dict["event_type"]
+        raw_payload = task_dict["payload"]
+        retry_count = task_dict.get("_retry_count", 0)
+        operation_id: str | None = task_dict.get("_operation_id")
+        http_config = WebhookHttpConfig.model_validate(task_dict.get("http_config") or {})
+
+        if isinstance(raw_payload, dict):
+            payload_bytes = json.dumps(raw_payload).encode()
+        else:
+            payload_bytes = str(raw_payload).encode()
+
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "X-Hindsight-Event": event_type,
+            **http_config.headers,
+        }
+        if secret and self._webhook_manager:
+            headers["X-Hindsight-Signature"] = self._webhook_manager._sign_payload(secret, payload_bytes)
+
+        if self._http_client is None:
+            raise RuntimeError("HTTP client not initialized")
+
+        response = None
+        try:
+            request_kwargs: dict[str, Any] = {
+                "headers": headers,
+                "params": http_config.params if http_config.params else None,
+                "timeout": http_config.timeout_seconds,
+            }
+            if http_config.method.upper() == "GET":
+                response = await self._http_client.get(url, **request_kwargs)
+            else:
+                response = await self._http_client.post(url, content=payload_bytes, **request_kwargs)
+            response.raise_for_status()
+            if operation_id:
+                await self._update_webhook_delivery_metadata(operation_id, response.status_code, response.text)
+        except Exception as e:
+            status_code = response.status_code if response is not None else None
+            response_body = response.text if response is not None else None
+            if operation_id:
+                await self._update_webhook_delivery_metadata(operation_id, status_code, response_body)
+            if retry_count >= MAX_ATTEMPTS - 1:
+                logger.error(
+                    f"webhook_delivery permanently_failed url={url} attempts={retry_count + 1} "
+                    f"status_code={status_code} error={e}"
+                )
+                raise
+            delay = RETRY_DELAYS[retry_count] if retry_count < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
+            retry_at = datetime.now(UTC) + timedelta(seconds=delay)
+            logger.warning(
+                f"webhook_delivery failed url={url} attempt={retry_count + 1}/{MAX_ATTEMPTS} "
+                f"status_code={status_code} retry_in={delay}s error={e}"
+            )
+            raise RetryTaskAt(retry_at=retry_at, message=str(e))
 
     async def _delete_operation_record(self, operation_id: str):
         """Helper to delete an operation record from the database."""
@@ -1381,6 +1583,32 @@ class MemoryEngine(MemoryEngineInterface):
         else:
             logger.debug("Iris parser not registered (VECTORIZE_TOKEN or VECTORIZE_ORG_ID not set)")
 
+        # Initialize webhook manager
+        from ..webhooks import WebhookManager
+        from ..webhooks.models import WebhookConfig
+
+        webhook_global: list[WebhookConfig] = []
+        if config.webhook_url:
+            webhook_global = [
+                WebhookConfig(
+                    id="",  # No DB row for env-configured global webhook
+                    bank_id=None,
+                    url=config.webhook_url,
+                    secret=config.webhook_secret,
+                    event_types=config.webhook_event_types,
+                    enabled=True,
+                )
+            ]
+        self._webhook_manager = WebhookManager(
+            pool=self._pool,
+            global_webhooks=webhook_global,
+            tenant_extension=self._tenant_extension,
+        )
+        logger.debug("Webhook manager initialized")
+
+        # Long-lived HTTP client for webhook delivery tasks
+        self._http_client = httpx.AsyncClient(timeout=30.0)
+
         # Set executor for task backend and initialize
         self._task_backend.set_executor(self.execute_task)
         await self._task_backend.initialize()
@@ -1439,6 +1667,11 @@ class MemoryEngine(MemoryEngineInterface):
 
         # Shutdown task backend
         await self._task_backend.shutdown()
+
+        # Close HTTP client used for webhook delivery
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
         # Close pool
         if self._pool is not None:

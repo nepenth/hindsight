@@ -1,0 +1,202 @@
+---
+sidebar_position: 10
+---
+
+# Webhooks
+
+Hindsight can notify your application in real-time when memory events occur by sending HTTP POST requests to a URL you configure.
+
+## Overview
+
+Webhooks are registered per memory bank and fire automatically when matching events occur. Each delivery is tracked and retried with exponential backoff on failure.
+
+### Retry schedule
+
+| Attempt | Delay after failure |
+|---------|---------------------|
+| 1 | 60 seconds |
+| 2 | 5 minutes |
+| 3 | 30 minutes |
+| 4 | 2 hours |
+| 5 | 8 hours |
+| 6 | Permanent failure |
+
+## Managing Webhooks
+
+### Create a webhook
+
+```bash
+curl -X POST "http://localhost:8000/v1/default/banks/my-bank/webhooks" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-app.com/hooks/hindsight",
+    "event_types": ["consolidation.completed", "retain.completed"],
+    "secret": "your-signing-secret"
+  }'
+```
+
+### Update a webhook
+
+Use PATCH to update only the fields you want to change:
+
+```bash
+curl -X PATCH "http://localhost:8000/v1/default/banks/my-bank/webhooks/{webhook_id}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": false
+  }'
+```
+
+### HTTP delivery configuration
+
+Customize how Hindsight delivers webhook requests:
+
+```json
+{
+  "url": "https://your-app.com/hooks/hindsight",
+  "event_types": ["retain.completed"],
+  "http_config": {
+    "method": "POST",
+    "timeout_seconds": 15,
+    "headers": {
+      "Authorization": "Bearer your-token"
+    },
+    "params": {}
+  }
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `method` | `POST` | HTTP method (`GET` or `POST`) |
+| `timeout_seconds` | `30` | Request timeout |
+| `headers` | `{}` | Custom HTTP headers added to every delivery |
+| `params` | `{}` | Custom query parameters added to every delivery |
+
+## Payload Signature Verification
+
+When a `secret` is set, Hindsight signs every delivery with HMAC-SHA256 and includes the signature in the `X-Hindsight-Signature` header:
+
+```
+X-Hindsight-Signature: sha256=<hex-digest>
+```
+
+Verify in Python:
+
+```python
+import hashlib, hmac
+
+def verify_signature(payload_bytes: bytes, secret: str, header: str) -> bool:
+    expected = "sha256=" + hmac.new(
+        secret.encode(), payload_bytes, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, header)
+```
+
+## Event Types
+
+### `consolidation.completed`
+
+Fired after Hindsight finishes consolidating new memories into observations for a bank.
+
+**Payload:**
+
+```json
+{
+  "event": "consolidation.completed",
+  "bank_id": "my-bank",
+  "operation_id": "a1b2c3d4e5f6",
+  "status": "completed",
+  "timestamp": "2026-03-04T12:00:00Z",
+  "data": {
+    "observations_created": 3,
+    "observations_updated": 1,
+    "observations_deleted": null,
+    "error_message": null
+  }
+}
+```
+
+**`data` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `observations_created` | `integer \| null` | Number of new observations created |
+| `observations_updated` | `integer \| null` | Number of existing observations updated |
+| `observations_deleted` | `integer \| null` | Number of observations deleted |
+| `error_message` | `string \| null` | Set when `status` is `"failed"` |
+
+**`status` values:** `"completed"` or `"failed"`
+
+---
+
+### `retain.completed`
+
+Fired once per document after a retain operation completes (both synchronous and asynchronous). When retaining a batch of N documents, N separate events are fired.
+
+**Payload:**
+
+```json
+{
+  "event": "retain.completed",
+  "bank_id": "my-bank",
+  "operation_id": "a1b2c3d4e5f6",
+  "status": "completed",
+  "timestamp": "2026-03-04T12:00:01Z",
+  "data": {
+    "document_id": "doc-abc123",
+    "tags": ["meeting", "q1-2026"]
+  }
+}
+```
+
+**`data` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `document_id` | `string \| null` | The document ID if one was provided in the retain request |
+| `tags` | `string[] \| null` | Document-level tags applied during retain |
+
+**Notes:**
+- For async retain (`async: true`), `operation_id` matches the `operation_id` returned by the retain API.
+- For sync retain, `operation_id` is a generated identifier for tracing purposes.
+- One event is fired per content item in the retain request.
+
+## Viewing Deliveries
+
+Inspect delivery history for a webhook:
+
+```bash
+curl "http://localhost:8000/v1/default/banks/my-bank/webhooks/{webhook_id}/deliveries"
+```
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": "op-uuid",
+      "webhook_id": "wh-uuid",
+      "url": "https://your-app.com/hooks/hindsight",
+      "event_type": "retain.completed",
+      "status": "completed",
+      "attempts": 1,
+      "next_retry_at": null,
+      "last_error": null,
+      "last_response_status": 200,
+      "last_response_body": "OK",
+      "last_attempt_at": "2026-03-04T12:00:02Z",
+      "created_at": "2026-03-04T12:00:01Z",
+      "updated_at": "2026-03-04T12:00:02Z"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+Use `cursor` and `limit` query parameters for pagination:
+
+```bash
+curl "http://localhost:8000/v1/default/banks/my-bank/webhooks/{webhook_id}/deliveries?limit=20&cursor=<next_cursor>"
+```
