@@ -7,9 +7,11 @@ image: /img/blog/add-memory-to-openai-application.png
 hide_table_of_contents: true
 ---
 
-## TL;DR
+Build a ChatGPT-style chatbot with persistent memory using the OpenAI SDK and Hindsight. Three API calls — `retain()`, `recall()`, `reflect()` — and your app remembers users across restarts, no vector database or RAG pipeline required.
 
 <!-- truncate -->
+
+## TL;DR
 
 You'll build a ChatGPT-style chatbot that:
 
