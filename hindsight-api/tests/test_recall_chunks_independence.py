@@ -259,7 +259,7 @@ async def test_recall_chunks_for_observations(memory, request_context):
         )
 
         # Trigger consolidation explicitly to ensure observations exist
-        await memory.run_consolidation_async(bank_id=bank_id, request_context=request_context)
+        await memory.run_consolidation(bank_id=bank_id, request_context=request_context)
 
         # Recall observations only with chunks enabled
         result = await memory.recall_async(
