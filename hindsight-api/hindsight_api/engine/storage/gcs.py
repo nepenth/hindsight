@@ -63,11 +63,12 @@ class GCSFileStorage(FileStorage):
                     f"Failed to create google.auth credential provider, falling back to obstore defaults: {e}"
                 )
 
-        # obstore's GCSStore eagerly parses GOOGLE_APPLICATION_CREDENTIALS even
-        # when credential_provider is supplied, and it can't handle all credential
-        # types (e.g. external_account from Workload Identity Federation).
-        # Temporarily hide the env var so GCSStore doesn't attempt to parse it;
-        # google.auth (used by credential_provider) has already loaded credentials.
+        # Workaround for https://github.com/developmentseed/obstore/issues/605
+        # obstore's Rust layer doesn't support external_account credentials (Workload
+        # Identity Federation) and eagerly parses GOOGLE_APPLICATION_CREDENTIALS even
+        # when credential_provider is given. Per the obstore maintainer's guidance,
+        # remove env vars so the Rust code doesn't try to authenticate itself.
+        # google.auth (used by credential_provider above) has already loaded credentials.
         gac = os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
         try:
             self._store = GCSStore(bucket, **kwargs)
