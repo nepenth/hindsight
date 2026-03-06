@@ -134,6 +134,7 @@ beforeAll(async () => {
   process.env.HINDSIGHT_EMBED_API_URL = HINDSIGHT_API_URL;
 
   const mod = await import('../src/index.js');
+  const { HindsightClient } = await import('../src/client.js');
   const pluginFn = mod.default;
   const getClient = mod.getClient;
 
@@ -156,11 +157,11 @@ beforeAll(async () => {
   await handle.startServices();
 
   // After startServices the client must be ready.
-  const c = getClient();
-  if (!c) throw new Error('[Hooks Integration] Client not initialized after service start');
+  if (!getClient()) throw new Error('[Hooks Integration] Client not initialized after service start');
 
-  recallSpy = vi.spyOn(c, 'recall') as ReturnType<typeof vi.spyOn<HindsightClient, 'recall'>>;
-  retainSpy = vi.spyOn(c, 'retain') as ReturnType<typeof vi.spyOn<HindsightClient, 'retain'>>;
+  // Spy on the prototype so all per-bank instances created by getClientForContext are intercepted.
+  recallSpy = vi.spyOn(HindsightClient.prototype, 'recall') as ReturnType<typeof vi.spyOn<HindsightClient, 'recall'>>;
+  retainSpy = vi.spyOn(HindsightClient.prototype, 'retain') as ReturnType<typeof vi.spyOn<HindsightClient, 'retain'>>;
 }, 30_000);
 
 afterAll(async () => {
