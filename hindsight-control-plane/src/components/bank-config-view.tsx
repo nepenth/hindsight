@@ -487,7 +487,7 @@ export function BankConfigView() {
 
         {/* Entity Labels Section */}
         <ConfigSection
-          title="Entity Labels"
+          title="Entities"
           description="Control entity extraction and define a controlled vocabulary of key:value classification labels (e.g. pedagogy:scaffolding, interest:active)"
           error={entityLabelsError}
           dirty={entityLabelsDirty}
