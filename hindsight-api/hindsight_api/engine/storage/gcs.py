@@ -19,24 +19,11 @@ def _make_google_auth_credential_provider():
     authorized_user JSON types.  This provider uses the google-auth library
     which additionally handles external_account (Workload Identity Federation),
     impersonated credentials, and metadata-server credentials.
-
-    If GOOGLE_APPLICATION_CREDENTIALS is not set (e.g. unset to prevent obstore
-    from reading it), falls back to HINDSIGHT_GOOGLE_CREDENTIALS_FILE.
     """
     import google.auth
     import google.auth.transport.requests
 
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-
-    # Check for renamed credential file (set when GOOGLE_APPLICATION_CREDENTIALS
-    # is intentionally unset to prevent obstore from reading it)
-    cred_file = os.environ.get("HINDSIGHT_GOOGLE_CREDENTIALS_FILE")
-    if cred_file:
-        credentials, _ = google.auth.load_credentials_from_file(cred_file, scopes=scopes)
-        logger.info("Loaded GCS credentials from HINDSIGHT_GOOGLE_CREDENTIALS_FILE")
-    else:
-        credentials, _ = google.auth.default(scopes=scopes)
-
+    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     request = google.auth.transport.requests.Request()
 
     def _provide():
@@ -76,7 +63,17 @@ class GCSFileStorage(FileStorage):
                     f"Failed to create google.auth credential provider, falling back to obstore defaults: {e}"
                 )
 
-        self._store = GCSStore(bucket, **kwargs)
+        # obstore's GCSStore eagerly parses GOOGLE_APPLICATION_CREDENTIALS even
+        # when credential_provider is supplied, and it can't handle all credential
+        # types (e.g. external_account from Workload Identity Federation).
+        # Temporarily hide the env var so GCSStore doesn't attempt to parse it;
+        # google.auth (used by credential_provider) has already loaded credentials.
+        gac = os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+        try:
+            self._store = GCSStore(bucket, **kwargs)
+        finally:
+            if gac is not None:
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gac
         logger.info(f"Initialized GCS file storage: bucket={bucket}")
 
     async def store(self, file_data: bytes, key: str, metadata: dict[str, str] | None = None) -> str:
