@@ -1,7 +1,7 @@
 """Add history column to mental_models
 
-Revision ID: a2b3c4d5e6f7
-Revises: z1u2v3w4x5y6
+Revision ID: c3d4e5f6g7h8
+Revises: a2b3c4d5e6f7, a2b3c4d5e6f8
 Create Date: 2026-03-06
 """
 
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 
 from alembic import context, op
 
-revision: str = "a2b3c4d5e6f7"
-down_revision: str | Sequence[str] | None = "z1u2v3w4x5y6"
+revision: str = "c3d4e5f6g7h8"
+down_revision: str | Sequence[str] | None = ("a2b3c4d5e6f7", "a2b3c4d5e6f8")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
