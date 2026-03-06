@@ -158,6 +158,9 @@ import type {
   UpdateDirectiveData,
   UpdateDirectiveErrors,
   UpdateDirectiveResponses,
+  UpdateDocumentTagsData,
+  UpdateDocumentTagsErrors,
+  UpdateDocumentTagsResponses,
   UpdateMentalModelData,
   UpdateMentalModelErrors,
   UpdateMentalModelResponses,
@@ -658,6 +661,27 @@ export const getDocument = <ThrowOnError extends boolean = false>(
     GetDocumentErrors,
     ThrowOnError
   >({ url: "/v1/default/banks/{bank_id}/documents/{document_id}", ...options });
+
+/**
+ * Update document tags
+ *
+ * Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.
+ */
+export const updateDocumentTags = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateDocumentTagsData, ThrowOnError>,
+) =>
+  (options.client ?? client).patch<
+    UpdateDocumentTagsResponses,
+    UpdateDocumentTagsErrors,
+    ThrowOnError
+  >({
+    url: "/v1/default/banks/{bank_id}/documents/{document_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
 
 /**
  * List tags

@@ -2082,6 +2082,58 @@ export type UpdateDispositionRequest = {
 };
 
 /**
+ * UpdateDocumentTagsRequest
+ *
+ * Request model for updating document tags.
+ */
+export type UpdateDocumentTagsRequest = {
+  /**
+   * Tags
+   *
+   * New tags to apply to the document and its memory units
+   */
+  tags: Array<string>;
+};
+
+/**
+ * UpdateDocumentTagsResponse
+ *
+ * Response model for update document tags endpoint.
+ */
+export type UpdateDocumentTagsResponse = {
+  /**
+   * Id
+   */
+  id: string;
+  /**
+   * Bank Id
+   */
+  bank_id: string;
+  /**
+   * Content Hash
+   */
+  content_hash: string | null;
+  /**
+   * Created At
+   */
+  created_at: string | null;
+  /**
+   * Updated At
+   */
+  updated_at: string | null;
+  /**
+   * Memory Unit Count
+   */
+  memory_unit_count: number;
+  /**
+   * Tags
+   *
+   * Updated tags
+   */
+  tags?: Array<string>;
+};
+
+/**
  * UpdateMentalModelRequest
  *
  * Request model for updating a mental model.
@@ -3495,6 +3547,48 @@ export type GetDocumentResponses = {
 
 export type GetDocumentResponse =
   GetDocumentResponses[keyof GetDocumentResponses];
+
+export type UpdateDocumentTagsData = {
+  body: UpdateDocumentTagsRequest;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+    /**
+     * Document Id
+     */
+    document_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/documents/{document_id}";
+};
+
+export type UpdateDocumentTagsErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type UpdateDocumentTagsError =
+  UpdateDocumentTagsErrors[keyof UpdateDocumentTagsErrors];
+
+export type UpdateDocumentTagsResponses = {
+  /**
+   * Successful Response
+   */
+  200: UpdateDocumentTagsResponse;
+};
+
+export type UpdateDocumentTagsResponse2 =
+  UpdateDocumentTagsResponses[keyof UpdateDocumentTagsResponses];
 
 export type ListTagsData = {
   body?: never;

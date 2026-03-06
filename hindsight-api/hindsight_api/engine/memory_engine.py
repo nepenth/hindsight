@@ -3440,6 +3440,154 @@ class MemoryEngine(MemoryEngineInterface):
 
         return result
 
+    async def update_document_tags(
+        self,
+        document_id: str,
+        bank_id: str,
+        *,
+        tags: list[str],
+        request_context: "RequestContext",
+    ) -> dict[str, Any] | None:
+        """
+        Update tags on a document and all its associated memory units.
+
+        Observations derived from those memory units are invalidated (deleted) and
+        the affected memory units are reset for re-consolidation under the new tags.
+
+        Args:
+            document_id: Document ID to update
+            bank_id: Bank ID that owns the document
+            tags: New tags to apply
+            request_context: Request context for authentication.
+
+        Returns:
+            Updated document dict, or None if not found
+        """
+        await self._authenticate_tenant(request_context)
+        if self._operation_validator:
+            from hindsight_api.extensions import BankWriteContext
+
+            ctx = BankWriteContext(bank_id=bank_id, operation="update_document_tags", request_context=request_context)
+            await self._validate_operation(self._operation_validator.validate_bank_write(ctx))
+        pool = await self._get_pool()
+        invalidated_obs = 0
+        async with acquire_with_retry(pool) as conn:
+            async with conn.transaction():
+                # Verify document exists and get source memory unit IDs
+                unit_rows = await conn.fetch(
+                    f"SELECT id FROM {fq_table('memory_units')} WHERE document_id = $1 AND fact_type IN ('experience', 'world')",
+                    document_id,
+                )
+                unit_ids = [str(row["id"]) for row in unit_rows]
+
+                # Update document tags
+                doc = await conn.fetchrow(
+                    f"""
+                    UPDATE {fq_table("documents")}
+                    SET tags = $1, updated_at = now()
+                    WHERE id = $2 AND bank_id = $3
+                    RETURNING id, bank_id, content_hash, created_at, updated_at, tags
+                    """,
+                    tags,
+                    document_id,
+                    bank_id,
+                )
+                if not doc:
+                    return None
+
+                # Update memory_units tags for all units belonging to this document
+                memory_units_updated = await conn.fetchval(
+                    f"""
+                    UPDATE {fq_table("memory_units")}
+                    SET tags = $1
+                    WHERE document_id = $2
+                    """,
+                    tags,
+                    document_id,
+                )
+
+                # Invalidate observations referencing these memory units
+                if unit_ids:
+                    import uuid as uuid_module
+
+                    unit_uuids = [uuid_module.UUID(uid) for uid in unit_ids]
+                    unit_uuid_set = {str(u) for u in unit_uuids}
+                    affected_obs = await conn.fetch(
+                        f"""
+                        SELECT id, source_memory_ids FROM {fq_table("memory_units")}
+                        WHERE bank_id = $1
+                          AND fact_type = 'observation'
+                          AND source_memory_ids && $2::uuid[]
+                        """,
+                        bank_id,
+                        unit_uuids,
+                    )
+                    if affected_obs:
+                        obs_ids = [obs["id"] for obs in affected_obs]
+
+                        # Collect source memories from other documents that co-sourced
+                        # these observations — they also need re-consolidation
+                        seen: set[str] = set()
+                        other_source_uuids: list[uuid_module.UUID] = []
+                        for obs in affected_obs:
+                            for src_id in obs["source_memory_ids"] or []:
+                                src_str = str(src_id)
+                                if src_str not in unit_uuid_set and src_str not in seen:
+                                    other_source_uuids.append(src_id)
+                                    seen.add(src_str)
+
+                        await conn.execute(
+                            f"DELETE FROM {fq_table('memory_units')} WHERE id = ANY($1::uuid[])",
+                            obs_ids,
+                        )
+                        # Reset consolidated_at on the document's own units
+                        await conn.execute(
+                            f"""
+                            UPDATE {fq_table("memory_units")}
+                            SET consolidated_at = NULL
+                            WHERE id = ANY($1::uuid[])
+                              AND fact_type IN ('experience', 'world')
+                            """,
+                            unit_uuids,
+                        )
+                        # Reset consolidated_at on other co-source memories so they
+                        # also get re-consolidated now their shared observation is gone
+                        if other_source_uuids:
+                            await conn.execute(
+                                f"""
+                                UPDATE {fq_table("memory_units")}
+                                SET consolidated_at = NULL
+                                WHERE id = ANY($1::uuid[])
+                                  AND fact_type IN ('experience', 'world')
+                                """,
+                                other_source_uuids,
+                            )
+                        invalidated_obs = len(obs_ids)
+                        logger.info(
+                            f"[OBSERVATIONS] Deleted {invalidated_obs} observations, reset "
+                            f"{len(unit_ids)} document source memories and "
+                            f"{len(other_source_uuids)} co-source memories for re-consolidation "
+                            f"after tag update on document '{document_id}' in bank {bank_id}"
+                        )
+
+                unit_count = await conn.fetchval(
+                    f"SELECT COUNT(*) FROM {fq_table('memory_units')} WHERE document_id = $1",
+                    document_id,
+                )
+
+        if invalidated_obs > 0:
+            await self.submit_async_consolidation(bank_id=bank_id, request_context=request_context)
+
+        return {
+            "id": doc["id"],
+            "bank_id": doc["bank_id"],
+            "content_hash": doc["content_hash"],
+            "memory_unit_count": unit_count or 0,
+            "created_at": doc["created_at"].isoformat() if doc["created_at"] else None,
+            "updated_at": doc["updated_at"].isoformat() if doc["updated_at"] else None,
+            "tags": list(doc["tags"]) if doc["tags"] else [],
+        }
+
     async def delete_memory_unit(
         self,
         unit_id: str,

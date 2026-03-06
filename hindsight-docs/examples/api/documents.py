@@ -120,6 +120,38 @@ asyncio.run(get_document_example())
 # [/docs:document-get]
 
 
+# [docs:document-update-tags]
+from hindsight_client_api import ApiClient, Configuration
+from hindsight_client_api.api import DocumentsApi
+from hindsight_client_api.models import UpdateDocumentTagsRequest
+
+async def update_document_tags_example():
+    config = Configuration(host="http://localhost:8888")
+    api_client = ApiClient(config)
+    api = DocumentsApi(api_client)
+
+    # Fix tags on a document retained with the wrong scope
+    result = await api.update_document_tags(
+        bank_id="my-bank",
+        document_id="meeting-2024-03-15",
+        update_document_tags_request=UpdateDocumentTagsRequest(tags=["team-a", "team-b"]),
+    )
+
+    print(f"Document: {result.id}")
+    print(f"New tags: {result.tags}")
+    print(f"Memory units updated: {result.memory_unit_count}")
+
+    # Remove all tags (make document visible everywhere)
+    await api.update_document_tags(
+        bank_id="my-bank",
+        document_id="meeting-2024-03-15",
+        update_document_tags_request=UpdateDocumentTagsRequest(tags=[]),
+    )
+
+asyncio.run(update_document_tags_example())
+# [/docs:document-update-tags]
+
+
 # [docs:document-delete]
 from hindsight_client_api import ApiClient, Configuration
 from hindsight_client_api.api import DocumentsApi

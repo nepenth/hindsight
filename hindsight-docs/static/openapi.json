@@ -1982,6 +1982,82 @@
           }
         }
       },
+      "patch": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Update document tags",
+        "description": "Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.",
+        "operationId": "update_document_tags",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentTagsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateDocumentTagsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Documents"
@@ -7436,6 +7512,93 @@
         ],
         "title": "UpdateDispositionRequest",
         "description": "Request model for updating disposition traits."
+      },
+      "UpdateDocumentTagsRequest": {
+        "properties": {
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "New tags to apply to the document and its memory units"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tags"
+        ],
+        "title": "UpdateDocumentTagsRequest",
+        "description": "Request model for updating document tags."
+      },
+      "UpdateDocumentTagsResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "bank_id": {
+            "type": "string",
+            "title": "Bank Id"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "memory_unit_count": {
+            "type": "integer",
+            "title": "Memory Unit Count"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Updated tags",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "bank_id",
+          "content_hash",
+          "created_at",
+          "updated_at",
+          "memory_unit_count"
+        ],
+        "title": "UpdateDocumentTagsResponse",
+        "description": "Response model for update document tags endpoint."
       },
       "UpdateMentalModelRequest": {
         "properties": {

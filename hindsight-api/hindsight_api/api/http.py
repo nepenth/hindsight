@@ -1206,6 +1206,24 @@ class DocumentResponse(BaseModel):
     tags: list[str] = FieldWithDefault(list, description="Tags associated with this document")
 
 
+class UpdateDocumentTagsRequest(BaseModel):
+    """Request model for updating document tags."""
+
+    tags: list[str] = Field(description="New tags to apply to the document and its memory units")
+
+
+class UpdateDocumentTagsResponse(BaseModel):
+    """Response model for update document tags endpoint."""
+
+    id: str
+    bank_id: str
+    content_hash: str | None
+    created_at: str | None
+    updated_at: str | None
+    memory_unit_count: int
+    tags: list[str] = FieldWithDefault(list, description="Updated tags")
+
+
 class DeleteDocumentResponse(BaseModel):
     """Response model for delete document endpoint."""
 
@@ -3267,6 +3285,51 @@ def _register_routes(app: FastAPI):
 
             error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             logger.error(f"Error in /v1/default/chunks/{chunk_id}: {error_detail}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.patch(
+        "/v1/default/banks/{bank_id}/documents/{document_id:path}",
+        response_model=UpdateDocumentTagsResponse,
+        summary="Update document tags",
+        description="Update tags on a document and all its associated memory units. "
+        "Observations derived from the document's memory units are invalidated and "
+        "queued for re-consolidation under the new tags.",
+        operation_id="update_document_tags",
+        tags=["Documents"],
+    )
+    async def api_update_document_tags(
+        bank_id: str,
+        document_id: str,
+        body: UpdateDocumentTagsRequest,
+        request_context: RequestContext = Depends(get_request_context),
+    ):
+        """
+        Update tags on a document without re-processing its content.
+
+        Args:
+            bank_id: Memory Bank ID (from path)
+            document_id: Document ID (from path)
+            body: New tags to apply
+        """
+        try:
+            result = await app.state.memory.update_document_tags(
+                document_id,
+                bank_id,
+                tags=body.tags,
+                request_context=request_context,
+            )
+            if result is None:
+                raise HTTPException(status_code=404, detail="Document not found")
+            return UpdateDocumentTagsResponse(**result)
+        except OperationValidationError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.reason)
+        except (AuthenticationError, HTTPException):
+            raise
+        except Exception as e:
+            import traceback
+
+            error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"Error in PATCH /v1/default/banks/{bank_id}/documents/{document_id}: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.delete(

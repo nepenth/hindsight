@@ -103,6 +103,31 @@ console.log(`Created: ${doc.created_at}`);
 // [/docs:document-get]
 
 
+// [docs:document-update-tags]
+// Fix tags on a document retained with the wrong scope
+const { data: updatedDoc, error: updateError } = await sdk.updateDocumentTags({
+    client: apiClient,
+    path: { bank_id: 'my-bank', document_id: 'meeting-2024-03-15-section-1' },
+    body: { tags: ['team-a', 'team-b'] }
+});
+
+if (updateError) {
+    throw new Error(`Failed to update tags: ${JSON.stringify(updateError)}`);
+}
+
+console.log(`Document: ${updatedDoc.id}`);
+console.log(`New tags: ${updatedDoc.tags}`);
+console.log(`Memory units: ${updatedDoc.memory_unit_count}`);
+
+// Remove all tags (make document visible everywhere)
+await sdk.updateDocumentTags({
+    client: apiClient,
+    path: { bank_id: 'my-bank', document_id: 'meeting-2024-03-15-section-1' },
+    body: { tags: [] }
+});
+// [/docs:document-update-tags]
+
+
 // [docs:document-delete]
 // Delete document and all its memories
 const { data: deleteResult } = await sdk.deleteDocument({

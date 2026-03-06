@@ -1390,6 +1390,58 @@ paths:
       summary: Get document details
       tags:
       - Documents
+    patch:
+      description: Update tags on a document and all its associated memory units.
+        Observations derived from the document's memory units are invalidated and
+        queued for re-consolidation under the new tags.
+      operationId: update_document_tags
+      parameters:
+      - explode: false
+        in: path
+        name: bank_id
+        required: true
+        schema:
+          title: Bank Id
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: document_id
+        required: true
+        schema:
+          title: Document Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: false
+        schema:
+          nullable: true
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDocumentTagsRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateDocumentTagsResponse'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Update document tags
+      tags:
+      - Documents
   /v1/default/banks/{bank_id}/tags:
     get:
       description: "List all unique tags in a memory bank with usage counts. Supports\
@@ -4746,6 +4798,66 @@ components:
       required:
       - disposition
       title: UpdateDispositionRequest
+    UpdateDocumentTagsRequest:
+      description: Request model for updating document tags.
+      example:
+        tags:
+        - tags
+        - tags
+      properties:
+        tags:
+          description: New tags to apply to the document and its memory units
+          items:
+            type: string
+          type: array
+      required:
+      - tags
+      title: UpdateDocumentTagsRequest
+    UpdateDocumentTagsResponse:
+      description: Response model for update document tags endpoint.
+      example:
+        updated_at: updated_at
+        bank_id: bank_id
+        created_at: created_at
+        id: id
+        content_hash: content_hash
+        memory_unit_count: 0
+        tags:
+        - tags
+        - tags
+      properties:
+        id:
+          title: Id
+          type: string
+        bank_id:
+          title: Bank Id
+          type: string
+        content_hash:
+          nullable: true
+          type: string
+        created_at:
+          nullable: true
+          type: string
+        updated_at:
+          nullable: true
+          type: string
+        memory_unit_count:
+          title: Memory Unit Count
+          type: integer
+        tags:
+          default: []
+          description: Updated tags
+          items:
+            type: string
+          type: array
+      required:
+      - bank_id
+      - content_hash
+      - created_at
+      - id
+      - memory_unit_count
+      - updated_at
+      title: UpdateDocumentTagsResponse
     UpdateMentalModelRequest:
       description: Request model for updating a mental model.
       example:
