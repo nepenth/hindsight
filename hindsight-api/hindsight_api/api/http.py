@@ -1206,14 +1206,26 @@ class DocumentResponse(BaseModel):
     tags: list[str] = FieldWithDefault(list, description="Tags associated with this document")
 
 
-class UpdateDocumentTagsRequest(BaseModel):
-    """Request model for updating document tags."""
+class UpdateDocumentRequest(BaseModel):
+    """Request model for updating a document's mutable fields."""
 
-    tags: list[str] = Field(description="New tags to apply to the document and its memory units")
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "tags": ["team-a", "team-b"],
+            }
+        }
+    )
+
+    tags: list[str] | None = Field(
+        default=None,
+        description="New tags for the document and its memory units. "
+        "Triggers observation invalidation and re-consolidation.",
+    )
 
 
-class UpdateDocumentTagsResponse(BaseModel):
-    """Response model for update document tags endpoint."""
+class UpdateDocumentResponse(BaseModel):
+    """Response model for update document endpoint."""
 
     success: bool = True
 
@@ -3283,30 +3295,34 @@ def _register_routes(app: FastAPI):
 
     @app.patch(
         "/v1/default/banks/{bank_id}/documents/{document_id:path}",
-        response_model=UpdateDocumentTagsResponse,
-        summary="Update document tags",
-        description="Update tags on a document and all its associated memory units. "
-        "Observations derived from the document's memory units are invalidated and "
-        "queued for re-consolidation under the new tags.",
-        operation_id="update_document_tags",
+        response_model=UpdateDocumentResponse,
+        summary="Update document",
+        description="Update mutable fields on a document without re-processing its content.\n\n"
+        "**Tags** (`tags`): Propagated to all associated memory units. Observations derived from "
+        "those units are invalidated and queued for re-consolidation under the new tags. "
+        "Co-source memories from other documents that shared those observations are also reset.\n\n"
+        "At least one field must be provided.",
+        operation_id="update_document",
         tags=["Documents"],
     )
-    async def api_update_document_tags(
+    async def api_update_document(
         bank_id: str,
         document_id: str,
-        body: UpdateDocumentTagsRequest,
+        body: UpdateDocumentRequest,
         request_context: RequestContext = Depends(get_request_context),
     ):
         """
-        Update tags on a document without re-processing its content.
+        Update mutable fields on a document without re-processing its content.
 
         Args:
             bank_id: Memory Bank ID (from path)
             document_id: Document ID (from path)
-            body: New tags to apply
+            body: Fields to update (tags, metadata, context)
         """
+        if body.tags is None:
+            raise HTTPException(status_code=422, detail="At least one field (tags) must be provided")
         try:
-            result = await app.state.memory.update_document_tags(
+            result = await app.state.memory.update_document(
                 document_id,
                 bank_id,
                 tags=body.tags,
@@ -3314,7 +3330,7 @@ def _register_routes(app: FastAPI):
             )
             if not result:
                 raise HTTPException(status_code=404, detail="Document not found")
-            return UpdateDocumentTagsResponse(success=True)
+            return UpdateDocumentResponse(success=True)
         except OperationValidationError as e:
             raise HTTPException(status_code=e.status_code, detail=e.reason)
         except (AuthenticationError, HTTPException):

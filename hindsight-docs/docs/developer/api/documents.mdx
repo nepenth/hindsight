@@ -107,16 +107,16 @@ hindsight document get my-bank meeting-2024-03-15
 </TabItem>
 </Tabs>
 
-## Update Document Tags
+## Update Document
 
-Change the tags on an existing document — and all its memory units — without re-processing the content. This is useful when you retained a document with wrong or missing tags and want to fix the visibility scope without consuming LLM tokens.
+Update mutable fields on an existing document without re-processing the content. Currently supports updating `tags`.
 
 <Tabs>
 <TabItem value="python" label="Python">
-<CodeSnippet code={documentsPy} section="document-update-tags" language="python" />
+<CodeSnippet code={documentsPy} section="document-update" language="python" />
 </TabItem>
 <TabItem value="node" label="Node.js">
-<CodeSnippet code={documentsMjs} section="document-update-tags" language="javascript" />
+<CodeSnippet code={documentsMjs} section="document-update" language="javascript" />
 </TabItem>
 <TabItem value="cli" label="CLI">
 

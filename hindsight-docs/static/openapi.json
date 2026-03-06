@@ -1986,9 +1986,9 @@
         "tags": [
           "Documents"
         ],
-        "summary": "Update document tags",
-        "description": "Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.",
-        "operationId": "update_document_tags",
+        "summary": "Update document",
+        "description": "Update mutable fields on a document without re-processing its content.\n\n**Tags** (`tags`): Propagated to all associated memory units. Observations derived from those units are invalidated and queued for re-consolidation under the new tags. Co-source memories from other documents that shared those observations are also reset.\n\nAt least one field must be provided.",
+        "operationId": "update_document",
         "parameters": [
           {
             "name": "bank_id",
@@ -2030,7 +2030,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateDocumentTagsRequest"
+                "$ref": "#/components/schemas/UpdateDocumentRequest"
               }
             }
           }
@@ -2041,7 +2041,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UpdateDocumentTagsResponse"
+                  "$ref": "#/components/schemas/UpdateDocumentResponse"
                 }
               }
             }
@@ -7513,25 +7513,35 @@
         "title": "UpdateDispositionRequest",
         "description": "Request model for updating disposition traits."
       },
-      "UpdateDocumentTagsRequest": {
+      "UpdateDocumentRequest": {
         "properties": {
           "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Tags",
-            "description": "New tags to apply to the document and its memory units"
+            "description": "New tags for the document and its memory units. Triggers observation invalidation and re-consolidation."
           }
         },
         "type": "object",
-        "required": [
-          "tags"
-        ],
-        "title": "UpdateDocumentTagsRequest",
-        "description": "Request model for updating document tags."
+        "title": "UpdateDocumentRequest",
+        "description": "Request model for updating a document's mutable fields.",
+        "example": {
+          "tags": [
+            "team-a",
+            "team-b"
+          ]
+        }
       },
-      "UpdateDocumentTagsResponse": {
+      "UpdateDocumentResponse": {
         "properties": {
           "success": {
             "type": "boolean",
@@ -7540,8 +7550,8 @@
           }
         },
         "type": "object",
-        "title": "UpdateDocumentTagsResponse",
-        "description": "Response model for update document tags endpoint."
+        "title": "UpdateDocumentResponse",
+        "description": "Response model for update document endpoint."
       },
       "UpdateMentalModelRequest": {
         "properties": {

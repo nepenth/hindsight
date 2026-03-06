@@ -14,37 +14,37 @@ import (
 	"encoding/json"
 )
 
-// checks if the UpdateDocumentTagsResponse type satisfies the MappedNullable interface at compile time
-var _ MappedNullable = &UpdateDocumentTagsResponse{}
+// checks if the UpdateDocumentResponse type satisfies the MappedNullable interface at compile time
+var _ MappedNullable = &UpdateDocumentResponse{}
 
-// UpdateDocumentTagsResponse Response model for update document tags endpoint.
-type UpdateDocumentTagsResponse struct {
+// UpdateDocumentResponse Response model for update document endpoint.
+type UpdateDocumentResponse struct {
 	Success *bool `json:"success,omitempty"`
 }
 
-// NewUpdateDocumentTagsResponse instantiates a new UpdateDocumentTagsResponse object
+// NewUpdateDocumentResponse instantiates a new UpdateDocumentResponse object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewUpdateDocumentTagsResponse() *UpdateDocumentTagsResponse {
-	this := UpdateDocumentTagsResponse{}
+func NewUpdateDocumentResponse() *UpdateDocumentResponse {
+	this := UpdateDocumentResponse{}
 	var success bool = true
 	this.Success = &success
 	return &this
 }
 
-// NewUpdateDocumentTagsResponseWithDefaults instantiates a new UpdateDocumentTagsResponse object
+// NewUpdateDocumentResponseWithDefaults instantiates a new UpdateDocumentResponse object
 // This constructor will only assign default values to properties that have it defined,
 // but it doesn't guarantee that properties required by API are set
-func NewUpdateDocumentTagsResponseWithDefaults() *UpdateDocumentTagsResponse {
-	this := UpdateDocumentTagsResponse{}
+func NewUpdateDocumentResponseWithDefaults() *UpdateDocumentResponse {
+	this := UpdateDocumentResponse{}
 	var success bool = true
 	this.Success = &success
 	return &this
 }
 
 // GetSuccess returns the Success field value if set, zero value otherwise.
-func (o *UpdateDocumentTagsResponse) GetSuccess() bool {
+func (o *UpdateDocumentResponse) GetSuccess() bool {
 	if o == nil || IsNil(o.Success) {
 		var ret bool
 		return ret
@@ -54,7 +54,7 @@ func (o *UpdateDocumentTagsResponse) GetSuccess() bool {
 
 // GetSuccessOk returns a tuple with the Success field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *UpdateDocumentTagsResponse) GetSuccessOk() (*bool, bool) {
+func (o *UpdateDocumentResponse) GetSuccessOk() (*bool, bool) {
 	if o == nil || IsNil(o.Success) {
 		return nil, false
 	}
@@ -62,7 +62,7 @@ func (o *UpdateDocumentTagsResponse) GetSuccessOk() (*bool, bool) {
 }
 
 // HasSuccess returns a boolean if a field has been set.
-func (o *UpdateDocumentTagsResponse) HasSuccess() bool {
+func (o *UpdateDocumentResponse) HasSuccess() bool {
 	if o != nil && !IsNil(o.Success) {
 		return true
 	}
@@ -71,11 +71,11 @@ func (o *UpdateDocumentTagsResponse) HasSuccess() bool {
 }
 
 // SetSuccess gets a reference to the given bool and assigns it to the Success field.
-func (o *UpdateDocumentTagsResponse) SetSuccess(v bool) {
+func (o *UpdateDocumentResponse) SetSuccess(v bool) {
 	o.Success = &v
 }
 
-func (o UpdateDocumentTagsResponse) MarshalJSON() ([]byte, error) {
+func (o UpdateDocumentResponse) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
@@ -83,7 +83,7 @@ func (o UpdateDocumentTagsResponse) MarshalJSON() ([]byte, error) {
 	return json.Marshal(toSerialize)
 }
 
-func (o UpdateDocumentTagsResponse) ToMap() (map[string]interface{}, error) {
+func (o UpdateDocumentResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	if !IsNil(o.Success) {
 		toSerialize["success"] = o.Success
@@ -91,38 +91,38 @@ func (o UpdateDocumentTagsResponse) ToMap() (map[string]interface{}, error) {
 	return toSerialize, nil
 }
 
-type NullableUpdateDocumentTagsResponse struct {
-	value *UpdateDocumentTagsResponse
+type NullableUpdateDocumentResponse struct {
+	value *UpdateDocumentResponse
 	isSet bool
 }
 
-func (v NullableUpdateDocumentTagsResponse) Get() *UpdateDocumentTagsResponse {
+func (v NullableUpdateDocumentResponse) Get() *UpdateDocumentResponse {
 	return v.value
 }
 
-func (v *NullableUpdateDocumentTagsResponse) Set(val *UpdateDocumentTagsResponse) {
+func (v *NullableUpdateDocumentResponse) Set(val *UpdateDocumentResponse) {
 	v.value = val
 	v.isSet = true
 }
 
-func (v NullableUpdateDocumentTagsResponse) IsSet() bool {
+func (v NullableUpdateDocumentResponse) IsSet() bool {
 	return v.isSet
 }
 
-func (v *NullableUpdateDocumentTagsResponse) Unset() {
+func (v *NullableUpdateDocumentResponse) Unset() {
 	v.value = nil
 	v.isSet = false
 }
 
-func NewNullableUpdateDocumentTagsResponse(val *UpdateDocumentTagsResponse) *NullableUpdateDocumentTagsResponse {
-	return &NullableUpdateDocumentTagsResponse{value: val, isSet: true}
+func NewNullableUpdateDocumentResponse(val *UpdateDocumentResponse) *NullableUpdateDocumentResponse {
+	return &NullableUpdateDocumentResponse{value: val, isSet: true}
 }
 
-func (v NullableUpdateDocumentTagsResponse) MarshalJSON() ([]byte, error) {
+func (v NullableUpdateDocumentResponse) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.value)
 }
 
-func (v *NullableUpdateDocumentTagsResponse) UnmarshalJSON(src []byte) error {
+func (v *NullableUpdateDocumentResponse) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }

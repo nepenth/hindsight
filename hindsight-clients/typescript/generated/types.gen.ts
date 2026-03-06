@@ -2082,25 +2082,25 @@ export type UpdateDispositionRequest = {
 };
 
 /**
- * UpdateDocumentTagsRequest
+ * UpdateDocumentRequest
  *
- * Request model for updating document tags.
+ * Request model for updating a document's mutable fields.
  */
-export type UpdateDocumentTagsRequest = {
+export type UpdateDocumentRequest = {
   /**
    * Tags
    *
-   * New tags to apply to the document and its memory units
+   * New tags for the document and its memory units. Triggers observation invalidation and re-consolidation.
    */
-  tags: Array<string>;
+  tags?: Array<string> | null;
 };
 
 /**
- * UpdateDocumentTagsResponse
+ * UpdateDocumentResponse
  *
- * Response model for update document tags endpoint.
+ * Response model for update document endpoint.
  */
-export type UpdateDocumentTagsResponse = {
+export type UpdateDocumentResponse = {
   /**
    * Success
    */
@@ -3522,8 +3522,8 @@ export type GetDocumentResponses = {
 export type GetDocumentResponse =
   GetDocumentResponses[keyof GetDocumentResponses];
 
-export type UpdateDocumentTagsData = {
-  body: UpdateDocumentTagsRequest;
+export type UpdateDocumentData = {
+  body: UpdateDocumentRequest;
   headers?: {
     /**
      * Authorization
@@ -3544,25 +3544,25 @@ export type UpdateDocumentTagsData = {
   url: "/v1/default/banks/{bank_id}/documents/{document_id}";
 };
 
-export type UpdateDocumentTagsErrors = {
+export type UpdateDocumentErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError;
 };
 
-export type UpdateDocumentTagsError =
-  UpdateDocumentTagsErrors[keyof UpdateDocumentTagsErrors];
+export type UpdateDocumentError =
+  UpdateDocumentErrors[keyof UpdateDocumentErrors];
 
-export type UpdateDocumentTagsResponses = {
+export type UpdateDocumentResponses = {
   /**
    * Successful Response
    */
-  200: UpdateDocumentTagsResponse;
+  200: UpdateDocumentResponse;
 };
 
-export type UpdateDocumentTagsResponse2 =
-  UpdateDocumentTagsResponses[keyof UpdateDocumentTagsResponses];
+export type UpdateDocumentResponse2 =
+  UpdateDocumentResponses[keyof UpdateDocumentResponses];
 
 export type ListTagsData = {
   body?: never;

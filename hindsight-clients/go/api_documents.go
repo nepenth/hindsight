@@ -592,41 +592,45 @@ func (a *DocumentsAPIService) ListDocumentsExecute(r ApiListDocumentsRequest) (*
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
-type ApiUpdateDocumentTagsRequest struct {
+type ApiUpdateDocumentRequest struct {
 	ctx context.Context
 	ApiService *DocumentsAPIService
 	bankId string
 	documentId string
-	updateDocumentTagsRequest *UpdateDocumentTagsRequest
+	updateDocumentRequest *UpdateDocumentRequest
 	authorization *string
 }
 
-func (r ApiUpdateDocumentTagsRequest) UpdateDocumentTagsRequest(updateDocumentTagsRequest UpdateDocumentTagsRequest) ApiUpdateDocumentTagsRequest {
-	r.updateDocumentTagsRequest = &updateDocumentTagsRequest
+func (r ApiUpdateDocumentRequest) UpdateDocumentRequest(updateDocumentRequest UpdateDocumentRequest) ApiUpdateDocumentRequest {
+	r.updateDocumentRequest = &updateDocumentRequest
 	return r
 }
 
-func (r ApiUpdateDocumentTagsRequest) Authorization(authorization string) ApiUpdateDocumentTagsRequest {
+func (r ApiUpdateDocumentRequest) Authorization(authorization string) ApiUpdateDocumentRequest {
 	r.authorization = &authorization
 	return r
 }
 
-func (r ApiUpdateDocumentTagsRequest) Execute() (*UpdateDocumentTagsResponse, *http.Response, error) {
-	return r.ApiService.UpdateDocumentTagsExecute(r)
+func (r ApiUpdateDocumentRequest) Execute() (*UpdateDocumentResponse, *http.Response, error) {
+	return r.ApiService.UpdateDocumentExecute(r)
 }
 
 /*
-UpdateDocumentTags Update document tags
+UpdateDocument Update document
 
-Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.
+Update mutable fields on a document without re-processing its content.
+
+**Tags** (`tags`): Propagated to all associated memory units. Observations derived from those units are invalidated and queued for re-consolidation under the new tags. Co-source memories from other documents that shared those observations are also reset.
+
+At least one field must be provided.
 
  @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
  @param bankId
  @param documentId
- @return ApiUpdateDocumentTagsRequest
+ @return ApiUpdateDocumentRequest
 */
-func (a *DocumentsAPIService) UpdateDocumentTags(ctx context.Context, bankId string, documentId string) ApiUpdateDocumentTagsRequest {
-	return ApiUpdateDocumentTagsRequest{
+func (a *DocumentsAPIService) UpdateDocument(ctx context.Context, bankId string, documentId string) ApiUpdateDocumentRequest {
+	return ApiUpdateDocumentRequest{
 		ApiService: a,
 		ctx: ctx,
 		bankId: bankId,
@@ -635,16 +639,16 @@ func (a *DocumentsAPIService) UpdateDocumentTags(ctx context.Context, bankId str
 }
 
 // Execute executes the request
-//  @return UpdateDocumentTagsResponse
-func (a *DocumentsAPIService) UpdateDocumentTagsExecute(r ApiUpdateDocumentTagsRequest) (*UpdateDocumentTagsResponse, *http.Response, error) {
+//  @return UpdateDocumentResponse
+func (a *DocumentsAPIService) UpdateDocumentExecute(r ApiUpdateDocumentRequest) (*UpdateDocumentResponse, *http.Response, error) {
 	var (
 		localVarHTTPMethod   = http.MethodPatch
 		localVarPostBody     interface{}
 		formFiles            []formFile
-		localVarReturnValue  *UpdateDocumentTagsResponse
+		localVarReturnValue  *UpdateDocumentResponse
 	)
 
-	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DocumentsAPIService.UpdateDocumentTags")
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "DocumentsAPIService.UpdateDocument")
 	if err != nil {
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
@@ -656,8 +660,8 @@ func (a *DocumentsAPIService) UpdateDocumentTagsExecute(r ApiUpdateDocumentTagsR
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
 	localVarFormParams := url.Values{}
-	if r.updateDocumentTagsRequest == nil {
-		return localVarReturnValue, nil, reportError("updateDocumentTagsRequest is required and must be specified")
+	if r.updateDocumentRequest == nil {
+		return localVarReturnValue, nil, reportError("updateDocumentRequest is required and must be specified")
 	}
 
 	// to determine the Content-Type header
@@ -681,7 +685,7 @@ func (a *DocumentsAPIService) UpdateDocumentTagsExecute(r ApiUpdateDocumentTagsR
 		parameterAddToHeaderOrQuery(localVarHeaderParams, "authorization", r.authorization, "simple", "")
 	}
 	// body params
-	localVarPostBody = r.updateDocumentTagsRequest
+	localVarPostBody = r.updateDocumentRequest
 	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
 	if err != nil {
 		return localVarReturnValue, nil, err

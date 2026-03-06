@@ -23,8 +23,8 @@ from hindsight_client_api.models.chunk_response import ChunkResponse
 from hindsight_client_api.models.delete_document_response import DeleteDocumentResponse
 from hindsight_client_api.models.document_response import DocumentResponse
 from hindsight_client_api.models.list_documents_response import ListDocumentsResponse
-from hindsight_client_api.models.update_document_tags_request import UpdateDocumentTagsRequest
-from hindsight_client_api.models.update_document_tags_response import UpdateDocumentTagsResponse
+from hindsight_client_api.models.update_document_request import UpdateDocumentRequest
+from hindsight_client_api.models.update_document_response import UpdateDocumentResponse
 
 from hindsight_client_api.api_client import ApiClient, RequestSerialized
 from hindsight_client_api.api_response import ApiResponse
@@ -1273,11 +1273,11 @@ class DocumentsApi:
 
 
     @validate_call
-    async def update_document_tags(
+    async def update_document(
         self,
         bank_id: StrictStr,
         document_id: StrictStr,
-        update_document_tags_request: UpdateDocumentTagsRequest,
+        update_document_request: UpdateDocumentRequest,
         authorization: Optional[StrictStr] = None,
         _request_timeout: Union[
             None,
@@ -1291,17 +1291,17 @@ class DocumentsApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> UpdateDocumentTagsResponse:
-        """Update document tags
+    ) -> UpdateDocumentResponse:
+        """Update document
 
-        Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.
+        Update mutable fields on a document without re-processing its content.  **Tags** (`tags`): Propagated to all associated memory units. Observations derived from those units are invalidated and queued for re-consolidation under the new tags. Co-source memories from other documents that shared those observations are also reset.  At least one field must be provided.
 
         :param bank_id: (required)
         :type bank_id: str
         :param document_id: (required)
         :type document_id: str
-        :param update_document_tags_request: (required)
-        :type update_document_tags_request: UpdateDocumentTagsRequest
+        :param update_document_request: (required)
+        :type update_document_request: UpdateDocumentRequest
         :param authorization:
         :type authorization: str
         :param _request_timeout: timeout setting for this request. If one
@@ -1326,10 +1326,10 @@ class DocumentsApi:
         :return: Returns the result object.
         """ # noqa: E501
 
-        _param = self._update_document_tags_serialize(
+        _param = self._update_document_serialize(
             bank_id=bank_id,
             document_id=document_id,
-            update_document_tags_request=update_document_tags_request,
+            update_document_request=update_document_request,
             authorization=authorization,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -1338,7 +1338,7 @@ class DocumentsApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "UpdateDocumentTagsResponse",
+            '200': "UpdateDocumentResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -1353,11 +1353,11 @@ class DocumentsApi:
 
 
     @validate_call
-    async def update_document_tags_with_http_info(
+    async def update_document_with_http_info(
         self,
         bank_id: StrictStr,
         document_id: StrictStr,
-        update_document_tags_request: UpdateDocumentTagsRequest,
+        update_document_request: UpdateDocumentRequest,
         authorization: Optional[StrictStr] = None,
         _request_timeout: Union[
             None,
@@ -1371,17 +1371,17 @@ class DocumentsApi:
         _content_type: Optional[StrictStr] = None,
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
-    ) -> ApiResponse[UpdateDocumentTagsResponse]:
-        """Update document tags
+    ) -> ApiResponse[UpdateDocumentResponse]:
+        """Update document
 
-        Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.
+        Update mutable fields on a document without re-processing its content.  **Tags** (`tags`): Propagated to all associated memory units. Observations derived from those units are invalidated and queued for re-consolidation under the new tags. Co-source memories from other documents that shared those observations are also reset.  At least one field must be provided.
 
         :param bank_id: (required)
         :type bank_id: str
         :param document_id: (required)
         :type document_id: str
-        :param update_document_tags_request: (required)
-        :type update_document_tags_request: UpdateDocumentTagsRequest
+        :param update_document_request: (required)
+        :type update_document_request: UpdateDocumentRequest
         :param authorization:
         :type authorization: str
         :param _request_timeout: timeout setting for this request. If one
@@ -1406,10 +1406,10 @@ class DocumentsApi:
         :return: Returns the result object.
         """ # noqa: E501
 
-        _param = self._update_document_tags_serialize(
+        _param = self._update_document_serialize(
             bank_id=bank_id,
             document_id=document_id,
-            update_document_tags_request=update_document_tags_request,
+            update_document_request=update_document_request,
             authorization=authorization,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -1418,7 +1418,7 @@ class DocumentsApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "UpdateDocumentTagsResponse",
+            '200': "UpdateDocumentResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -1433,11 +1433,11 @@ class DocumentsApi:
 
 
     @validate_call
-    async def update_document_tags_without_preload_content(
+    async def update_document_without_preload_content(
         self,
         bank_id: StrictStr,
         document_id: StrictStr,
-        update_document_tags_request: UpdateDocumentTagsRequest,
+        update_document_request: UpdateDocumentRequest,
         authorization: Optional[StrictStr] = None,
         _request_timeout: Union[
             None,
@@ -1452,16 +1452,16 @@ class DocumentsApi:
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Update document tags
+        """Update document
 
-        Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.
+        Update mutable fields on a document without re-processing its content.  **Tags** (`tags`): Propagated to all associated memory units. Observations derived from those units are invalidated and queued for re-consolidation under the new tags. Co-source memories from other documents that shared those observations are also reset.  At least one field must be provided.
 
         :param bank_id: (required)
         :type bank_id: str
         :param document_id: (required)
         :type document_id: str
-        :param update_document_tags_request: (required)
-        :type update_document_tags_request: UpdateDocumentTagsRequest
+        :param update_document_request: (required)
+        :type update_document_request: UpdateDocumentRequest
         :param authorization:
         :type authorization: str
         :param _request_timeout: timeout setting for this request. If one
@@ -1486,10 +1486,10 @@ class DocumentsApi:
         :return: Returns the result object.
         """ # noqa: E501
 
-        _param = self._update_document_tags_serialize(
+        _param = self._update_document_serialize(
             bank_id=bank_id,
             document_id=document_id,
-            update_document_tags_request=update_document_tags_request,
+            update_document_request=update_document_request,
             authorization=authorization,
             _request_auth=_request_auth,
             _content_type=_content_type,
@@ -1498,7 +1498,7 @@ class DocumentsApi:
         )
 
         _response_types_map: Dict[str, Optional[str]] = {
-            '200': "UpdateDocumentTagsResponse",
+            '200': "UpdateDocumentResponse",
             '422': "HTTPValidationError",
         }
         response_data = await self.api_client.call_api(
@@ -1508,11 +1508,11 @@ class DocumentsApi:
         return response_data.response
 
 
-    def _update_document_tags_serialize(
+    def _update_document_serialize(
         self,
         bank_id,
         document_id,
-        update_document_tags_request,
+        update_document_request,
         authorization,
         _request_auth,
         _content_type,
@@ -1545,8 +1545,8 @@ class DocumentsApi:
             _header_params['authorization'] = authorization
         # process the form parameters
         # process the body parameter
-        if update_document_tags_request is not None:
-            _body_params = update_document_tags_request
+        if update_document_request is not None:
+            _body_params = update_document_request
 
 
         # set the HTTP header `Accept`

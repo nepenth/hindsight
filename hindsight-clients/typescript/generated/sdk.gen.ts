@@ -158,9 +158,9 @@ import type {
   UpdateDirectiveData,
   UpdateDirectiveErrors,
   UpdateDirectiveResponses,
-  UpdateDocumentTagsData,
-  UpdateDocumentTagsErrors,
-  UpdateDocumentTagsResponses,
+  UpdateDocumentData,
+  UpdateDocumentErrors,
+  UpdateDocumentResponses,
   UpdateMentalModelData,
   UpdateMentalModelErrors,
   UpdateMentalModelResponses,
@@ -663,16 +663,20 @@ export const getDocument = <ThrowOnError extends boolean = false>(
   >({ url: "/v1/default/banks/{bank_id}/documents/{document_id}", ...options });
 
 /**
- * Update document tags
+ * Update document
  *
- * Update tags on a document and all its associated memory units. Observations derived from the document's memory units are invalidated and queued for re-consolidation under the new tags.
+ * Update mutable fields on a document without re-processing its content.
+ *
+ * **Tags** (`tags`): Propagated to all associated memory units. Observations derived from those units are invalidated and queued for re-consolidation under the new tags. Co-source memories from other documents that shared those observations are also reset.
+ *
+ * At least one field must be provided.
  */
-export const updateDocumentTags = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateDocumentTagsData, ThrowOnError>,
+export const updateDocument = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateDocumentData, ThrowOnError>,
 ) =>
   (options.client ?? client).patch<
-    UpdateDocumentTagsResponses,
-    UpdateDocumentTagsErrors,
+    UpdateDocumentResponses,
+    UpdateDocumentErrors,
     ThrowOnError
   >({
     url: "/v1/default/banks/{bank_id}/documents/{document_id}",

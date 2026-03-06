@@ -458,7 +458,7 @@ class TestClearObservationsForMemory:
 
 
 # ---------------------------------------------------------------------------
-# Tests: update_document_tags
+# Tests: update_document
 # ---------------------------------------------------------------------------
 
 
@@ -498,7 +498,7 @@ class TestUpdateDocumentTagsObservationCleanup:
     async def test_update_tags_returns_updated_document(
         self, memory: MemoryEngine, request_context: RequestContext
     ):
-        """update_document_tags returns the updated document with new tags."""
+        """update_document returns the updated document with new tags."""
         bank_id = f"test-tag-update-basic-{uuid.uuid4().hex[:8]}"
         await _ensure_bank(memory, bank_id, request_context)
 
@@ -507,7 +507,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             doc_id = f"doc-{uuid.uuid4().hex[:8]}"
             await _insert_document_with_memories(conn, bank_id, doc_id, [("Alice loves hiking.", "experience")])
 
-        result = await memory.update_document_tags(
+        result = await memory.update_document(
             doc_id, bank_id, tags=["new-tag"], request_context=request_context
         )
 
@@ -519,11 +519,11 @@ class TestUpdateDocumentTagsObservationCleanup:
     async def test_update_tags_returns_none_for_missing_document(
         self, memory: MemoryEngine, request_context: RequestContext
     ):
-        """update_document_tags returns False when document does not exist."""
+        """update_document returns False when document does not exist."""
         bank_id = f"test-tag-update-missing-{uuid.uuid4().hex[:8]}"
         await _ensure_bank(memory, bank_id, request_context)
 
-        result = await memory.update_document_tags(
+        result = await memory.update_document(
             "nonexistent-doc", bank_id, tags=["tag"], request_context=request_context
         )
 
@@ -547,7 +547,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             )
 
         with patch.object(memory, "submit_async_consolidation", new=AsyncMock()):
-            await memory.update_document_tags(
+            await memory.update_document(
                 doc_id, bank_id, tags=["new-tag"], request_context=request_context
             )
 
@@ -577,7 +577,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             obs_id = await _insert_observation(conn, bank_id, "Alice is a hiker.", mem_ids)
 
         with patch.object(memory, "submit_async_consolidation", new=AsyncMock()):
-            await memory.update_document_tags(
+            await memory.update_document(
                 doc_id, bank_id, tags=["new-tag"], request_context=request_context
             )
 
@@ -607,7 +607,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             assert await _get_consolidated_at(conn, mem_ids[0]) is not None
 
         with patch.object(memory, "submit_async_consolidation", new=AsyncMock()):
-            await memory.update_document_tags(
+            await memory.update_document(
                 doc_id, bank_id, tags=["new-tag"], request_context=request_context
             )
 
@@ -634,7 +634,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             await _insert_observation(conn, bank_id, "Alice is a hiker.", mem_ids)
 
         with patch.object(memory, "submit_async_consolidation", new=AsyncMock()) as mock_consolidate:
-            await memory.update_document_tags(
+            await memory.update_document(
                 doc_id, bank_id, tags=["new-tag"], request_context=request_context
             )
             mock_consolidate.assert_awaited_once()
@@ -658,7 +658,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             # No observations inserted
 
         with patch.object(memory, "submit_async_consolidation", new=AsyncMock()) as mock_consolidate:
-            await memory.update_document_tags(
+            await memory.update_document(
                 doc_id, bank_id, tags=["new-tag"], request_context=request_context
             )
             mock_consolidate.assert_not_awaited()
@@ -689,7 +689,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             assert await _get_consolidated_at(conn, other_mem) is not None
 
         with patch.object(memory, "submit_async_consolidation", new=AsyncMock()):
-            await memory.update_document_tags(
+            await memory.update_document(
                 doc_id, bank_id, tags=["new-tag"], request_context=request_context
             )
 
@@ -724,7 +724,7 @@ class TestUpdateDocumentTagsObservationCleanup:
             )
 
         with patch.object(memory, "submit_async_consolidation", new=AsyncMock()):
-            await memory.update_document_tags(
+            await memory.update_document(
                 doc_id, bank_id, tags=["new-tag"], request_context=request_context
             )
 

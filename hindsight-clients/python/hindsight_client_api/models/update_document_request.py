@@ -17,17 +17,17 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictBool
+from pydantic import BaseModel, ConfigDict, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
-class UpdateDocumentTagsResponse(BaseModel):
+class UpdateDocumentRequest(BaseModel):
     """
-    Response model for update document tags endpoint.
+    Request model for updating a document's mutable fields.
     """ # noqa: E501
-    success: Optional[StrictBool] = True
-    __properties: ClassVar[List[str]] = ["success"]
+    tags: Optional[List[StrictStr]] = None
+    __properties: ClassVar[List[str]] = ["tags"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -47,7 +47,7 @@ class UpdateDocumentTagsResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of UpdateDocumentTagsResponse from a JSON string"""
+        """Create an instance of UpdateDocumentRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -68,11 +68,16 @@ class UpdateDocumentTagsResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # set to None if tags (nullable) is None
+        # and model_fields_set contains the field
+        if self.tags is None and "tags" in self.model_fields_set:
+            _dict['tags'] = None
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of UpdateDocumentTagsResponse from a dict"""
+        """Create an instance of UpdateDocumentRequest from a dict"""
         if obj is None:
             return None
 
@@ -80,7 +85,7 @@ class UpdateDocumentTagsResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "success": obj.get("success") if obj.get("success") is not None else True
+            "tags": obj.get("tags")
         })
         return _obj
 
