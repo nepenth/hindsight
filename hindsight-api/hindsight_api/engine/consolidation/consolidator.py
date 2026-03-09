@@ -29,6 +29,7 @@ from pydantic import BaseModel
 from ...config import get_config
 from ..memory_engine import fq_table
 from ..retain import embedding_utils
+from ..llm_wrapper import sanitize_llm_output
 from .prompts import build_batch_consolidation_prompt
 
 if TYPE_CHECKING:
