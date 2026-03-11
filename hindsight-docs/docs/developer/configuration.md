@@ -475,8 +475,7 @@ export HINDSIGHT_API_RERANKER_LITELLM_SDK_API_KEY=your-deepinfra-api-key
 export HINDSIGHT_API_RERANKER_LITELLM_SDK_MODEL=deepinfra/Qwen3-reranker-8B  # or cohere/rerank-english-v3.0, etc.
 
 # Jina MLX - Apple Silicon native reranking (no GPU/cloud required)
-# Requires: pip install mlx mlx-lm safetensors
-# Model (jinaai/jina-reranker-v3-mlx, ~1.2 GB) is downloaded automatically on first use.
+# Model (~1.2 GB) is downloaded automatically from HuggingFace Hub on first use.
 export HINDSIGHT_API_RERANKER_PROVIDER=jina-mlx
 ```
 
@@ -496,26 +495,7 @@ Both support the same providers:
 
 #### Jina MLX (Apple Silicon)
 
-The `jina-mlx` provider runs [`jinaai/jina-reranker-v3-mlx`](https://huggingface.co/jinaai/jina-reranker-v3-mlx) — a 0.6B multilingual listwise reranker — directly on Apple Silicon via the [MLX](https://github.com/ml-explore/mlx) framework. No GPU server or cloud API required.
-
-**Requirements:** Install the extra dependencies once:
-
-```bash
-pip install mlx mlx-lm safetensors
-```
-
-The model (~1.2 GB) is downloaded from HuggingFace Hub automatically on first startup and cached locally.
-
-**Benchmark results on Apple Silicon (M-series):**
-
-| Batch size | Latency |
-|-----------|---------|
-| 1 doc | ~32 ms |
-| 5 docs | ~45 ms |
-| 10 docs | ~60 ms |
-| 20 docs | ~94 ms |
-
-Latency scales sub-linearly because all documents are processed in a single forward pass (listwise ranking). Multilingual by default — no separate multilingual model needed.
+The `jina-mlx` provider uses [`jinaai/jina-reranker-v3-mlx`](https://huggingface.co/jinaai/jina-reranker-v3-mlx), optimized for Apple Silicon. The model (~1.2 GB) is downloaded from HuggingFace Hub automatically on first startup and cached locally.
 
 :::note License
 `jina-reranker-v3-mlx` is licensed under CC BY-NC 4.0. Contact Jina AI for commercial usage.
