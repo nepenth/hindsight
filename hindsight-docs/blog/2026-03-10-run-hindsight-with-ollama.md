@@ -108,6 +108,7 @@ Two environment variables:
 
 ```bash
 export HINDSIGHT_API_LLM_PROVIDER=ollama
+export HINDSIGHT_API_LLM_MODEL=gpt-oss:20b
 export HINDSIGHT_API_LLM_MAX_CONCURRENT=1
 export HINDSIGHT_API_ENABLE_OBSERVATIONS=false
 ```
@@ -118,13 +119,7 @@ Start the server:
 hindsight-api
 ```
 
-Then set the model:
-
-```bash
-export HINDSIGHT_API_LLM_MODEL=gpt-oss:20b
-```
-
-That's it. Hindsight detects Ollama at `localhost:11434` and uses your specified model.
+That's it. Hindsight detects Ollama at `localhost:11434` and uses `gpt-oss:20b` for fact extraction.
 
 > **Note:** `LLM_MAX_CONCURRENT=1` prevents overloading your machine. Local models run one request at a time; parallel LLM calls queue up and compete for RAM/GPU. Cloud APIs handle concurrency on their end, but local models don't.
 
@@ -170,7 +165,7 @@ hindsight.retain(
 
 Ollama extracts facts from this locally. No data leaves your machine. Hindsight parses the conversation, identifies entities like "Alice" and "Portland," extracts relationships like "Alice is a software engineer," and stores them in the knowledge graph. All of this happens through Ollama running on your local hardware.
 
-> **Gotcha:** Fact extraction with local models is slower than cloud APIs. Expect 15-60 seconds for a single retain call depending on your hardware and model size. The API returns immediately and extraction happens in the background, so your application is not blocked while facts are being processed.
+> **Gotcha:** Fact extraction with local models is slower than cloud APIs. Expect 15-20 seconds per retain call on Apple Silicon, longer on CPU-only machines. By default, `retain()` blocks until extraction is complete — your code waits while Ollama processes the content. If you need non-blocking ingestion, pass `async_=True` to `retain()` and the call returns immediately while extraction happens in the background.
 
 ### Step 5: Recall Memories
 
@@ -210,7 +205,6 @@ Save as `local_memory.py` to test the complete Hindsight with Ollama workflow:
 
 ```python
 from hindsight_client import Hindsight
-import time
 
 hindsight = Hindsight(base_url="http://localhost:8888")
 
@@ -221,20 +215,18 @@ hindsight.create_bank(
     reflect_mission="Remember user preferences and important facts.",
 )
 
-# Store some memories
+# Store some memories (each retain call blocks while Ollama extracts facts)
 print("Retaining memories...")
 hindsight.retain(
     bank_id="local-agent",
     content="User: I'm Alice, a backend engineer at Acme Corp. I work mostly in Python and Go.",
 )
+print("First memory retained.")
 hindsight.retain(
     bank_id="local-agent",
     content="User: I prefer dark mode, vim keybindings, and tabs over spaces.",
 )
-
-# Wait for background fact extraction
-print("Waiting for fact extraction (local models are slower)...")
-time.sleep(30)
+print("Second memory retained.")
 
 # Recall
 print("\nRecalling: 'What does Alice do for work?'")
@@ -280,7 +272,7 @@ python local_memory.py
 |---|---|---|
 | **Cost** | Free after hardware | Per-token pricing |
 | **Privacy** | Full, nothing leaves your machine | Data transits third-party API |
-| **Speed** | 15-60s per retain (CPU) | 1-3s per retain |
+| **Speed** | 15-20s per retain (Apple Silicon) | 1-3s per retain |
 | **Quality** | Good for 12b+ models | Best available |
 | **Tool calling** | Model-dependent | Fully supported |
 | **Reflect** | Requires specific models | Works with all providers |
