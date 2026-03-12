@@ -361,4 +361,4 @@ Most importantly, the agent no longer treats time as a dumb filter. It treats it
 
 ---
 
-*Hindsight is an AI agent memory system that gives your agents persistent, structured memory with hybrid retrieval. [Learn more about how Hindsight works](https://ui.hindsight.vectorize.io/signup), or [read our docs on the retrieval architecture](https://docs.hindsight.vectorize.io/recall).*
+*Hindsight is an AI agent memory system that gives your agents persistent, structured memory with hybrid retrieval. [Learn about the architecture](https://docs.hindsight.vectorize.io/recall), or [sign up for Hindsight Cloud](https://ui.hindsight.vectorize.io/signup).*
