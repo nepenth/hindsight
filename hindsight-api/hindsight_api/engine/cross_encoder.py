@@ -822,22 +822,13 @@ class FlashRankCrossEncoder(CrossEncoderModel):
 
 
 def _truncate_to_tokens(text: str, max_tokens: int) -> str:
-    """Truncate text to at most max_tokens using tiktoken (cl100k_base encoding).
+    """Truncate text to at most max_tokens using the shared tiktoken encoder."""
+    from .memory_engine import _tiktoken_encoder
 
-    Uses cl100k_base as a universal approximation — close enough for any model
-    that the caller has configured a hard token ceiling for.
-    """
-    try:
-        import tiktoken
-
-        enc = tiktoken.get_encoding("cl100k_base")
-        tokens = enc.encode(text)
-        if len(tokens) <= max_tokens:
-            return text
-        return enc.decode(tokens[:max_tokens])
-    except Exception:
-        # Fallback: rough 4 chars/token approximation
-        return text[: max_tokens * 4]
+    tokens = _tiktoken_encoder.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    return _tiktoken_encoder.decode(tokens[:max_tokens])
 
 
 class LiteLLMCrossEncoder(CrossEncoderModel):
