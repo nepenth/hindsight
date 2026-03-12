@@ -1,17 +1,12 @@
 ---
 title: "How We Built Time-Aware Spreading Activation for Memory Graphs"
-authors: [benfrank241]
+authors: [chrislatimer]
 date: 2026-03-12
 tags: [retrieval, graph, temporal, spreading-activation, memory]
+image: /img/blog/spreading-activation-memory-graphs.png
 ---
 
-<!--
-Meta Title: Time-Aware Spreading Activation for Memory Graphs | Hindsight
-Meta Description: Learn how Hindsight uses temporal spreading activation to walk memory graphs along causal and temporal links — reconstructing stories instead of returning rows.
-URL Slug: /blog/spreading-activation-memory-graphs
--->
-
-# How We Built Time-Aware Spreading Activation for Memory Graphs
+![Hindsight — Stories, Not Rows](/img/blog/spreading-activation-memory-graphs.png)
 
 Most retrieval systems treat time as a filter. We treat it as a dimension to traverse.
 
