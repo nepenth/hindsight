@@ -1,6 +1,6 @@
 ---
 title: "How We Built Time-Aware Spreading Activation for Memory Graphs"
-authors: [benbartholomew]
+authors: [benfrank241]
 date: 2026-03-12
 tags: [retrieval, graph, temporal, spreading-activation, memory]
 ---
