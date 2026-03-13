@@ -964,7 +964,7 @@ jobs:
 
     - name: Install API dependencies
       working-directory: ./hindsight-api-slim
-      run: uv sync --frozen --no-install-project --extra embedded-db --index-strategy unsafe-best-match
+      run: uv sync --frozen --no-install-project --extra local-ml --extra embedded-db --index-strategy unsafe-best-match
 
     - name: Install embed dependencies
       working-directory: ./hindsight-embed
@@ -1247,6 +1247,10 @@ jobs:
     - name: Install dependencies
       working-directory: ./hindsight-embed
       run: uv sync --frozen --index-strategy unsafe-best-match
+
+    - name: Install API dependencies (with embedded-db for smoke test)
+      working-directory: ./hindsight-api-slim
+      run: uv sync --frozen --no-install-project --extra embedded-db --index-strategy unsafe-best-match
 
     - name: Cache HuggingFace models
       uses: actions/cache@v4
