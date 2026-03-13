@@ -260,7 +260,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -455,7 +455,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -526,7 +526,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -634,7 +634,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -765,7 +765,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -866,7 +866,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -974,7 +974,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -1076,7 +1076,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -1404,7 +1404,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
@@ -1497,7 +1497,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-
 
