@@ -177,6 +177,36 @@ See the [Helm chart values.yaml](https://github.com/vectorize-io/hindsight/tree/
 
 **Best for**: Custom deployments, integration into existing Python applications
 
+### Package Variants
+
+Hindsight publishes four Python packages. Choose the one that fits your setup:
+
+| Package | torch / local ML | pg0 embedded DB | Use case |
+|---------|-----------------|-----------------|----------|
+| **`hindsight-all`** | ✅ | ✅ | Full install — works out of the box |
+| **`hindsight-all-slim`** | ❌ | ❌ | Lightweight — use external providers for everything |
+| **`hindsight-api`** | ✅ | ✅ | API server only (no Python wrapper) |
+| **`hindsight-api-slim`** | ❌ | ❌ | Slim API server — add extras as needed |
+
+**`hindsight-api-slim` optional extras:**
+
+```bash
+pip install hindsight-api-slim            # No ML, no embedded DB
+pip install "hindsight-api-slim[local-ml]"    # + torch, sentence-transformers, flashrank, mlx
+pip install "hindsight-api-slim[embedded-db]" # + pg0 embedded PostgreSQL
+pip install "hindsight-api-slim[all]"         # Everything (equivalent to hindsight-api)
+```
+
+:::tip Slim packages require external providers
+When using `hindsight-all-slim` or `hindsight-api-slim` without extras, configure external providers:
+```bash
+export HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai
+export HINDSIGHT_API_RERANKER_PROVIDER=cohere
+export HINDSIGHT_API_DATABASE_URL=postgresql://user:pass@host:5432/db
+```
+See [Configuration](./configuration#embeddings) for all provider options.
+:::
+
 ### Install
 
 ```bash
