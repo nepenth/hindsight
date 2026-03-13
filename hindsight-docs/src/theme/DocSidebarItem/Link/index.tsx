@@ -9,6 +9,7 @@ import {
   LuZap, LuDatabase, LuGitCompare, LuRocket, LuMemoryStick,
   LuWebhook, LuFileText, LuServer, LuSettings, LuTerminal,
   LuActivity, LuPlug, LuShield, LuPackage, LuBook,
+<<<<<<< HEAD
   LuNetwork, LuCode, LuLayers, LuCpu,
   LuArrowUpRight, LuBookOpen, LuRss, LuCloud, LuMessageCircle,
   LuChartBar, LuChartColumn,
@@ -42,6 +43,7 @@ const ICON_MAP: Record<string, IconType> = {
   'lu-cpu':         LuCpu,
   'si-go':          SiGo,
   'si-python':      SiPython,
+<<<<<<< HEAD
   'si-github':      SiGithub,
   'si-slack':       SiSlack,
   'lu-chart-bar':   LuChartBar,
