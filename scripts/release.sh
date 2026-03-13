@@ -65,7 +65,7 @@ fi
 print_info "Updating version in all components..."
 
 # Update Python packages
-PYTHON_PACKAGES=("hindsight-api" "hindsight-api-slim" "hindsight-all-slim" "hindsight-dev" "hindsight" "hindsight-integrations/litellm" "hindsight-integrations/crewai" "hindsight-integrations/pydantic-ai" "hindsight-embed")
+PYTHON_PACKAGES=("hindsight-api" "hindsight-api-slim" "hindsight-all-slim" "hindsight-dev" "hindsight-all" "hindsight-integrations/litellm" "hindsight-integrations/crewai" "hindsight-integrations/pydantic-ai" "hindsight-embed")
 for package in "${PYTHON_PACKAGES[@]}"; do
     PYPROJECT_FILE="$package/pyproject.toml"
     if [ -f "$PYPROJECT_FILE" ]; then

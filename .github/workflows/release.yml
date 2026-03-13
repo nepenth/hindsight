@@ -39,7 +39,7 @@ jobs:
       run: uv build --out-dir dist
 
     - name: Build hindsight-all
-      working-directory: ./hindsight
+      working-directory: ./hindsight-all
       run: uv build --out-dir dist
 
     - name: Build hindsight-all-slim
@@ -84,7 +84,7 @@ jobs:
     - name: Publish hindsight-all to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        packages-dir: ./hindsight/dist
+        packages-dir: ./hindsight-all/dist
         skip-existing: true
 
     - name: Publish hindsight-all-slim to PyPI
@@ -126,7 +126,7 @@ jobs:
           hindsight-clients/python/dist/*
           hindsight-api-slim/dist/*
           hindsight-api/dist/*
-          hindsight/dist/*
+          hindsight-all/dist/*
           hindsight-all-slim/dist/*
           hindsight-integrations/litellm/dist/*
           hindsight-embed/dist/*
@@ -665,7 +665,7 @@ jobs:
         cp artifacts/python-packages/hindsight-clients/python/dist/* release-assets/ || true
         cp artifacts/python-packages/hindsight-api-slim/dist/* release-assets/ || true
         cp artifacts/python-packages/hindsight-api/dist/* release-assets/ || true
-        cp artifacts/python-packages/hindsight/dist/* release-assets/ || true
+        cp artifacts/python-packages/hindsight-all/dist/* release-assets/ || true
         cp artifacts/python-packages/hindsight-all-slim/dist/* release-assets/ || true
         cp artifacts/python-packages/hindsight-integrations/litellm/dist/* release-assets/ || true
         cp artifacts/python-packages/hindsight-integrations/pydantic-ai/dist/* release-assets/ || true

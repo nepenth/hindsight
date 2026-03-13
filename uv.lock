@@ -1434,7 +1434,7 @@ wheels = [
 [[package]]
 name = "hindsight-all"
 version = "0.4.17"
-source = { editable = "hindsight" }
+source = { editable = "hindsight-all" }
 dependencies = [
     { name = "hindsight-api-slim", extra = ["all"] },
     { name = "hindsight-client" },

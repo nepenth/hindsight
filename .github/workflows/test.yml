@@ -1310,7 +1310,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
-        key: ${{ runner.os }}-huggingface-all-${{ hashFiles('hindsight/pyproject.toml') }}
+        key: ${{ runner.os }}-huggingface-all-${{ hashFiles('hindsight-all/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-huggingface-all-
           ${{ runner.os }}-huggingface-
