@@ -118,14 +118,6 @@ Write a blog post draft following the established pattern (see `hindsight-docs/b
 - Shows the problem → solution → working code
 - Save as a draft for review
 
-## Phase 4: Upstream (post-launch)
-
-After the integration is released and working:
-
-1. **Get into their docs** — open an issue or PR on the $ARGUMENTS repo proposing Hindsight as an official memory provider. Include a link to our integration and docs.
-2. **Propose official integration** — offer to move the integration code into their repo if they prefer to own it. Create a PR following their contribution guidelines.
-3. **If accepted upstream** — write a follow-up blog post about the official partnership and update our docs to point to the upstream package.
-
 ## Key references
 
 - Hindsight Python client: `hindsight-clients/python/`
