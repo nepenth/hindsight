@@ -1,5 +1,5 @@
 ---
-title: "How to Add Persistent Memory to n8n Workflows"
+title: "3 Nodes. Zero Code. Persistent Memory for n8n Workflows"
 authors: [benfrank241]
 date: 2026-03-16
 tags: [n8n, tutorial, workflow, memory, no-code]
