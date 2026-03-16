@@ -3,7 +3,10 @@ title: "3 Nodes. Zero Code. Persistent Memory for n8n Workflows"
 authors: [benfrank241]
 date: 2026-02-13
 tags: [n8n, tutorial, workflow, memory, no-code]
+image: /img/blog/n8n-memory-workflows.png
 ---
+
+![3 Nodes. Zero Code. Persistent Memory for n8n Workflows](/img/blog/n8n-memory-workflows.png)
 
 n8n workflows are stateless — every execution starts from zero. Hindsight adds persistent memory via three HTTP Request nodes. No custom nodes, no vector database, no code.
 
