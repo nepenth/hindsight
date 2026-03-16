@@ -1,14 +1,17 @@
-"""backsweep_orphan_observations
+"""backsweep_orphan_memory_units
 
-Delete observation memory_units whose source facts were all deleted before
-PR #580 fixed the chunk FK cascade.  Prior to that fix, deleting a document
-left chunk-linked memory_units alive (chunk_id SET NULL) and
-delete_document() did not call _delete_stale_observations_for_memories, so
-derived observations survived with all their source_memory_ids pointing to
-rows that no longer exist.
+Two-pass cleanup of memory_units rows that were never removed by earlier bugs:
 
-Only observations where *every* source_memory_id is absent from memory_units
-are removed — if any source still exists the row is left alone.
+Pass 1 — any fact_type, bank gone:
+  memory_units whose bank_id no longer exists in banks.  These accumulate when
+  a bank is deleted without a proper cascade (no FK from memory_units to banks
+  exists in the schema).
+
+Pass 2 — observations only, all sources gone:
+  observation rows whose bank still exists but every source_memory_id points
+  to a deleted memory unit.  These were left behind before PR #580 fixed the
+  chunk FK cascade and before delete_document() called
+  _delete_stale_observations_for_memories.
 
 Revision ID: g7h8i9j0k1l2
 Revises: f6g7h8i9j0k1
@@ -33,17 +36,26 @@ def _get_schema_prefix() -> str:
 def upgrade() -> None:
     schema = _get_schema_prefix()
     mu = f"{schema}memory_units"
+    banks = f"{schema}banks"
 
-    # Delete observation rows that are fully orphaned:
-    #   - not anchored to a document or chunk (both columns NULL)
-    #   - every entry in source_memory_ids refers to a deleted memory unit
-    #     (or the array is empty, which also means no valid source survives)
+    # Pass 1: delete all memory_units (any fact_type) whose bank no longer exists.
+    # There is no FK from memory_units to banks, so these never cascade away.
+    op.execute(
+        f"""
+        DELETE FROM {mu}
+        WHERE NOT EXISTS (
+            SELECT 1 FROM {banks} b WHERE b.bank_id = {mu}.bank_id
+        )
+        """
+    )
+
+    # Pass 2: delete orphaned observations whose bank still exists but every
+    # source_memory_id refers to a now-deleted memory unit (or the array is
+    # empty).  Observations with at least one surviving source are left alone.
     op.execute(
         f"""
         DELETE FROM {mu} orphan
         WHERE orphan.fact_type = 'observation'
-          AND orphan.document_id IS NULL
-          AND orphan.chunk_id IS NULL
           AND NOT EXISTS (
               SELECT 1
               FROM {mu} src
