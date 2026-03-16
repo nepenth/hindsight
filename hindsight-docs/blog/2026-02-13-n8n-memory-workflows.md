@@ -119,8 +119,6 @@ Add an **HTTP Request** node after your trigger:
 
 > **Gotcha:** Use your machine's IP address (e.g., `192.168.x.x`), not `localhost`. n8n resolves `localhost` to its own process. Find your IP with `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux).
 
-<img width="424" height="734" alt="Screenshot 2026-02-13 at 2 46 47 PM" src="https://github.com/user-attachments/assets/423c707b-a32f-4a11-b39f-422199ad3ebd" />
-
 Click **Execute step**. You should get a success response.
 
 Hindsight extracts facts from the content automatically — entities, relationships, timestamps. You don't manage any of that.
@@ -141,8 +139,6 @@ Add another **HTTP Request** node:
 ```json
 {"query": "What do we know about Bob?", "budget": "low"}
 ```
-
-<img width="1075" height="760" alt="Screenshot 2026-02-13 at 2 49 44 PM" src="https://github.com/user-attachments/assets/e32bd934-c102-4fbc-8f76-aa77abe37174" />
 
 Click **Execute step**. You'll see extracted facts come back:
 
@@ -168,8 +164,6 @@ For synthesis questions — "summarize this customer" or "what patterns do we se
 ```json
 {"query": "Summarize what we know about our customers"}
 ```
-
-<img width="1099" height="769" alt="Screenshot 2026-02-13 at 2 51 55 PM" src="https://github.com/user-attachments/assets/9a95df30-4ff6-4884-07d8-a503da79b76a" />
 
 Reflect traverses the knowledge graph and reasons across all stored memories. It's slower than recall but produces synthesized analysis, not just raw facts.
 
