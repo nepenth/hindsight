@@ -67,6 +67,15 @@ hindsight memory retain <bank-id> "Build failed on Node 18 with error 'ERR_UNSUP
 hindsight memory retain <bank-id> "Alice reviewed the PR and asked for verbose commit messages that explain the motivation, not just what changed." --context preferences
 ```
 
+You can also pass a raw conversation transcript with timestamps:
+
+```bash
+hindsight memory retain <bank-id> "[2026-03-16T10:12:03] User: The auth tests keep failing on CI but pass locally. Any idea?
+[2026-03-16T10:12:45] Assistant: Let me check the CI logs. Looks like the tests are running without the TEST_DATABASE_URL env var set — they fall back to the production DB URL and hit a connection timeout.
+[2026-03-16T10:13:20] User: Ah right, I never added that to the CI secrets. Adding it now.
+[2026-03-16T10:15:02] User: That fixed it. All green now." --context learnings
+```
+
 ### Recall memories
 
 Use `memory recall` BEFORE starting tasks to get relevant context:

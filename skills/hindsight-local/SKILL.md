@@ -46,6 +46,15 @@ uvx hindsight-embed memory retain default "Ran the test suite with NODE_ENV=test
 uvx hindsight-embed memory retain default "Build failed on Node 18 with error 'ERR_UNSUPPORTED_ESM_URL_SCHEME'. Switched to Node 20 and build succeeded." --context learnings
 ```
 
+You can also pass a raw conversation transcript with timestamps:
+
+```bash
+uvx hindsight-embed memory retain default "[2026-03-16T10:12:03] User: The auth tests keep failing on CI but pass locally. Any idea?
+[2026-03-16T10:12:45] Assistant: Let me check the CI logs. Looks like the tests are running without the TEST_DATABASE_URL env var set — they fall back to the production DB URL and hit a connection timeout.
+[2026-03-16T10:13:20] User: Ah right, I never added that to the CI secrets. Adding it now.
+[2026-03-16T10:15:02] User: That fixed it. All green now." --context learnings
+```
+
 ### Recall memories
 
 Use `memory recall` BEFORE starting tasks to get relevant context:
