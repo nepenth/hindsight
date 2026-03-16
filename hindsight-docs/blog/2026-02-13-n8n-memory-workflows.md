@@ -17,6 +17,7 @@ n8n workflows are stateless — every execution starts from zero. Hindsight adds
 - n8n workflows are stateless — every execution starts from zero
 - Hindsight adds persistent memory via three HTTP Request nodes
 - No custom nodes, no vector database, no code
+- Works with [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) (zero setup) or self-hosted
 - Retain customer interactions, recall relevant context, reflect for synthesis
 - Works with any n8n workflow: support bots, lead enrichment, onboarding sequences
 
@@ -62,6 +63,19 @@ Three HTTP Request nodes. Same workflow structure you already use.
 
 ## Step 1 — Start Hindsight
 
+You have two options: **Hindsight Cloud** (no setup) or **self-hosted** (run it yourself).
+
+### Option A: Hindsight Cloud
+
+1. Sign up at [ui.hindsight.vectorize.io/signup](https://ui.hindsight.vectorize.io/signup)
+2. Create a memory bank in the dashboard and copy your API key
+
+Your base URL is `https://api.hindsight.vectorize.io` and all requests need an `Authorization: Bearer hsk_your-key-here` header.
+
+> **This is the easiest path if you're using n8n Cloud**, since n8n Cloud can't reach `localhost`. Hindsight Cloud gives you a public API endpoint with no infrastructure to manage.
+
+### Option B: Self-hosted
+
 Install and start the memory server:
 
 ```bash
@@ -77,7 +91,7 @@ It runs at `http://localhost:8888`. Embedded Postgres, fact extraction, semantic
 
 ## Step 2 — Create a Memory Bank
 
-A bank is an isolated memory store. Create one for your workflow:
+If you're using Hindsight Cloud, create a bank in the dashboard. For self-hosted, create one via the API:
 
 ```bash
 curl -X PUT http://localhost:8888/v1/default/banks/n8n-workflow \
@@ -107,7 +121,9 @@ Open `http://localhost:5678` and create a new workflow.
 Add an **HTTP Request** node after your trigger:
 
 - **Method:** POST
-- **URL:** `http://YOUR_IP:8888/v1/default/banks/n8n-workflow/memories`
+- **URL:**
+  - Cloud: `https://api.hindsight.vectorize.io/v1/default/banks/n8n-workflow/memories`
+  - Self-hosted: `http://YOUR_IP:8888/v1/default/banks/n8n-workflow/memories`
 - **Send Body:** on
 - **Body Content Type:** JSON
 - **Specify Body:** Using JSON
@@ -117,7 +133,9 @@ Add an **HTTP Request** node after your trigger:
 {"items": [{"content": "Customer Bob prefers email communication and is on the Enterprise plan."}]}
 ```
 
-> **Gotcha:** Use your machine's IP address (e.g., `192.168.x.x`), not `localhost`. n8n resolves `localhost` to its own process. Find your IP with `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux).
+If you're using Hindsight Cloud, add an **Authorization** header: `Bearer hsk_your-key-here`. In the HTTP Request node, go to **Options → Headers** and add it.
+
+> **Self-hosted gotcha:** Use your machine's IP address (e.g., `192.168.x.x`), not `localhost`. n8n resolves `localhost` to its own process. Find your IP with `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux). This doesn't apply if you're using Hindsight Cloud or n8n Cloud.
 
 Click **Execute step**. You should get a success response.
 
@@ -130,7 +148,9 @@ Hindsight extracts facts from the content automatically — entities, relationsh
 Add another **HTTP Request** node:
 
 - **Method:** POST
-- **URL:** `http://YOUR_IP:8888/v1/default/banks/n8n-workflow/memories/recall`
+- **URL:**
+  - Cloud: `https://api.hindsight.vectorize.io/v1/default/banks/n8n-workflow/memories/recall`
+  - Self-hosted: `http://YOUR_IP:8888/v1/default/banks/n8n-workflow/memories/recall`
 - **Send Body:** on
 - **Body Content Type:** JSON
 - **Specify Body:** Using JSON
@@ -155,7 +175,9 @@ This is what you inject into your AI node's system prompt to personalize respons
 For synthesis questions — "summarize this customer" or "what patterns do we see" — use reflect:
 
 - **Method:** POST
-- **URL:** `http://YOUR_IP:8888/v1/default/banks/n8n-workflow/reflect`
+- **URL:**
+  - Cloud: `https://api.hindsight.vectorize.io/v1/default/banks/n8n-workflow/reflect`
+  - Self-hosted: `http://YOUR_IP:8888/v1/default/banks/n8n-workflow/reflect`
 - **Send Body:** on
 - **Body Content Type:** JSON
 - **Specify Body:** Using JSON
@@ -218,7 +240,7 @@ Now your support bot remembers past conversations, knows customer preferences, a
 
 ## Pitfalls and Edge Cases
 
-**1. Use your machine IP, not localhost.** n8n can't reach `localhost:8888` because it resolves to itself. Use `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux) to find your LAN IP.
+**1. Use your machine IP, not localhost (self-hosted only).** n8n can't reach `localhost:8888` because it resolves to itself. Use `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux) to find your LAN IP. If you're using Hindsight Cloud, this isn't an issue — just use `https://api.hindsight.vectorize.io`.
 
 **2. Retain is asynchronous.** Fact extraction happens in the background after the API returns. If you recall immediately after retaining, the new facts may not be available yet. Add a short delay or design your workflow so recall happens on subsequent executions.
 
@@ -254,7 +276,7 @@ They complement each other. Use Hindsight for the fuzzy, contextual knowledge. U
 - **Retain** (`POST /memories`) — store interactions as they happen
 - **Recall** (`POST /memories/recall`) — retrieve relevant context before responding
 - **Reflect** (`POST /reflect`) — synthesize across all stored memories
-- Use your machine IP, not localhost
+- Works with both [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) and self-hosted
 - Use n8n expressions to make it dynamic
 
 ---
