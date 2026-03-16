@@ -332,6 +332,43 @@ class FactExtractionResponseNoCausal(BaseModel):
     facts: list[ExtractedFactNoCausal] = Field(description="List of extracted factual statements")
 
 
+class VerbatimExtractedFact(BaseModel):
+    """
+    Schema for verbatim extraction mode.
+
+    Omits 'what' entirely — the original chunk text is used as fact_text in code.
+    The LLM only extracts metadata: entities, temporal info, location, people.
+    """
+
+    model_config = ConfigDict(
+        json_schema_mode="validation",
+        json_schema_extra={"required": ["when", "where", "who", "fact_type"]},
+    )
+
+    when: str = Field(description="When it happened. 'N/A' if unknown.")
+    where: str = Field(description="Location if relevant. 'N/A' if none.")
+    who: str = Field(description="People involved with relationships. 'N/A' if general.")
+
+    fact_kind: str = Field(default="conversation", description="'event' or 'conversation'")
+    occurred_start: str | None = Field(default=None, description="ISO timestamp for events")
+    occurred_end: str | None = Field(default=None, description="ISO timestamp for event end")
+    fact_type: Literal["world", "assistant"] = Field(description="'world' or 'assistant'")
+    entities: list[Entity] | None = Field(default=None, description="People, places, concepts")
+
+    @field_validator("entities", mode="before")
+    @classmethod
+    def ensure_entities_list(cls, v):
+        if v is None:
+            return []
+        return v
+
+
+class VerbatimFactExtractionResponse(BaseModel):
+    """Response for verbatim extraction mode (one entry per chunk, no fact text)."""
+
+    facts: list[VerbatimExtractedFact] = Field(description="List of metadata entries (one per chunk)")
+
+
 def chunk_text(text: str, max_chars: int) -> list[str]:
     """
     Split text into chunks, preserving conversation structure when possible.
@@ -554,17 +591,17 @@ CUSTOM_FACT_EXTRACTION_PROMPT = _BASE_FACT_EXTRACTION_PROMPT.format(
 
 # Verbatim mode: preserve the original text exactly, but still extract metadata
 _VERBATIM_GUIDELINES = """══════════════════════════════════════════════════════════════════════════
-VERBATIM MODE — Index content as-is
+VERBATIM MODE — Extract metadata only
 ══════════════════════════════════════════════════════════════════════════
 
-Your task is NOT to summarize or rewrite. You must index this content for retrieval.
+The original text will be stored as-is in code. Your ONLY job is to extract metadata.
 
 RULES:
-- Produce EXACTLY ONE fact entry per input chunk.
-- In the "what" field, copy the FULL original text verbatim, word for word. Do not shorten, paraphrase, or omit anything.
-- Still extract all entities (people, places, organizations, objects, concepts).
-- Still extract temporal information (occurred_start, occurred_end, fact_kind).
-- Still extract location (where) and people (who) fields.
+- Produce EXACTLY ONE entry per input chunk.
+- DO NOT include a "what" field — it is not part of the output schema.
+- Extract all entities (people, places, organizations, objects, concepts).
+- Extract temporal information (occurred_start, occurred_end, fact_kind, when).
+- Extract location (where) and people (who).
 - fact_type: use "world" unless the content is clearly an interaction with the assistant."""
 
 VERBATIM_FACT_EXTRACTION_PROMPT = _BASE_FACT_EXTRACTION_PROMPT.format(
@@ -802,7 +839,11 @@ def _build_extraction_prompt_and_schema(config) -> tuple[str, type]:
         )
 
     # Add causal relationships section if enabled
-    if extract_causal_links:
+    # Verbatim mode never uses causal relations (no fact text to relate causally)
+    if extraction_mode == "verbatim":
+        base_fact_class = VerbatimExtractedFact
+        base_response_class = VerbatimFactExtractionResponse
+    elif extract_causal_links:
         prompt = prompt + CAUSAL_RELATIONSHIPS_SECTION
         base_fact_class = ExtractedFactVerbose if extraction_mode == "verbose" else ExtractedFact
         base_response_class = FactExtractionResponseVerbose if extraction_mode == "verbose" else FactExtractionResponse
@@ -1037,8 +1078,10 @@ async def _extract_facts_from_chunk(
                 if not what:
                     what = get_value("factual_core")
                 if not what:
-                    logger.warning(f"Skipping fact {i}: missing 'what' field")
-                    continue
+                    # In verbatim mode, 'what' is intentionally absent — text is backfilled from chunk
+                    if extraction_mode != "verbatim":
+                        logger.warning(f"Skipping fact {i}: missing 'what' field")
+                        continue
 
                 # Critical field: fact_type
                 # LLM uses "assistant" but we convert to "experience" for storage
@@ -1071,19 +1114,23 @@ async def _extract_facts_from_chunk(
                     fact_kind = "conversation"
 
                 # Build combined fact text from the 4 dimensions: what | when | who | why
+                # In verbatim mode, leave combined_text empty — _collapse_to_verbatim backfills it
                 fact_data = {}
-                combined_parts = [what]
+                if extraction_mode == "verbatim":
+                    combined_text = ""
+                else:
+                    combined_parts = [what]
 
-                if when:
-                    combined_parts.append(f"When: {when}")
+                    if when:
+                        combined_parts.append(f"When: {when}")
 
-                if who:
-                    combined_parts.append(f"Involving: {who}")
+                    if who:
+                        combined_parts.append(f"Involving: {who}")
 
-                if why:
-                    combined_parts.append(why)
+                    if why:
+                        combined_parts.append(why)
 
-                combined_text = " | ".join(combined_parts)
+                    combined_text = " | ".join(combined_parts)
 
                 # Add temporal fields
                 # For events: occurred_start/occurred_end (when the event happened)
