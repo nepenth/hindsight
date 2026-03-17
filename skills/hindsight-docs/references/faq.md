@@ -1,10 +1,4 @@
----
-title: Frequently Asked Questions
-description: Common questions and answers about Hindsight
-hide_table_of_contents: false
----
 
-import {ClientsGrid, IntegrationsGrid, LLMProvidersGrid} from '@site/src/components/SupportedGrids';
 
 # Frequently Asked Questions
 
@@ -42,7 +36,6 @@ Unlike vector databases (just search) or RAG systems (document retrieval), Hinds
 ### Which clients and languages are supported?
 
 <ClientsGrid />
-
 
 ---
 
@@ -168,7 +161,6 @@ See [Recall](/developer/api/recall) and [Reflect](/developer/reflect) for full A
 Mental models are automatically built during retain and used by reflect to provide richer, more contextual responses. See [Mental Models](/developer/api/mental-models).
 
 ---
-
 
 ### What's the typical latency for recall operations?
 
