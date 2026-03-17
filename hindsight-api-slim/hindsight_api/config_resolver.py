@@ -239,6 +239,12 @@ class ConfigResolver:
                 logger.warning(f"Failed to check permissions for bank {bank_id}: {e}")
                 # Continue without permission check (fail open for backward compatibility)
 
+        # Validate retain_strategies: reject empty string keys
+        if "retain_strategies" in normalized_updates and normalized_updates["retain_strategies"]:
+            empty_keys = [k for k in normalized_updates["retain_strategies"] if not str(k).strip()]
+            if empty_keys:
+                raise ValueError("Strategy names must not be empty strings. Remove entries with empty names before saving.")
+
         # Merge with existing config (JSONB || operator)
         async with self.pool.acquire() as conn:
             await conn.execute(
