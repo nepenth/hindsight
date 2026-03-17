@@ -82,6 +82,7 @@ export interface MemoryItemInput {
     entities?: EntityInput[];
     tags?: string[];
     observation_scopes?: "per_tag" | "combined" | "all_combinations" | string[][];
+    strategy?: string;
 }
 
 export class HindsightClient {
@@ -190,7 +191,7 @@ export class HindsightClient {
             entities: item.entities,
             tags: item.tags,
             observation_scopes: item.observation_scopes,
-            strategy: (item as any).strategy,
+            strategy: item.strategy,
             timestamp:
                 item.timestamp instanceof Date
                     ? item.timestamp.toISOString()

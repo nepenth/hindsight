@@ -1244,6 +1244,12 @@ export type MemoryItem = {
     | "all_combinations"
     | Array<Array<string>>
     | null;
+  /**
+   * Strategy
+   *
+   * Named retain strategy for this item. Overrides the request-level strategy for this item only. Strategies are defined in the bank config under 'retain_strategies'.
+   */
+  strategy?: string | null;
 };
 
 /**
@@ -1922,6 +1928,12 @@ export type RetainRequest = {
    */
   async?: boolean;
   /**
+   * Strategy
+   *
+   * Named retain strategy to use for this request. Overrides the bank's default strategy. Strategies are defined in the bank config under 'retain_strategies'.
+   */
+  strategy?: string | null;
+  /**
    * Document Tags
    *
    * Deprecated. Use item-level tags instead.
@@ -1958,9 +1970,15 @@ export type RetainResponse = {
   /**
    * Operation Id
    *
-   * Operation ID for tracking async operations. Use GET /v1/default/banks/{bank_id}/operations to list operations. Only present when async=true.
+   * Operation ID for tracking async operations. Use GET /v1/default/banks/{bank_id}/operations to list operations. Only present when async=true. When items use different per-item strategies, use operation_ids instead.
    */
   operation_id?: string | null;
+  /**
+   * Operation Ids
+   *
+   * Operation IDs when items were submitted as multiple strategy groups (async=true with mixed per-item strategies). operation_id is set to the first entry for backward compatibility.
+   */
+  operation_ids?: Array<string> | null;
   /**
    * Token usage metrics for LLM calls during fact extraction (only present for synchronous operations)
    */
