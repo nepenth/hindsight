@@ -11,7 +11,7 @@ import {
   LuActivity, LuPlug, LuShield, LuPackage, LuBook,
   LuNetwork, LuCode, LuLayers, LuCpu,
   LuArrowUpRight, LuBookOpen, LuRss, LuCloud, LuMessageCircle,
-  LuChartBar, LuChartColumn, LuStar, LuCircleHelp, LuFileText,
+  LuChartBar, LuChartColumn, LuStar, LuCircleHelp,
 } from 'react-icons/lu';
 import {SiGo, SiPython, SiGithub, SiSlack} from 'react-icons/si';
 
