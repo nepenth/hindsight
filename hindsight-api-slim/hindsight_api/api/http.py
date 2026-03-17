@@ -10,7 +10,7 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
@@ -4171,7 +4171,7 @@ def _register_routes(app: FastAPI):
             await bank_utils.get_bank_profile(pool, bank_id)
 
             webhook_id = uuid.uuid4()
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).isoformat()
             row = await pool.fetchrow(
                 f"""
                 INSERT INTO {fq_table("webhooks")}
