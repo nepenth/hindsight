@@ -2352,6 +2352,65 @@ def test_collapse_to_verbatim_single_fact_per_chunk():
     assert "bug" in result[1].entities
 
 
+def test_index_only_extraction_mode():
+    """
+    Unit test for index_only mode: no LLM, chunks stored as-is, zero token usage.
+    """
+    import asyncio
+    import os
+
+    from hindsight_api.config import _get_raw_config, clear_config_cache
+    from hindsight_api.engine.retain.fact_extraction import extract_facts_from_contents
+    from hindsight_api.engine.retain.types import RetainContent
+
+    original_mode = os.getenv("HINDSIGHT_API_RETAIN_EXTRACTION_MODE")
+
+    try:
+        os.environ["HINDSIGHT_API_RETAIN_EXTRACTION_MODE"] = "index_only"
+        clear_config_cache()
+
+        contents = [
+            RetainContent(
+                content="Alice joined the infrastructure team on March 5, 2024.",
+                event_date=datetime(2024, 3, 10, tzinfo=timezone.utc),
+                entities=[{"text": "Alice"}, {"text": "infrastructure team"}],
+            ),
+            RetainContent(content="Bob fixed the critical bug in the payment service."),
+        ]
+
+        facts, chunks, usage = asyncio.get_event_loop().run_until_complete(
+            extract_facts_from_contents(
+                contents=contents,
+                llm_config=None,  # Must not be called
+                agent_name="TestAgent",
+                config=_get_raw_config(),
+            )
+        )
+
+        # One fact per chunk (both contents fit in one chunk each)
+        assert len(facts) == len(chunks) == 2
+
+        # Text preserved exactly
+        assert facts[0].fact_text == contents[0].content
+        assert facts[1].fact_text == contents[1].content
+
+        # No LLM-extracted entities (user-provided entities handled downstream)
+        assert facts[0].entities == []
+        assert facts[1].entities == []
+
+        # Zero token usage
+        assert usage.total_tokens == 0
+
+        logger.info("✓ index_only mode: no LLM call, chunks stored as-is, zero token usage")
+
+    finally:
+        if original_mode is not None:
+            os.environ["HINDSIGHT_API_RETAIN_EXTRACTION_MODE"] = original_mode
+        else:
+            os.environ.pop("HINDSIGHT_API_RETAIN_EXTRACTION_MODE", None)
+        clear_config_cache()
+
+
 @pytest.mark.asyncio
 async def test_verbatim_extraction_mode():
     """

@@ -567,7 +567,7 @@ Controls the retain (memory ingestion) pipeline.
 |----------|-------------|---------|
 | `HINDSIGHT_API_RETAIN_MAX_COMPLETION_TOKENS` | Max completion tokens for fact extraction LLM calls | `64000` |
 | `HINDSIGHT_API_RETAIN_CHUNK_SIZE` | Max characters per chunk for fact extraction. Larger chunks extract fewer LLM calls but may lose context. | `3000` |
-| `HINDSIGHT_API_RETAIN_EXTRACTION_MODE` | Fact extraction mode: `concise`, `verbose`, `verbatim`, or `custom` | `concise` |
+| `HINDSIGHT_API_RETAIN_EXTRACTION_MODE` | Fact extraction mode: `concise`, `verbose`, `verbatim`, `index_only`, or `custom` | `concise` |
 | `HINDSIGHT_API_RETAIN_MISSION` | What this bank should pay attention to during extraction. Steers the LLM without replacing the extraction rules — works alongside any extraction mode. | - |
 | `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` | Full prompt override for fact extraction (only used when mode is `custom`). Replaces built-in extraction rules entirely. | - |
 | `HINDSIGHT_API_RETAIN_EXTRACT_CAUSAL_LINKS` | Extract causal relationships between facts | `true` |
@@ -578,18 +578,19 @@ Controls the retain (memory ingestion) pipeline.
 
 #### Customizing retain: when to use what
 
-There are four levels of customization for the retain pipeline. Start with the simplest that covers your needs:
+There are five levels of customization for the retain pipeline. Start with the simplest that covers your needs:
 
 | Goal | Use |
 |------|-----|
 | Steer what topics to focus on or deprioritize | `HINDSIGHT_API_RETAIN_MISSION` |
 | Extract more detail per fact | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbose` |
-| Store chunks as-is (indexing / RAG use case) | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbatim` |
+| Store chunks as-is, LLM extracts metadata | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbatim` |
+| Store chunks as-is, zero LLM cost | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=index_only` |
 | Completely replace the extraction rules | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=custom` + `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` |
 
 **`HINDSIGHT_API_RETAIN_MISSION` — steer extraction without replacing it (recommended starting point)**
 
-Tell the bank what to pay attention to during extraction, in plain language. The mission is injected into the extraction prompt alongside the built-in rules — it narrows focus without replacing the underlying logic. Works with any extraction mode (`concise`, `verbose`, `verbatim`, `custom`).
+Tell the bank what to pay attention to during extraction, in plain language. The mission is injected into the extraction prompt alongside the built-in rules — it narrows focus without replacing the underlying logic. Works with any extraction mode (`concise`, `verbose`, `verbatim`, `custom`). Ignored in `index_only` mode.
 
 ```bash
 export HINDSIGHT_API_RETAIN_MISSION="Focus on technical decisions, architecture choices, and team member expertise. Deprioritize social or personal information."
@@ -605,6 +606,14 @@ Each chunk is stored as a single memory unit with its original text preserved ex
 
 ```bash
 export HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbatim
+```
+
+**`HINDSIGHT_API_RETAIN_EXTRACTION_MODE=index_only` — zero LLM cost**
+
+Each chunk is stored as-is with no LLM call whatsoever. No entity extraction, no temporal indexing — only embeddings are generated for semantic search. User-provided entities passed via `RetainContent.entities` are the sole source of entity data. Use when ingestion speed and cost matter more than structured metadata.
+
+```bash
+export HINDSIGHT_API_RETAIN_EXTRACTION_MODE=index_only
 ```
 
 **`HINDSIGHT_API_RETAIN_EXTRACTION_MODE=custom` + `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` — full control**
