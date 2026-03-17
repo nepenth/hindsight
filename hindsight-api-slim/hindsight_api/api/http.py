@@ -3922,9 +3922,7 @@ def _register_routes(app: FastAPI):
         operation_id="recover_consolidation",
         tags=["Banks"],
     )
-    async def api_recover_consolidation(
-        bank_id: str, request_context: RequestContext = Depends(get_request_context)
-    ):
+    async def api_recover_consolidation(bank_id: str, request_context: RequestContext = Depends(get_request_context)):
         """Reset consolidation-failed memories for recovery."""
         try:
             result = await app.state.memory.retry_failed_consolidation(bank_id, request_context=request_context)
