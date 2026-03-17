@@ -41,19 +41,21 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv
 
-# Copy dependency files and README (required by pyproject.toml)
+# Copy dependency files, lockfile, and README (required by pyproject.toml)
 COPY hindsight-api-slim/pyproject.toml ./api/
 COPY hindsight-api-slim/README.md ./api/
+COPY uv.lock ./api/
 
 WORKDIR /app/api
 
 # Sync dependencies using appropriate extras based on INCLUDE_LOCAL_MODELS
+# Uses --frozen to install exact versions from uv.lock (prevents unexpected upgrades)
 # local-ml: torch, sentence-transformers, transformers, einops, flashrank, mlx (optional)
 # embedded-db: pg0-embedded (always included for embedded PostgreSQL support)
 RUN if [ "$INCLUDE_LOCAL_MODELS" = "true" ]; then \
-        uv sync --extra local-ml --extra embedded-db; \
+        uv sync --frozen --no-install-project --extra local-ml --extra embedded-db; \
     else \
-        uv sync --extra embedded-db; \
+        uv sync --frozen --no-install-project --extra embedded-db; \
     fi
 
 # Copy source code (alembic migrations are inside hindsight_api/)
