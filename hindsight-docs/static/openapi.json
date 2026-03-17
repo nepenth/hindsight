@@ -3125,6 +3125,65 @@
         }
       }
     },
+    "/v1/default/banks/{bank_id}/consolidation/retry-failed": {
+      "post": {
+        "tags": [
+          "Banks"
+        ],
+        "summary": "Retry failed consolidation",
+        "description": "Reset all memories that were permanently marked as failed during consolidation (after exhausting all LLM retries and adaptive batch splitting) so they are picked up again on the next consolidation run. Does not delete any observations.",
+        "operationId": "retry_failed_consolidation",
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bank Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryFailedConsolidationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/default/banks/{bank_id}/memories/{memory_id}/observations": {
       "delete": {
         "tags": [
@@ -7580,6 +7639,23 @@
             "output_tokens": 100,
             "total_tokens": 600
           }
+        }
+      },
+      "RetryFailedConsolidationResponse": {
+        "properties": {
+          "retried_count": {
+            "type": "integer",
+            "title": "Retried Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "retried_count"
+        ],
+        "title": "RetryFailedConsolidationResponse",
+        "description": "Response model for retrying failed consolidation.",
+        "example": {
+          "retried_count": 42
         }
       },
       "RetryOperationResponse": {
