@@ -471,6 +471,11 @@ class RetainRequest(BaseModel):
         alias="async",
         description="If true, process asynchronously in background. If false, wait for completion (default: false)",
     )
+    strategy: str | None = Field(
+        default=None,
+        description="Named retain strategy to use for this request. Overrides the bank's default strategy. "
+        "Strategies are defined in the bank config under 'retain_strategies'.",
+    )
     document_tags: list[str] | None = Field(
         default=None,
         description="Deprecated. Use item-level tags instead.",
@@ -4466,7 +4471,7 @@ def _register_routes(app: FastAPI):
             if request.async_:
                 # Async processing: queue task and return immediately
                 result = await app.state.memory.submit_async_retain(
-                    bank_id, contents, document_tags=request.document_tags, request_context=request_context
+                    bank_id, contents, document_tags=request.document_tags, strategy=request.strategy, request_context=request_context
                 )
                 return RetainResponse.model_validate(
                     {
@@ -4499,6 +4504,7 @@ def _register_routes(app: FastAPI):
                         bank_id=bank_id,
                         contents=contents,
                         document_tags=request.document_tags,
+                        strategy=request.strategy,
                         request_context=request_context,
                         return_usage=True,
                         outbox_callback=app.state.memory._build_retain_outbox_callback(

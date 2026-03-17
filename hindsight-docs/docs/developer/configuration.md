@@ -608,6 +608,46 @@ Each chunk is stored as a single memory unit with its original text preserved ex
 export HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbatim
 ```
 
+**`retain_strategies` / `retain_default_strategy` — per-call extraction strategy**
+
+Named strategies let you ingest different content types into the same bank using different extraction settings. A strategy is a set of hierarchical field overrides applied on top of the resolved bank config.
+
+Any field in the hierarchical config can be overridden per strategy, including `retain_extraction_mode`, `retain_chunk_size`, `entity_labels`, `entities_allow_free_form`, `retain_mission`, etc.
+
+Configure strategies via the bank config API:
+
+```json
+{
+  "retain_default_strategy": "conversations",
+  "retain_strategies": {
+    "conversations": {
+      "retain_extraction_mode": "concise",
+      "retain_chunk_size": 3000
+    },
+    "documents": {
+      "retain_extraction_mode": "index_only",
+      "retain_chunk_size": 800,
+      "entity_labels": null,
+      "entities_allow_free_form": false
+    }
+  }
+}
+```
+
+Then specify the strategy at retain time:
+
+```python
+# Uses default strategy ("conversations")
+client.retain(bank_id, items=[{"content": "Alice joined the team today"}])
+
+# Explicitly use document strategy
+client.retain(bank_id, items=[{"content": "...document text..."}], strategy="documents")
+```
+
+If no `strategy` is specified in a retain call, `retain_default_strategy` is used. If neither is set, the bank/global config applies directly.
+
+> **Note on chunk size and retrieval fairness**: When mixing strategies with very different chunk sizes in the same bank, `index_only` and `verbatim` memories participate only in semantic retrieval (not entity graph or temporal paths). Smaller chunk sizes (e.g., 800 chars) produce more targeted embeddings and are recommended for document strategies to keep scores comparable with LLM-extracted facts.
+
 **`HINDSIGHT_API_RETAIN_EXTRACTION_MODE=index_only` — zero LLM cost**
 
 Each chunk is stored as-is with no LLM call whatsoever. No entity extraction, no temporal indexing — only embeddings are generated for semantic search. User-provided entities passed via `RetainContent.entities` are the sole source of entity data. Use when ingestion speed and cost matter more than structured metadata.

@@ -2318,6 +2318,51 @@ If the text contains both Italian and English content, extract ONLY the Italian 
         clear_config_cache()
 
 
+def test_apply_strategy():
+    """
+    Unit test for apply_strategy:
+    - Known strategy applies overrides on top of resolved config
+    - Unknown strategy returns config unchanged with a warning
+    - Non-hierarchical fields in a strategy are silently ignored
+    - entity_labels and entities_allow_free_form are overridable
+    """
+    from hindsight_api.config import _get_raw_config, clear_config_cache
+    from hindsight_api.config_resolver import apply_strategy
+
+    clear_config_cache()
+    base_config = _get_raw_config()
+
+    strategies = {
+        "documents": {
+            "retain_extraction_mode": "index_only",
+            "retain_chunk_size": 800,
+            "entities_allow_free_form": False,
+        },
+        "bad_field": {
+            "database_url": "should-be-ignored",  # static field, not hierarchical
+            "retain_extraction_mode": "verbose",
+        },
+    }
+    config_with_strategies = base_config.__class__(
+        **{**base_config.__dict__, "retain_strategies": strategies}
+    )
+
+    # Known strategy: overrides applied
+    result = apply_strategy(config_with_strategies, "documents")
+    assert result.retain_extraction_mode == "index_only"
+    assert result.retain_chunk_size == 800
+    assert result.entities_allow_free_form is False
+
+    # Non-hierarchical field silently ignored, hierarchical one applied
+    result2 = apply_strategy(config_with_strategies, "bad_field")
+    assert result2.retain_extraction_mode == "verbose"
+    assert result2.database_url == base_config.database_url  # unchanged
+
+    # Unknown strategy: config returned unchanged
+    result3 = apply_strategy(config_with_strategies, "nonexistent")
+    assert result3.retain_extraction_mode == base_config.retain_extraction_mode
+
+
 def test_collapse_to_verbatim_single_fact_per_chunk():
     """
     Unit test for _collapse_to_verbatim:
