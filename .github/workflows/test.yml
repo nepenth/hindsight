@@ -1592,8 +1592,6 @@ jobs:
 
   verify-generated-files:
     runs-on: ubuntu-latest
-    env:
-
     steps:
     - uses: actions/checkout@v6
 
@@ -1663,8 +1661,6 @@ jobs:
 
   check-openapi-compatibility:
     runs-on: ubuntu-latest
-    env:
-
     steps:
     - uses: actions/checkout@v6
       with:
