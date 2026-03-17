@@ -168,9 +168,16 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.uv]
-# Allow uv to search all configured indexes for packages, not just the first one
-# This prevents dependency resolution failures when using pytorch index + PyPI
-index-strategy = "unsafe-best-match"
+# Use explicit index for PyTorch to prevent the pytorch index from serving
+# non-pytorch packages (e.g. markupsafe) with incompatible wheels
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+# Route torch to the CPU-only PyTorch index; everything else uses PyPI
+torch = { index = "pytorch-cpu" }
 
 [tool.ty]
 # Type checking configuration
