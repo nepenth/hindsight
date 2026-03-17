@@ -220,6 +220,7 @@ async def run_consolidation_job(
             FROM {fq_table("memory_units")}
             WHERE bank_id = $1
               AND consolidated_at IS NULL
+              AND consolidation_failed_at IS NULL
               AND fact_type IN ('experience', 'world')
             """,
             bank_id,
@@ -259,6 +260,7 @@ async def run_consolidation_job(
                 FROM {fq_table("memory_units")}
                 WHERE bank_id = $1
                   AND consolidated_at IS NULL
+                  AND consolidation_failed_at IS NULL
                   AND fact_type IN ('experience', 'world')
                 ORDER BY created_at ASC
                 LIMIT $2

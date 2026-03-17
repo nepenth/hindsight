@@ -5,7 +5,7 @@ with consolidation_failed_at instead of consolidated_at, so it is not silently l
 and can be retried later via the API.
 
 Revision ID: a3b4c5d6e7f8
-Revises: z1u2v3w4x5y6
+Revises: g7h8i9j0k1l2
 Create Date: 2026-03-17
 """
 
@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from alembic import context, op
 
 revision: str = "a3b4c5d6e7f8"
-down_revision: str | Sequence[str] | None = "z1u2v3w4x5y6"
+down_revision: str | Sequence[str] | None = "g7h8i9j0k1l2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
