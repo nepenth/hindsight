@@ -181,7 +181,7 @@ export class HindsightClient {
     /**
      * Retain multiple memories in batch.
      */
-    async retainBatch(bankId: string, items: MemoryItemInput[], options?: { documentId?: string; documentTags?: string[]; async?: boolean }): Promise<RetainResponse> {
+    async retainBatch(bankId: string, items: MemoryItemInput[], options?: { documentId?: string; documentTags?: string[]; async?: boolean; strategy?: string }): Promise<RetainResponse> {
         const processedItems = items.map((item) => ({
             content: item.content,
             context: item.context,
@@ -190,6 +190,7 @@ export class HindsightClient {
             entities: item.entities,
             tags: item.tags,
             observation_scopes: item.observation_scopes,
+            strategy: (item as any).strategy,
             timestamp:
                 item.timestamp instanceof Date
                     ? item.timestamp.toISOString()
@@ -209,6 +210,7 @@ export class HindsightClient {
                 items: itemsWithDocId,
                 document_tags: options?.documentTags,
                 async: options?.async,
+                strategy: options?.strategy,
             },
         });
 

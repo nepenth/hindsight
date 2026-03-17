@@ -232,7 +232,14 @@ function BankSelectorInner() {
 
   const updateFileMeta = (
     index: number,
-    field: "context" | "timestamp" | "document_id" | "tags" | "metadata" | "strategy" | "advancedTab",
+    field:
+      | "context"
+      | "timestamp"
+      | "document_id"
+      | "tags"
+      | "metadata"
+      | "strategy"
+      | "advancedTab",
     value: string
   ) => {
     setFilesMetadata((prev) => prev.map((m, i) => (i === index ? { ...m, [field]: value } : m)));
@@ -688,47 +695,73 @@ function BankSelectorInner() {
                                         <TabsContent value="document" className="mt-0 space-y-2">
                                           <div className="grid grid-cols-2 gap-2">
                                             <div>
-                                              <label className="font-bold block mb-1 text-sm text-foreground">Event Date</label>
+                                              <label className="font-bold block mb-1 text-sm text-foreground">
+                                                Event Date
+                                              </label>
                                               <Input
                                                 type="datetime-local"
                                                 value={meta.timestamp}
-                                                onChange={(e) => updateFileMeta(index, "timestamp", e.target.value)}
+                                                onChange={(e) =>
+                                                  updateFileMeta(index, "timestamp", e.target.value)
+                                                }
                                                 className="h-8 text-sm text-foreground"
                                               />
                                             </div>
                                             <div>
-                                              <label className="font-bold block mb-1 text-sm text-foreground">Document ID</label>
+                                              <label className="font-bold block mb-1 text-sm text-foreground">
+                                                Document ID
+                                              </label>
                                               <Input
                                                 value={meta.document_id}
-                                                onChange={(e) => updateFileMeta(index, "document_id", e.target.value)}
+                                                onChange={(e) =>
+                                                  updateFileMeta(
+                                                    index,
+                                                    "document_id",
+                                                    e.target.value
+                                                  )
+                                                }
                                                 placeholder="Optional ID..."
                                                 className="h-8 text-sm"
                                               />
                                             </div>
                                           </div>
                                           <div>
-                                            <label className="font-bold block mb-1 text-sm text-foreground">Strategy</label>
+                                            <label className="font-bold block mb-1 text-sm text-foreground">
+                                              Strategy
+                                            </label>
                                             {bankStrategies.length > 0 ? (
                                               <Select
                                                 value={meta.strategy || "__none__"}
-                                                onValueChange={(v) => updateFileMeta(index, "strategy", v === "__none__" ? "" : v)}
+                                                onValueChange={(v) =>
+                                                  updateFileMeta(
+                                                    index,
+                                                    "strategy",
+                                                    v === "__none__" ? "" : v
+                                                  )
+                                                }
                                               >
                                                 <SelectTrigger className="w-full h-8 text-sm">
                                                   <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                   <SelectItem value="__none__">
-                                                    <span className="text-muted-foreground italic">Default</span>
+                                                    <span className="text-muted-foreground italic">
+                                                      Default
+                                                    </span>
                                                   </SelectItem>
                                                   {bankStrategies.map((name) => (
-                                                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                                                    <SelectItem key={name} value={name}>
+                                                      {name}
+                                                    </SelectItem>
                                                   ))}
                                                 </SelectContent>
                                               </Select>
                                             ) : (
                                               <Input
                                                 value={meta.strategy}
-                                                onChange={(e) => updateFileMeta(index, "strategy", e.target.value)}
+                                                onChange={(e) =>
+                                                  updateFileMeta(index, "strategy", e.target.value)
+                                                }
                                                 placeholder="Strategy name (optional)..."
                                                 className="h-8 text-sm"
                                               />
@@ -737,31 +770,46 @@ function BankSelectorInner() {
                                         </TabsContent>
                                         <TabsContent value="tags" className="mt-0 space-y-2">
                                           <div>
-                                            <label className="font-bold block mb-1 text-sm text-foreground">Tags</label>
+                                            <label className="font-bold block mb-1 text-sm text-foreground">
+                                              Tags
+                                            </label>
                                             <Input
                                               value={meta.tags}
-                                              onChange={(e) => updateFileMeta(index, "tags", e.target.value)}
+                                              onChange={(e) =>
+                                                updateFileMeta(index, "tags", e.target.value)
+                                              }
                                               placeholder="tag1, tag2..."
                                               className="h-8 text-sm"
                                             />
-                                            <p className="text-xs text-muted-foreground mt-1">Comma-separated — used to filter memories during recall/reflect</p>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              Comma-separated — used to filter memories during
+                                              recall/reflect
+                                            </p>
                                           </div>
                                         </TabsContent>
                                         <TabsContent value="source" className="mt-0 space-y-2">
                                           <div>
-                                            <label className="font-bold block mb-1 text-sm text-foreground">Context</label>
+                                            <label className="font-bold block mb-1 text-sm text-foreground">
+                                              Context
+                                            </label>
                                             <Input
                                               value={meta.context}
-                                              onChange={(e) => updateFileMeta(index, "context", e.target.value)}
+                                              onChange={(e) =>
+                                                updateFileMeta(index, "context", e.target.value)
+                                              }
                                               placeholder="Optional context..."
                                               className="h-8 text-sm"
                                             />
                                           </div>
                                           <div>
-                                            <label className="font-bold block mb-1 text-sm text-foreground">Metadata</label>
+                                            <label className="font-bold block mb-1 text-sm text-foreground">
+                                              Metadata
+                                            </label>
                                             <Textarea
                                               value={meta.metadata}
-                                              onChange={(e) => updateFileMeta(index, "metadata", e.target.value)}
+                                              onChange={(e) =>
+                                                updateFileMeta(index, "metadata", e.target.value)
+                                              }
                                               placeholder={"source: slack\nchannel: engineering"}
                                               className="min-h-[52px] resize-y font-mono text-sm"
                                             />
@@ -800,34 +848,34 @@ function BankSelectorInner() {
 
               {/* Advanced section — text only */}
               {docTab === "text" && (
-              <div>
-                <Tabs
-                  value={docAdvancedTab}
-                  onValueChange={(v) => setDocAdvancedTab(v as "document" | "tags" | "source")}
-                >
-                  <TabsList className="w-full border-b border-border bg-transparent h-8 p-0 gap-0 justify-start rounded-none">
-                    <TabsTrigger
-                      value="document"
-                      className="rounded-none h-full px-4 text-xs font-medium bg-transparent shadow-none text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary -mb-px"
-                    >
-                      Document
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="tags"
-                      className="rounded-none h-full px-4 text-xs font-medium bg-transparent shadow-none text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary -mb-px"
-                    >
-                      Tags
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="source"
-                      className="rounded-none h-full px-4 text-xs font-medium bg-transparent shadow-none text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary -mb-px"
-                    >
-                      Source
-                    </TabsTrigger>
-                  </TabsList>
+                <div>
+                  <Tabs
+                    value={docAdvancedTab}
+                    onValueChange={(v) => setDocAdvancedTab(v as "document" | "tags" | "source")}
+                  >
+                    <TabsList className="w-full border-b border-border bg-transparent h-8 p-0 gap-0 justify-start rounded-none">
+                      <TabsTrigger
+                        value="document"
+                        className="rounded-none h-full px-4 text-xs font-medium bg-transparent shadow-none text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary -mb-px"
+                      >
+                        Document
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="tags"
+                        className="rounded-none h-full px-4 text-xs font-medium bg-transparent shadow-none text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary -mb-px"
+                      >
+                        Tags
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="source"
+                        className="rounded-none h-full px-4 text-xs font-medium bg-transparent shadow-none text-muted-foreground hover:text-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary -mb-px"
+                      >
+                        Source
+                      </TabsTrigger>
+                    </TabsList>
 
-                  <div className="pt-3 space-y-3">
-                    <TabsContent value="document" className="mt-0 space-y-3">
+                    <div className="pt-3 space-y-3">
+                      <TabsContent value="document" className="mt-0 space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="font-bold block mb-1 text-sm text-foreground">
@@ -1017,7 +1065,7 @@ function BankSelectorInner() {
                       </TabsContent>
                     </div>
                   </Tabs>
-              </div>
+                </div>
               )}
             </div>
 

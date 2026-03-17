@@ -2728,3 +2728,64 @@ def test_retain_request_per_item_strategy_field():
     assert strategy_groups["detailed"] == ["Bob left."]
     assert strategy_groups["default_strategy"] == ["Carol arrived."]
     logger.info("✓ per-item strategy grouping works correctly")
+
+
+@pytest.mark.asyncio
+async def test_named_strategy_applied_end_to_end(memory, request_context):
+    """
+    Integration test: a named strategy stored in bank config is actually applied
+    during retain_batch_async.
+
+    Regression test for the bug where strategy was passed through the HTTP layer
+    but the extraction mode override was silently ignored, always using the bank
+    default (e.g. 'concise') instead of the strategy's override (e.g. 'index_only').
+    """
+    from hindsight_api.config_resolver import ConfigResolver
+
+    bank_id = f"test_strategy_e2e_{datetime.now(timezone.utc).timestamp()}"
+
+    try:
+        # Seed the bank so the row exists before we write config to it
+        # (update_bank_config is a plain UPDATE — it silently no-ops on missing rows)
+        await memory.retain_batch_async(
+            bank_id=bank_id,
+            contents=[{"content": "seed"}],
+            request_context=request_context,
+        )
+
+        # Now configure the bank with a named strategy that overrides to index_only
+        await memory._config_resolver.update_bank_config(
+            bank_id,
+            {
+                "retain_extraction_mode": "concise",  # bank default
+                "retain_strategies": {
+                    "chunks": {"retain_extraction_mode": "index_only"},
+                },
+            },
+            request_context,
+        )
+
+        contents = [{"content": "Alice deployed the new API on Monday."}]
+
+        # Retain using the named strategy
+        unit_ids_by_content, usage = await memory.retain_batch_async(
+            bank_id=bank_id,
+            contents=contents,
+            strategy="chunks",
+            request_context=request_context,
+            return_usage=True,
+        )
+
+        # index_only produces exactly one fact per chunk (verbatim) and calls no LLM
+        assert usage.total_tokens == 0, f"index_only should use zero LLM tokens, got {usage.total_tokens}"
+        assert len(unit_ids_by_content) == 1
+        assert len(unit_ids_by_content[0]) == 1, "index_only should produce exactly one fact per content item"
+
+        # Verify the stored fact is the verbatim content
+        facts = await memory.recall_async(bank_id, "Alice", request_context=request_context)
+        assert any("Alice" in f.text for f in facts.results), "Verbatim content should be retrievable"
+
+        logger.info("✓ named strategy 'chunks' with index_only applied end-to-end: no LLM, verbatim storage")
+
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)

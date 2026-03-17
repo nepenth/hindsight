@@ -243,7 +243,9 @@ class ConfigResolver:
         if "retain_strategies" in normalized_updates and normalized_updates["retain_strategies"]:
             empty_keys = [k for k in normalized_updates["retain_strategies"] if not str(k).strip()]
             if empty_keys:
-                raise ValueError("Strategy names must not be empty strings. Remove entries with empty names before saving.")
+                raise ValueError(
+                    "Strategy names must not be empty strings. Remove entries with empty names before saving."
+                )
 
         # Merge with existing config (JSONB || operator)
         async with self.pool.acquire() as conn:

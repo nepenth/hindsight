@@ -981,17 +981,31 @@ function RetainStrategiesPanel({
         ) : null}
       </div>
 
-      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete strategy &ldquo;{pendingDelete?.name || "unnamed"}&rdquo;?</AlertDialogTitle>
-            <AlertDialogDescription>This will remove the strategy and all its overrides. This cannot be undone.</AlertDialogDescription>
+            <AlertDialogTitle>
+              Delete strategy &ldquo;{pendingDelete?.name || "unnamed"}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the strategy and all its overrides. This cannot be undone.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (pendingDelete) { removeStrategy(pendingDelete.id); setPendingDelete(null); } }}
+              onClick={() => {
+                if (pendingDelete) {
+                  removeStrategy(pendingDelete.id);
+                  setPendingDelete(null);
+                }
+              }}
             >
               Delete
             </AlertDialogAction>
