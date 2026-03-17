@@ -35,6 +35,8 @@ type RetainEdits = {
   retain_extraction_mode: string | null;
   retain_mission: string | null;
   retain_custom_instructions: string | null;
+  retain_default_strategy: string | null;
+  retain_strategies: Record<string, Record<string, any>> | null;
 };
 
 type ObservationsEdits = {
@@ -140,6 +142,8 @@ function retainSlice(config: Record<string, any>): RetainEdits {
     retain_extraction_mode: config.retain_extraction_mode ?? null,
     retain_mission: config.retain_mission ?? null,
     retain_custom_instructions: config.retain_custom_instructions ?? null,
+    retain_default_strategy: config.retain_default_strategy ?? null,
+    retain_strategies: config.retain_strategies ?? null,
   };
 }
 
@@ -483,6 +487,25 @@ export function BankConfigView() {
               rows={5}
             />
           )}
+          <FieldRow
+            label="Default Strategy"
+            description="Name of the retain strategy used when no strategy is specified on the request. Must match a key in Retain Strategies below."
+          >
+            <Input
+              value={retainEdits.retain_default_strategy ?? ""}
+              onChange={(e) =>
+                setRetainEdits((prev) => ({
+                  ...prev,
+                  retain_default_strategy: e.target.value || null,
+                }))
+              }
+              placeholder="e.g. fast"
+            />
+          </FieldRow>
+          <StrategiesEditor
+            value={retainEdits.retain_strategies}
+            onChange={(v) => setRetainEdits((prev) => ({ ...prev, retain_strategies: v }))}
+          />
         </ConfigSection>
 
         {/* Entity Labels Section */}
@@ -752,6 +775,154 @@ export function BankConfigView() {
         </ConfigSection>
       </div>
     </>
+  );
+}
+
+// ─── StrategiesEditor ─────────────────────────────────────────────────────────
+
+type StrategyEntry = { name: string; jsonText: string; parseError: string | null };
+
+function toEntries(strategies: Record<string, Record<string, any>> | null): StrategyEntry[] {
+  if (!strategies) return [];
+  return Object.entries(strategies).map(([name, overrides]) => ({
+    name,
+    jsonText: JSON.stringify(overrides, null, 2),
+    parseError: null,
+  }));
+}
+
+function StrategiesEditor({
+  value,
+  onChange,
+}: {
+  value: Record<string, Record<string, any>> | null;
+  onChange: (v: Record<string, Record<string, any>> | null) => void;
+}) {
+  const [entries, setEntries] = useState<StrategyEntry[]>(() => toEntries(value));
+
+  // Sync when parent resets (e.g. after save/load)
+  const valueKey = JSON.stringify(value);
+  useEffect(() => {
+    setEntries(toEntries(value));
+     
+  }, [valueKey]);
+
+  const emit = (next: StrategyEntry[]) => {
+    const allValid = next.every((e) => e.parseError === null);
+    if (allValid) {
+      if (next.length === 0) {
+        onChange(null);
+      } else {
+        const dict: Record<string, Record<string, any>> = {};
+        for (const e of next) {
+          if (e.name.trim()) {
+            try {
+              dict[e.name.trim()] = JSON.parse(e.jsonText);
+            } catch {
+              // skip invalid
+            }
+          }
+        }
+        onChange(Object.keys(dict).length > 0 ? dict : null);
+      }
+    }
+  };
+
+  const update = (i: number, patch: Partial<StrategyEntry>) => {
+    const next = entries.map((e, idx) => {
+      if (idx !== i) return e;
+      const updated = { ...e, ...patch };
+      if ("jsonText" in patch) {
+        try {
+          JSON.parse(patch.jsonText!);
+          updated.parseError = null;
+        } catch {
+          updated.parseError = "Invalid JSON";
+        }
+      }
+      return updated;
+    });
+    setEntries(next);
+    emit(next);
+  };
+
+  const add = () => {
+    const next = [
+      ...entries,
+      { name: "", jsonText: '{\n  "retain_extraction_mode": "index_only"\n}', parseError: null },
+    ];
+    setEntries(next);
+    emit(next);
+  };
+
+  const remove = (i: number) => {
+    const next = entries.filter((_, idx) => idx !== i);
+    setEntries(next);
+    emit(next);
+  };
+
+  return (
+    <div className="px-6 py-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Retain Strategies</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Named config override sets. Each strategy is a JSON object of hierarchical config fields
+            (e.g. <code className="font-mono text-xs">retain_extraction_mode</code>,{" "}
+            <code className="font-mono text-xs">retain_chunk_size</code>). Pass the strategy name on
+            retain requests to apply its overrides.
+          </p>
+        </div>
+        {entries.length > 0 && (
+          <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full shrink-0">
+            {entries.length} {entries.length === 1 ? "strategy" : "strategies"}
+          </span>
+        )}
+      </div>
+
+      {entries.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">No strategies defined.</p>
+      )}
+
+      <div className="space-y-2">
+        {entries.map((entry, i) => (
+          <div key={i} className="border border-border/50 rounded-md bg-background p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="strategy name (e.g. fast)"
+                value={entry.name}
+                onChange={(e) => update(i, { name: e.target.value })}
+                className="h-8 text-xs font-mono flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="text-muted-foreground hover:text-destructive shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+            <Textarea
+              value={entry.jsonText}
+              onChange={(e) => update(i, { jsonText: e.target.value })}
+              rows={4}
+              className="font-mono text-xs"
+              placeholder='{ "retain_extraction_mode": "index_only" }'
+            />
+            {entry.parseError && <p className="text-xs text-destructive">{entry.parseError}</p>}
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={add}
+        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Add strategy
+      </button>
+    </div>
   );
 }
 
