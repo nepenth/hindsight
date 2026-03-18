@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -96,6 +97,30 @@ jobs:
     - name: Build
       working-directory: ./hindsight-integrations/ai-sdk
       run: npm run build
+
+  test-ai-sdk-integration-deno:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Deno
+      uses: denoland/setup-deno@v2
+      with:
+        deno-version: v2.x
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+
+    - name: Install dependencies
+      working-directory: ./hindsight-integrations/ai-sdk
+      run: npm ci
+
+    - name: Run tests (Deno)
+      working-directory: ./hindsight-integrations/ai-sdk
+      run: npm run test:deno
 
   build-chat-integration:
     runs-on: ubuntu-latest
@@ -199,7 +224,6 @@ jobs:
       HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -421,7 +445,6 @@ jobs:
       HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -484,7 +507,6 @@ jobs:
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -587,7 +609,6 @@ jobs:
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -686,6 +707,119 @@ jobs:
         echo "=== API Server Logs ==="
         cat /tmp/api-server.log || echo "No API server log found"
 
+  test-typescript-client-deno:
+    runs-on: ubuntu-latest
+    env:
+      HINDSIGHT_API_LLM_PROVIDER: vertexai
+      HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
+      HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
+      HINDSIGHT_API_URL: http://localhost:8888
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Setup GCP credentials
+      run: |
+        printf '%s' '${{ secrets.GCP_VERTEXAI_CREDENTIALS }}' > /tmp/gcp-credentials.json
+        PROJECT_ID=$(jq -r '.project_id' /tmp/gcp-credentials.json)
+        echo "HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        prune-cache: false
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version-file: ".python-version"
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Set up Deno
+      uses: denoland/setup-deno@v2
+      with:
+        deno-version: v2.x
+
+    - name: Build API
+      working-directory: ./hindsight-api-slim
+      run: uv build
+
+    - name: Install API dependencies
+      working-directory: ./hindsight-api-slim
+      run: uv sync --frozen --all-extras --index-strategy unsafe-best-match
+
+    - name: Install TypeScript client dependencies
+      working-directory: ./hindsight-clients/typescript
+      run: npm ci
+
+    - name: Build TypeScript client
+      working-directory: ./hindsight-clients/typescript
+      run: npm run build
+
+    - name: Cache HuggingFace models
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/huggingface
+        key: ${{ runner.os }}-huggingface-${{ hashFiles('hindsight-api-slim/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-huggingface-
+
+    - name: Pre-download models
+      working-directory: ./hindsight-api-slim
+      run: |
+        uv run python -c "
+        from sentence_transformers import SentenceTransformer, CrossEncoder
+        print('Downloading embedding model...')
+        SentenceTransformer('BAAI/bge-small-en-v1.5')
+        print('Downloading cross-encoder model...')
+        CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        print('Models downloaded successfully')
+        "
+
+    - name: Create .env file
+      run: |
+        cat > .env << EOF
+        HINDSIGHT_API_LLM_PROVIDER=${{ env.HINDSIGHT_API_LLM_PROVIDER }}
+        HINDSIGHT_API_LLM_MODEL=${{ env.HINDSIGHT_API_LLM_MODEL }}
+        HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY=/tmp/gcp-credentials.json
+        HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID=$HINDSIGHT_API_LLM_VERTEXAI_PROJECT_ID
+        EOF
+
+    - name: Start API server
+      run: |
+        ./scripts/dev/start-api.sh > /tmp/api-server.log 2>&1 &
+        echo "Waiting for API server to be ready..."
+        for i in {1..120}; do
+          if curl -sf http://localhost:8888/health > /dev/null 2>&1; then
+            echo "API server is ready after ${i}s"
+            break
+          fi
+          if [ $i -eq 120 ]; then
+            echo "API server failed to start after 120s"
+            cat /tmp/api-server.log
+            exit 1
+          fi
+          sleep 1
+        done
+
+    - name: Run TypeScript client tests (Deno)
+      working-directory: ./hindsight-clients/typescript
+      run: npm run test:deno
+
+    - name: Show API server logs
+      if: always()
+      run: |
+        echo "=== API Server Logs ==="
+        cat /tmp/api-server.log || echo "No API server log found"
+
   build-rust-cli-arm64:
     runs-on: ubuntu-24.04-arm
 
@@ -719,7 +853,6 @@ jobs:
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -826,7 +959,6 @@ jobs:
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Prefer CPU-only PyTorch in CI (but keep PyPI for everything else)
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -931,7 +1063,6 @@ jobs:
       HINDSIGHT_API_URL: http://localhost:8888
       HINDSIGHT_EMBED_PACKAGE_PATH: ${{ github.workspace }}/hindsight-embed
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -1038,7 +1169,6 @@ jobs:
       HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -1282,7 +1412,6 @@ jobs:
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
       HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       # Prefer CPU-only PyTorch in CI
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -1340,7 +1469,6 @@ jobs:
       HINDSIGHT_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
       HINDSIGHT_LLM_MODEL: google/gemini-2.5-flash-lite
       # Prefer CPU-only PyTorch in CI
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -1396,7 +1524,6 @@ jobs:
       HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       HINDSIGHT_API_URL: http://localhost:8888
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -1530,7 +1657,6 @@ jobs:
       HINDSIGHT_API_LLM_VERTEXAI_SERVICE_ACCOUNT_KEY: /tmp/gcp-credentials.json
       HINDSIGHT_API_LLM_MODEL: google/gemini-2.5-flash-lite
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
 
     steps:
     - uses: actions/checkout@v6
@@ -1603,9 +1729,6 @@ jobs:
 
   verify-generated-files:
     runs-on: ubuntu-latest
-    env:
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
-
     steps:
     - uses: actions/checkout@v6
 
@@ -1675,9 +1798,6 @@ jobs:
 
   check-openapi-compatibility:
     runs-on: ubuntu-latest
-    env:
-      UV_INDEX: pytorch=https://download.pytorch.org/whl/cpu
-
     steps:
     - uses: actions/checkout@v6
       with:

@@ -1,12 +1,28 @@
 ---
 title: Frequently Asked Questions
 description: Common questions and answers about Hindsight
-hide_table_of_contents: false
+hide_table_of_contents: true
 ---
 
 import {ClientsGrid, IntegrationsGrid, LLMProvidersGrid} from '@site/src/components/SupportedGrids';
 
 # Frequently Asked Questions
+
+**Contents**
+- [What is Hindsight and how does it differ from RAG?](#what-is-hindsight-and-how-does-it-differ-from-rag)
+- [Why use Hindsight instead of other solutions?](#why-use-hindsight-instead-of-other-solutions)
+- [Supported clients, integrations, and LLM providers](#which-clients-and-languages-are-supported)
+- [Which model should I use?](#which-model-should-i-use-with-hindsight)
+- [Hosting and system requirements](#do-i-need-to-host-my-own-infrastructure)
+- [How do I isolate user data?](#how-do-i-isolate-user-data)
+- [Retain, recall, and reflect — what's the difference?](#whats-the-difference-between-retain-recall-and-reflect)
+- [When should I use recall vs reflect?](#when-should-i-use-recall-vs-reflect)
+- [When should I use mental models?](#when-should-i-use-mental-models)
+- [Latency expectations](#whats-the-typical-latency-for-recall-operations)
+- [Tags, metadata, and entity labels](#does-hindsight-support-metadata-filtering)
+- [Recommended format for conversations](#what-is-the-recommended-format-for-retaining-conversations)
+
+---
 
 ### What is Hindsight and how does it differ from RAG?
 
@@ -43,7 +59,6 @@ Unlike vector databases (just search) or RAG systems (document retrieval), Hinds
 
 <ClientsGrid />
 
-Any language can also use the [HTTP API](/developer/api/quickstart) directly.
 
 ---
 
@@ -58,22 +73,6 @@ Any language can also use the [HTTP API](/developer/api/quickstart) directly.
 <LLMProvidersGrid />
 
 See [Models](/developer/models) for the full list of supported providers, recommended models, and configuration examples.
-
-**Using local models with Ollama:**
-```bash
-HINDSIGHT_API_LLM_PROVIDER=ollama
-HINDSIGHT_API_LLM_MODEL=llama3.1
-HINDSIGHT_API_LLM_BASE_URL=http://localhost:11434
-```
-
-**Using local models with LM Studio:**
-```bash
-HINDSIGHT_API_LLM_PROVIDER=lmstudio
-HINDSIGHT_API_LLM_MODEL=your-model-name
-HINDSIGHT_API_LLM_BASE_URL=http://localhost:1234/v1
-```
-
-Configure your provider using the `HINDSIGHT_API_LLM_PROVIDER` environment variable. See [Configuration](/developer/configuration) and [Models](/developer/models) for details.
 
 ---
 

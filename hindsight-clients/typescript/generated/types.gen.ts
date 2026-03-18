@@ -1244,6 +1244,12 @@ export type MemoryItem = {
     | "all_combinations"
     | Array<Array<string>>
     | null;
+  /**
+   * Strategy
+   *
+   * Named retain strategy for this item. Overrides the bank's default strategy for this item only. Strategies are defined in the bank config under 'retain_strategies'.
+   */
+  strategy?: string | null;
 };
 
 /**
@@ -1603,6 +1609,18 @@ export type RecallResult = {
 };
 
 /**
+ * RecoverConsolidationResponse
+ *
+ * Response model for recovering failed consolidation.
+ */
+export type RecoverConsolidationResponse = {
+  /**
+   * Retried Count
+   */
+  retried_count: number;
+};
+
+/**
  * ReflectBasedOn
  *
  * Evidence the response is based on: memories, mental models, and directives.
@@ -1958,9 +1976,15 @@ export type RetainResponse = {
   /**
    * Operation Id
    *
-   * Operation ID for tracking async operations. Use GET /v1/default/banks/{bank_id}/operations to list operations. Only present when async=true.
+   * Operation ID for tracking async operations. Use GET /v1/default/banks/{bank_id}/operations to list operations. Only present when async=true. When items use different per-item strategies, use operation_ids instead.
    */
   operation_id?: string | null;
+  /**
+   * Operation Ids
+   *
+   * Operation IDs when items were submitted as multiple strategy groups (async=true with mixed per-item strategies). operation_id is set to the first entry for backward compatibility.
+   */
+  operation_ids?: Array<string> | null;
   /**
    * Token usage metrics for LLM calls during fact extraction (only present for synchronous operations)
    */
@@ -4232,6 +4256,44 @@ export type ClearObservationsResponses = {
 
 export type ClearObservationsResponse =
   ClearObservationsResponses[keyof ClearObservationsResponses];
+
+export type RecoverConsolidationData = {
+  body?: never;
+  headers?: {
+    /**
+     * Authorization
+     */
+    authorization?: string | null;
+  };
+  path: {
+    /**
+     * Bank Id
+     */
+    bank_id: string;
+  };
+  query?: never;
+  url: "/v1/default/banks/{bank_id}/consolidation/recover";
+};
+
+export type RecoverConsolidationErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type RecoverConsolidationError =
+  RecoverConsolidationErrors[keyof RecoverConsolidationErrors];
+
+export type RecoverConsolidationResponses = {
+  /**
+   * Successful Response
+   */
+  200: RecoverConsolidationResponse;
+};
+
+export type RecoverConsolidationResponse2 =
+  RecoverConsolidationResponses[keyof RecoverConsolidationResponses];
 
 export type ClearMemoryObservationsData = {
   body?: never;

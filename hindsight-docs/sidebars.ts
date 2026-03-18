@@ -216,6 +216,18 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'sdks/integrations/agno',
+          label: 'Agno',
+          customProps: { icon: '/img/icons/agno.png' },
+        },
+        {
+          type: 'doc',
+          id: 'sdks/integrations/hermes',
+          label: 'Hermes Agent',
+          customProps: { icon: '/img/icons/hermes.png' },
+        },
+        {
+          type: 'doc',
           id: 'sdks/integrations/skills',
           label: 'Skills',
           customProps: { icon: '/img/icons/skills.png' },
@@ -280,6 +292,25 @@ const sidebars: SidebarsConfig = {
           id: 'developer/mcp-server',
           label: 'MCP Server',
           customProps: { icon: 'lu-network' },
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Resources',
+      collapsible: false,
+      items: [
+        {
+          type: 'link',
+          href: '/best-practices',
+          label: 'Best Practices',
+          customProps: { icon: 'lu-star', iconAfter: 'lu-arrow-up-right' },
+        },
+        {
+          type: 'link',
+          href: '/faq',
+          label: 'FAQ',
+          customProps: { icon: 'lu-circle-help', iconAfter: 'lu-arrow-up-right' },
         },
       ],
     },
