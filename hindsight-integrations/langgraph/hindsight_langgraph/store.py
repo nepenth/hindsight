@@ -5,13 +5,11 @@ Namespace tuples are joined to form bank IDs, and values are stored/retrieved
 via retain/recall.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Optional, Sequence
 
 from hindsight_client import Hindsight
 from langgraph.store.base import BaseStore, GetOp, Item, ListNamespacesOp, PutOp, Result, SearchItem, SearchOp
@@ -32,7 +30,7 @@ def _namespace_to_bank_id(namespace: tuple[str, ...]) -> str:
     return ".".join(namespace) if namespace else "default"
 
 
-def _make_item(namespace: tuple[str, ...], key: str, value: dict, created_at: datetime | None = None) -> Item:
+def _make_item(namespace: tuple[str, ...], key: str, value: dict, created_at: Optional[datetime] = None) -> Item:
     """Create a LangGraph Item from Hindsight data."""
     now = datetime.now(timezone.utc)
     return Item(
@@ -45,7 +43,7 @@ def _make_item(namespace: tuple[str, ...], key: str, value: dict, created_at: da
 
 
 def _make_search_item(
-    namespace: tuple[str, ...], key: str, value: dict, score: float, created_at: datetime | None = None
+    namespace: tuple[str, ...], key: str, value: dict, score: float, created_at: Optional[datetime] = None
 ) -> SearchItem:
     """Create a LangGraph SearchItem from Hindsight recall results."""
     now = datetime.now(timezone.utc)
@@ -63,7 +61,7 @@ class HindsightStore(BaseStore):
     """LangGraph BaseStore implementation backed by Hindsight.
 
     Maps LangGraph's namespace/key-value model to Hindsight memory banks:
-    - Namespace tuples are joined with "/" to form bank IDs
+    - Namespace tuples are joined with "." to form bank IDs
     - ``put()`` stores values via Hindsight retain with the key as document_id
     - ``search()`` uses Hindsight recall for semantic search
     - ``get()`` uses recall with the key as a targeted query
@@ -83,10 +81,10 @@ class HindsightStore(BaseStore):
     def __init__(
         self,
         *,
-        client: Hindsight | None = None,
-        hindsight_api_url: str | None = None,
-        api_key: str | None = None,
-        tags: list[str] | None = None,
+        client: Optional[Hindsight] = None,
+        hindsight_api_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        tags: Optional[list[str]] = None,
     ):
         self._client = _resolve_client(client, hindsight_api_url, api_key)
         self._tags = tags
@@ -114,7 +112,7 @@ class HindsightStore(BaseStore):
                 results.append(None)
         return results
 
-    async def _handle_get(self, op: GetOp) -> Item | None:
+    async def _handle_get(self, op: GetOp) -> Optional[Item]:
         """Handle a get operation by recalling with the key as query."""
         bank_id = _namespace_to_bank_id(op.namespace)
         try:
@@ -151,10 +149,15 @@ class HindsightStore(BaseStore):
             return
         try:
             await self._client.acreate_bank(bank_id, name=bank_id)
-        except Exception:
-            # Bank may already exist — that's fine
-            pass
-        self._created_banks.add(bank_id)
+            self._created_banks.add(bank_id)
+        except Exception as e:
+            error_str = str(e).lower()
+            if "already exists" in error_str or "conflict" in error_str or "409" in error_str:
+                # Bank already exists — safe to cache
+                self._created_banks.add(bank_id)
+            else:
+                logger.error(f"Failed to create bank '{bank_id}': {e}")
+                raise
 
     async def _handle_put(self, op: PutOp) -> None:
         """Handle a put operation by retaining the value."""
@@ -198,23 +201,23 @@ class HindsightStore(BaseStore):
             if not response.results:
                 return []
 
-            items = []
-            limit = op.limit or 10
-            offset = op.offset or 0
-            results_slice = response.results[offset : offset + limit]
-
-            for i, result in enumerate(results_slice):
+            # Build all candidate items first
+            all_items = []
+            for i, result in enumerate(response.results):
                 value = _parse_value(result.text)
                 doc_id = getattr(result, "document_id", None) or _content_key(result.text)
                 score = 1.0 - (i * 0.01)  # Approximate score from rank position
                 ts = getattr(result, "occurred_start", None)
-                items.append(_make_search_item(op.namespace_prefix, doc_id, value, score=score, created_at=ts))
+                all_items.append(_make_search_item(op.namespace_prefix, doc_id, value, score=score, created_at=ts))
 
-            # Apply filters if provided
+            # Apply filters BEFORE pagination so offset/limit operate on
+            # the filtered set rather than discarding matching items.
             if op.filter:
-                items = [item for item in items if _matches_filter(item.value, op.filter)]
+                all_items = [item for item in all_items if _matches_filter(item.value, op.filter)]
 
-            return items
+            limit = op.limit or 10
+            offset = op.offset or 0
+            return all_items[offset : offset + limit]
         except Exception as e:
             logger.error(f"Store search failed for {op.namespace_prefix}: {e}")
             return []
@@ -246,19 +249,26 @@ class HindsightStore(BaseStore):
 
     # Sync convenience methods that delegate to async
 
-    def get(self, namespace: tuple[str, ...], key: str) -> Item | None:
+    def get(self, namespace: tuple[str, ...], key: str) -> Optional[Item]:
         raise NotImplementedError("Use aget() for async operation.")
 
-    async def aget(self, namespace: tuple[str, ...], key: str) -> Item | None:
+    async def aget(self, namespace: tuple[str, ...], key: str) -> Optional[Item]:
         result = await self.abatch([GetOp(namespace=namespace, key=key)])
         return result[0]
 
-    def put(self, namespace: tuple[str, ...], key: str, value: dict, index: bool | list[str] | None = None) -> None:
+    def put(self, namespace: tuple[str, ...], key: str, value: dict, index: Optional[Any] = None) -> None:
         raise NotImplementedError("Use aput() for async operation.")
 
     async def aput(
-        self, namespace: tuple[str, ...], key: str, value: dict, index: bool | list[str] | None = None
+        self,
+        namespace: tuple[str, ...],
+        key: str,
+        value: dict,
+        index: Optional[Any] = None,
+        ttl: Optional[float] = None,
     ) -> None:
+        # ttl is accepted for BaseStore compatibility but not used;
+        # Hindsight does not support TTL-based expiration natively.
         await self.abatch([PutOp(namespace=namespace, key=key, value=value)])
 
     def delete(self, namespace: tuple[str, ...], key: str) -> None:
@@ -271,8 +281,8 @@ class HindsightStore(BaseStore):
         self,
         namespace_prefix: tuple[str, ...],
         *,
-        query: str | None = None,
-        filter: dict | None = None,
+        query: Optional[str] = None,
+        filter: Optional[dict] = None,
         limit: int = 10,
         offset: int = 0,
     ) -> list[SearchItem]:
@@ -282,8 +292,8 @@ class HindsightStore(BaseStore):
         self,
         namespace_prefix: tuple[str, ...],
         *,
-        query: str | None = None,
-        filter: dict | None = None,
+        query: Optional[str] = None,
+        filter: Optional[dict] = None,
         limit: int = 10,
         offset: int = 0,
     ) -> list[SearchItem]:
@@ -295,8 +305,8 @@ class HindsightStore(BaseStore):
     def list_namespaces(
         self,
         *,
-        match_conditions: Sequence | None = None,
-        max_depth: int | None = None,
+        match_conditions: Optional[Sequence] = None,
+        max_depth: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[tuple[str, ...]]:
@@ -305,8 +315,8 @@ class HindsightStore(BaseStore):
     async def alist_namespaces(
         self,
         *,
-        match_conditions: Sequence | None = None,
-        max_depth: int | None = None,
+        match_conditions: Optional[Sequence] = None,
+        max_depth: Optional[int] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[tuple[str, ...]]:

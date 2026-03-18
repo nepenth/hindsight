@@ -110,6 +110,6 @@ This means one graph definition serves all users, each with isolated memory.
 pip install hindsight-langgraph
 ```
 
-Works with both self-hosted Hindsight and [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup). For cloud, just set `HINDSIGHT_API_KEY` and skip the `base_url`.
+Works with both self-hosted Hindsight and [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup). For cloud, pass `base_url="https://api.hindsight.vectorize.io"` along with your API key when creating the client, or use `configure(api_key="...")` which defaults to the cloud URL.
 
-Full docs: [LangGraph integration](/docs/sdks/integrations/langgraph) | [Cookbook example](/cookbook/recipes/langgraph-react-agent) | [GitHub](https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/langgraph)
+Full docs: [LangGraph integration](/docs/sdks/integrations/langgraph) | [GitHub](https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/langgraph)

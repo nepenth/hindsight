@@ -19,13 +19,34 @@ from .tools import _resolve_client
 logger = logging.getLogger(__name__)
 
 
+def _extract_text_content(content: Any) -> str:
+    """Extract text from a message content field.
+
+    Handles both plain string content and multimodal content lists
+    (where each item may be a dict with "type" and "text" keys).
+    Returns the concatenated text parts, or an empty string if no
+    text content is found.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                parts.append(part.get("text", ""))
+        return " ".join(parts)
+    return str(content) if content else ""
+
+
 def create_recall_node(
     *,
     bank_id: Optional[str] = None,
     client: Optional[Hindsight] = None,
     hindsight_api_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    budget: str = "low",
+    budget: str = "mid",
     max_tokens: int = 4096,
     max_results: int = 10,
     tags: Optional[list[str]] = None,
@@ -74,7 +95,7 @@ def create_recall_node(
         query = None
         for msg in reversed(state["messages"]):
             if isinstance(msg, HumanMessage):
-                query = msg.content
+                query = _extract_text_content(msg.content)
                 break
 
         if not query:
@@ -152,12 +173,23 @@ def create_retain_node(
             logger.warning("No bank_id available for retain node, skipping memory storage.")
             return {"messages": []}
 
+        # Only retain the latest human and/or AI message to avoid
+        # duplicating memories that were already stored in prior calls.
         messages_to_retain = []
-        for msg in state["messages"]:
-            if retain_human and isinstance(msg, HumanMessage):
-                messages_to_retain.append(msg.content)
-            elif retain_ai and isinstance(msg, AIMessage):
-                messages_to_retain.append(msg.content)
+        if retain_human:
+            for msg in reversed(state["messages"]):
+                if isinstance(msg, HumanMessage):
+                    text = _extract_text_content(msg.content)
+                    if text:
+                        messages_to_retain.append(text)
+                    break
+        if retain_ai:
+            for msg in reversed(state["messages"]):
+                if isinstance(msg, AIMessage):
+                    text = _extract_text_content(msg.content)
+                    if text:
+                        messages_to_retain.append(text)
+                    break
 
         if not messages_to_retain:
             return {"messages": []}

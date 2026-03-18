@@ -1,9 +1,8 @@
 """Global configuration for Hindsight-LangGraph integration."""
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 DEFAULT_HINDSIGHT_API_URL = "https://api.hindsight.vectorize.io"
 HINDSIGHT_API_KEY_ENV = "HINDSIGHT_API_KEY"
@@ -25,25 +24,25 @@ class HindsightLangGraphConfig:
     """
 
     hindsight_api_url: str = DEFAULT_HINDSIGHT_API_URL
-    api_key: str | None = None
+    api_key: Optional[str] = None
     budget: str = "mid"
     max_tokens: int = 4096
-    tags: list[str] | None = None
-    recall_tags: list[str] | None = None
+    tags: Optional[list[str]] = None
+    recall_tags: Optional[list[str]] = None
     recall_tags_match: str = "any"
     verbose: bool = False
 
 
-_global_config: HindsightLangGraphConfig | None = None
+_global_config: Optional[HindsightLangGraphConfig] = None
 
 
 def configure(
-    hindsight_api_url: str | None = None,
-    api_key: str | None = None,
+    hindsight_api_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     budget: str = "mid",
     max_tokens: int = 4096,
-    tags: list[str] | None = None,
-    recall_tags: list[str] | None = None,
+    tags: Optional[list[str]] = None,
+    recall_tags: Optional[list[str]] = None,
     recall_tags_match: str = "any",
     verbose: bool = False,
 ) -> HindsightLangGraphConfig:
@@ -81,7 +80,7 @@ def configure(
     return _global_config
 
 
-def get_config() -> HindsightLangGraphConfig | None:
+def get_config() -> Optional[HindsightLangGraphConfig]:
     """Get the current global configuration."""
     return _global_config
 

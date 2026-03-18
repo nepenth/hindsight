@@ -136,17 +136,17 @@ export HINDSIGHT_API_KEY="your-cloud-api-key"
 from hindsight_client import Hindsight
 from hindsight_langgraph import create_hindsight_tools
 
-# Cloud — uses default production URL, reads HINDSIGHT_API_KEY from env
-client = Hindsight(api_key="your-cloud-api-key")
+# Cloud — pass both base_url and api_key (base_url is required)
+client = Hindsight(base_url="https://api.hindsight.vectorize.io", api_key="your-cloud-api-key")
 tools = create_hindsight_tools(client=client, bank_id="user-123")
 ```
 
-Or configure globally:
+Or configure globally (the `configure()` function defaults to `https://api.hindsight.vectorize.io` when no URL is provided):
 
 ```python
 from hindsight_langgraph import configure
 
-configure(api_key="your-cloud-api-key")  # Uses production URL by default
+configure(api_key="your-cloud-api-key")  # Defaults to https://api.hindsight.vectorize.io
 ```
 
 ## Global Configuration
@@ -157,7 +157,7 @@ Instead of passing a client to every call, configure once:
 from hindsight_langgraph import configure, create_hindsight_tools
 
 configure(
-    hindsight_api_url="http://localhost:8888",  # Omit for Hindsight Cloud
+    hindsight_api_url="http://localhost:8888",  # Defaults to https://api.hindsight.vectorize.io
     api_key="your-api-key",       # Or set HINDSIGHT_API_KEY env var
     budget="mid",                  # Recall budget: low/mid/high
     max_tokens=4096,               # Max tokens for recall results
@@ -196,6 +196,19 @@ recall = create_recall_node(
 )
 ```
 
+## Limitations and Notes
+
+### HindsightStore
+
+- **Async-only.** All sync methods (`batch`, `get`, `put`, `delete`, `search`, `list_namespaces`) raise `NotImplementedError`. Use the async variants (`abatch`, `aget`, `aput`, `adelete`, `asearch`, `alist_namespaces`) instead.
+- **`list_namespaces` is session-scoped.** It only tracks namespaces that have been written to via `aput()` during the current session. It does not query Hindsight for all existing banks.
+- **`delete` is a no-op.** Calling `adelete()` logs a debug message but does not remove data from Hindsight. Hindsight's memory model is append-oriented; fact superseding is handled automatically during retain.
+
+### Error Handling
+
+- **Tools** raise `HindsightError` on failure, which surfaces to the agent as a tool error.
+- **Nodes** silently log errors and return empty messages, so a Hindsight outage does not crash your graph.
+
 ## API Reference
 
 ### `create_hindsight_tools()`
@@ -210,7 +223,16 @@ recall = create_recall_node(
 | `max_tokens` | `4096` | Maximum tokens for recall results |
 | `tags` | `None` | Tags applied when storing memories |
 | `recall_tags` | `None` | Tags to filter when searching |
-| `recall_tags_match` | `"any"` | Tag matching mode |
+| `recall_tags_match` | `"any"` | Tag matching mode (any/all/any\_strict/all\_strict) |
+| `retain_metadata` | `None` | Default metadata dict for retain operations |
+| `retain_document_id` | `None` | Default document\_id for retain (groups/upserts memories) |
+| `recall_types` | `None` | Fact types to filter (world, experience, opinion, observation) |
+| `recall_include_entities` | `False` | Include entity information in recall results |
+| `reflect_context` | `None` | Additional context for reflect operations |
+| `reflect_max_tokens` | `None` | Max tokens for reflect results (defaults to `max_tokens`) |
+| `reflect_response_schema` | `None` | JSON schema to constrain reflect output format |
+| `reflect_tags` | `None` | Tags to filter memories used in reflect (defaults to `recall_tags`) |
+| `reflect_tags_match` | `None` | Tag matching for reflect (defaults to `recall_tags_match`) |
 | `include_retain` | `True` | Include the retain (store) tool |
 | `include_recall` | `True` | Include the recall (search) tool |
 | `include_reflect` | `True` | Include the reflect (synthesize) tool |
@@ -221,6 +243,8 @@ recall = create_recall_node(
 |---|---|---|
 | `bank_id` | `None` | Static bank ID (or use `bank_id_from_config`) |
 | `client` | `None` | Pre-configured Hindsight client |
+| `hindsight_api_url` | `None` | API URL (used if no client provided) |
+| `api_key` | `None` | API key (used if no client provided) |
 | `budget` | `"low"` | Recall budget level |
 | `max_tokens` | `4096` | Max tokens for recall results |
 | `max_results` | `10` | Max memories to inject |
@@ -234,6 +258,8 @@ recall = create_recall_node(
 |---|---|---|
 | `bank_id` | `None` | Static bank ID (or use `bank_id_from_config`) |
 | `client` | `None` | Pre-configured Hindsight client |
+| `hindsight_api_url` | `None` | API URL (used if no client provided) |
+| `api_key` | `None` | API key (used if no client provided) |
 | `tags` | `None` | Tags applied to stored memories |
 | `bank_id_from_config` | `"user_id"` | Config key to resolve bank ID at runtime |
 | `retain_human` | `True` | Store human messages |
@@ -260,3 +286,10 @@ recall = create_recall_node(
 | `recall_tags` | `None` | Default tags to filter recall |
 | `recall_tags_match` | `"any"` | Default tag matching mode |
 | `verbose` | `False` | Enable verbose logging |
+
+## Requirements
+
+- Python >= 3.10
+- langgraph >= 0.2.0
+- langchain-core >= 0.3.0
+- hindsight-client >= 0.4.0

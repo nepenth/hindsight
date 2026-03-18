@@ -5,10 +5,8 @@ backed by Hindsight's retain/recall/reflect APIs. These tools can be bound
 to a ChatModel via `model.bind_tools()` or used in a ToolNode.
 """
 
-from __future__ import annotations
-
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from hindsight_client import Hindsight
 from langchain_core.tools import tool
@@ -20,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_client(
-    client: Hindsight | None,
-    hindsight_api_url: str | None,
-    api_key: str | None,
+    client: Optional[Hindsight],
+    hindsight_api_url: Optional[str],
+    api_key: Optional[str],
 ) -> Hindsight:
     """Resolve a Hindsight client from explicit args or global config."""
     if client is not None:
@@ -47,26 +45,26 @@ def _resolve_client(
 def create_hindsight_tools(
     *,
     bank_id: str,
-    client: Hindsight | None = None,
-    hindsight_api_url: str | None = None,
-    api_key: str | None = None,
+    client: Optional[Hindsight] = None,
+    hindsight_api_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     budget: str = "mid",
     max_tokens: int = 4096,
-    tags: list[str] | None = None,
-    recall_tags: list[str] | None = None,
+    tags: Optional[list[str]] = None,
+    recall_tags: Optional[list[str]] = None,
     recall_tags_match: str = "any",
     # Retain options
-    retain_metadata: dict[str, str] | None = None,
-    retain_document_id: str | None = None,
+    retain_metadata: Optional[dict[str, str]] = None,
+    retain_document_id: Optional[str] = None,
     # Recall options
-    recall_types: list[str] | None = None,
+    recall_types: Optional[list[str]] = None,
     recall_include_entities: bool = False,
     # Reflect options
-    reflect_context: str | None = None,
-    reflect_max_tokens: int | None = None,
-    reflect_response_schema: dict[str, Any] | None = None,
-    reflect_tags: list[str] | None = None,
-    reflect_tags_match: str | None = None,
+    reflect_context: Optional[str] = None,
+    reflect_max_tokens: Optional[int] = None,
+    reflect_response_schema: Optional[dict[str, Any]] = None,
+    reflect_tags: Optional[list[str]] = None,
+    reflect_tags_match: Optional[str] = None,
     include_retain: bool = True,
     include_recall: bool = True,
     include_reflect: bool = True,
@@ -110,9 +108,9 @@ def create_hindsight_tools(
     config = get_config()
     effective_tags = tags if tags is not None else (config.tags if config else None)
     effective_recall_tags = recall_tags if recall_tags is not None else (config.recall_tags if config else None)
-    effective_recall_tags_match = recall_tags_match or (config.recall_tags_match if config else "any")
-    effective_budget = budget or (config.budget if config else "mid")
-    effective_max_tokens = max_tokens or (config.max_tokens if config else 4096)
+    effective_recall_tags_match = recall_tags_match if recall_tags_match is not None else (config.recall_tags_match if config else "any")
+    effective_budget = budget if budget is not None else (config.budget if config else "mid")
+    effective_max_tokens = max_tokens if max_tokens is not None else (config.max_tokens if config else 4096)
 
     tools: list = []
 
