@@ -98,6 +98,30 @@ jobs:
       working-directory: ./hindsight-integrations/ai-sdk
       run: npm run build
 
+  test-ai-sdk-integration-deno:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Deno
+      uses: denoland/setup-deno@v2
+      with:
+        deno-version: v2.x
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+
+    - name: Install dependencies
+      working-directory: ./hindsight-integrations/ai-sdk
+      run: npm ci
+
+    - name: Run tests (Deno)
+      working-directory: ./hindsight-integrations/ai-sdk
+      run: npm run test:deno
+
   build-chat-integration:
     runs-on: ubuntu-latest
 
