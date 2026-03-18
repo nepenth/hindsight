@@ -126,7 +126,8 @@ class HindsightStore(BaseStore):
             if not response.results:
                 return None
 
-            # Find result matching the key via document_id or content
+            # Only return a result if the document_id matches the requested key exactly.
+            # Do NOT fall back to semantic search — that would violate key-value store semantics.
             for result in response.results:
                 doc_id = getattr(result, "document_id", None)
                 if doc_id == op.key:
@@ -134,11 +135,7 @@ class HindsightStore(BaseStore):
                     ts = getattr(result, "occurred_start", None)
                     return _make_item(op.namespace, op.key, value, created_at=ts)
 
-            # If no exact match, return the top result
-            result = response.results[0]
-            value = _parse_value(result.text)
-            ts = getattr(result, "occurred_start", None)
-            return _make_item(op.namespace, op.key, value, created_at=ts)
+            return None
         except Exception as e:
             logger.error(f"Store get failed for {op.namespace}/{op.key}: {e}")
             return None

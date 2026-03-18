@@ -27,9 +27,16 @@ classifiers = [
 ]
 
 dependencies = [
-    "langgraph>=0.3.0",
     "langchain-core>=0.3.0",
     "hindsight-client>=0.4.0",
+]
+
+[project.optional-dependencies]
+langgraph = [
+    "langgraph>=0.3.0",
+]
+all = [
+    "langgraph>=0.3.0",
 ]
 
 [project.urls]
@@ -50,6 +57,7 @@ asyncio_mode = "auto"
 
 [dependency-groups]
 dev = [
+    "hindsight-langgraph[langgraph]",
     "pytest>=9.0.2",
     "pytest-asyncio>=0.23.0",
 ]

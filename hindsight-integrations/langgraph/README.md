@@ -1,15 +1,15 @@
 # hindsight-langgraph
 
-LangGraph integration for [Hindsight](https://github.com/vectorize-io/hindsight) — persistent long-term memory for AI agents.
+LangGraph and LangChain integration for [Hindsight](https://github.com/vectorize-io/hindsight) — persistent long-term memory for AI agents.
 
 Provides three integration patterns:
-- **Tools** — retain/recall/reflect as LangGraph tools for agent-driven memory
-- **Nodes** — pre-built graph nodes for automatic memory injection and storage
-- **BaseStore** — drop-in `BaseStore` adapter for LangGraph's built-in memory system
+- **Tools** — retain/recall/reflect as LangChain `@tool` functions for agent-driven memory. Works with **both LangChain and LangGraph**.
+- **Nodes** *(LangGraph)* — pre-built graph nodes for automatic memory injection and storage
+- **BaseStore** *(LangGraph)* — drop-in `BaseStore` adapter for LangGraph's built-in memory system
 
 ## Prerequisites
 
-- A [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) account, or a self-hosted Hindsight instance running locally
+- A running Hindsight instance ([self-hosted via Docker](https://github.com/vectorize-io/hindsight#quick-start) or [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup))
 - Python 3.10+
 
 ## Installation
@@ -133,9 +133,9 @@ All factory functions accept `client`, `hindsight_api_url`, and `api_key` to ove
 ## Requirements
 
 - Python 3.10+
-- `langgraph >= 0.2.0`
 - `langchain-core >= 0.3.0`
 - `hindsight-client >= 0.4.0`
+- `langgraph >= 0.3.0` *(only for nodes and store patterns — install with `pip install hindsight-langgraph[langgraph]`)*
 
 ## Documentation
 

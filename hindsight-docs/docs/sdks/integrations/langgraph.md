@@ -283,6 +283,6 @@ recall = create_recall_node(
 ## Requirements
 
 - Python >= 3.10
-- langgraph >= 0.2.0
 - langchain-core >= 0.3.0
 - hindsight-client >= 0.4.0
+- langgraph >= 0.3.0 *(only for nodes and store patterns — install with `pip install hindsight-langgraph[langgraph]`)*

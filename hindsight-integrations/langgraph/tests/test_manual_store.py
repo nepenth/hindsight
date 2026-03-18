@@ -41,4 +41,5 @@ async def main():
     print("\n--- Done, bank cleaned up ---")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
