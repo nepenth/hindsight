@@ -1,5 +1,5 @@
 ---
-title: "One pip install. Zero Code. Persistent Memory for Hermes Agent"
+title: "Give the Only Self-Improving AI Agent a Memory Upgrade It Deserves"
 authors: [benfrank241]
 date: 2026-03-17
 tags: [hermes, agents, python, memory, tutorial, plugin]
@@ -88,11 +88,7 @@ hindsight-api
 One pip install. The package auto-registers as a Hermes plugin via Python entry points — no config files, no manual plugin setup. The only requirement is that it's installed in the **same Python environment** as Hermes.
 
 ```bash
-# Activate the Hermes venv first
-cd /path/to/hermes-agent
-source .venv/bin/activate
-
-pip install hindsight-hermes
+uv pip install hindsight-hermes --python $HOME/.hermes/hermes-agent/venv/bin/python
 ```
 
 That's it. When Hermes starts, it discovers the package automatically and registers the three memory tools.
@@ -118,10 +114,13 @@ Set these environment variables before launching Hermes:
 export HINDSIGHT_API_URL=http://localhost:8888
 
 # Required — the memory bank (an isolated "brain" for this agent)
-export HINDSIGHT_BANK_ID=my-hermes-agent
+export HINDSIGHT_BANK_ID=my-agent
 
-# Only needed for Hindsight Cloud
+# Optional — only needed for Hindsight Cloud (https://api.hindsight.vectorize.io)
 export HINDSIGHT_API_KEY=hsk_your-key-here
+
+# Optional — recall budget: low (fast), mid (default), high (thorough)
+export HINDSIGHT_BUDGET=mid
 ```
 
 If neither `HINDSIGHT_API_URL` nor `HINDSIGHT_API_KEY` is set, the plugin silently skips registration — Hermes starts normally without the Hindsight tools.
@@ -186,7 +185,7 @@ Reflect doesn't return raw facts. It traverses the knowledge graph, reasons acro
 Confirm memories are stored by querying Hindsight directly:
 
 ```bash
-curl -s http://localhost:8888/v1/default/banks/my-hermes-agent/memories/recall \
+curl -s http://localhost:8888/v1/default/banks/my-agent/memories/recall \
   -H "Content-Type: application/json" \
   -d '{"query": "programming preferences", "budget": "low"}' | python3 -m json.tool
 ```
@@ -247,5 +246,6 @@ The key practical detail: disable Hermes's built-in `memory` tool. Otherwise the
 - **Build up memory over time.** Use Hermes normally — it will retain what matters and recall it when relevant.
 - **Try reflect for synthesis.** Ask open-ended questions: "Based on everything you know about me, what kind of projects would I enjoy?"
 - **Use per-user banks.** Set `HINDSIGHT_BANK_ID` per user for isolated memory per person.
-- **Explore the MCP alternative.** For mental models and multi-bank management, connect Hindsight's MCP server instead.
+- **Explore the MCP alternative.** Hermes supports MCP servers natively. You can connect Hindsight's MCP server directly (`http://localhost:8888/mcp`) instead of the plugin — no `hindsight-hermes` package needed. The tradeoff is that the plugin registers tools with Hermes-native schemas, while MCP tools need discovery.
+- **Use manual registration for more control.** If you want to set tags, recall filters, or skip the plugin system, `hindsight-hermes` exposes `register_tools()` and `memory_instructions()` functions for direct use.
 - **Read the docs.** Full API reference at [hindsight.vectorize.io](https://hindsight.vectorize.io).
