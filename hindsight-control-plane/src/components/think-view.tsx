@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FactType, FactTypeFilter } from "@/components/fact-type-filter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Sparkles,
@@ -51,7 +52,7 @@ export function ThinkView() {
   const [loading, setLoading] = useState(false);
   const [tags, setTags] = useState("");
   const [tagsMatch, setTagsMatch] = useState<TagsMatch>("any");
-  const [factTypes, setFactTypes] = useState<Array<"world" | "experience" | "observation">>([]);
+  const [factTypes, setFactTypes] = useState<FactType[]>([]);
   const [excludeMentalModels, setExcludeMentalModels] = useState(false);
   const [excludeMentalModelIds, setExcludeMentalModelIds] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -289,20 +290,7 @@ export function ThinkView() {
 
           {/* Fact Types & Mental Model Filters */}
           <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Fact types:</span>
-              {(["world", "experience", "observation"] as const).map((ft) => (
-                <label key={ft} className="flex items-center gap-1.5 cursor-pointer">
-                  <Checkbox
-                    checked={factTypes.includes(ft)}
-                    onCheckedChange={(checked) =>
-                      setFactTypes(checked ? [...factTypes, ft] : factTypes.filter((f) => f !== ft))
-                    }
-                  />
-                  <span className="text-sm capitalize">{ft}</span>
-                </label>
-              ))}
-            </div>
+            <FactTypeFilter value={factTypes} onChange={setFactTypes} />
             <div className="h-6 w-px bg-border" />
             <label className="flex items-center gap-2 cursor-pointer">
               <Checkbox

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FactType, FactTypeCheckboxGroup } from "@/components/fact-type-filter";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -682,29 +683,24 @@ function CreateMentalModelDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="basic" className="py-2">
+        <Tabs defaultValue="general" className="py-2">
           <TabsList className="w-full">
-            <TabsTrigger value="basic" className="flex-1">
-              Basic
+            <TabsTrigger value="general" className="flex-1">
+              General
             </TabsTrigger>
             <TabsTrigger value="options" className="flex-1">
               Options
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="basic" className="space-y-4 pt-4">
+          <TabsContent value="general" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                ID <span className="text-muted-foreground font-normal">(optional)</span>
-              </label>
+              <label className="text-sm font-medium text-foreground">ID</label>
               <Input
                 value={form.id}
                 onChange={(e) => setForm({ ...form, id: e.target.value })}
                 placeholder="e.g., team-communication"
               />
-              <p className="text-xs text-muted-foreground">
-                Custom ID for the mental model. If not provided, a UUID will be generated.
-              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Name *</label>
@@ -721,9 +717,6 @@ function CreateMentalModelDialog({
                 onChange={(e) => setForm({ ...form, sourceQuery: e.target.value })}
                 placeholder="e.g., How does the team prefer to communicate?"
               />
-              <p className="text-xs text-muted-foreground">
-                This query will be run to generate the initial content, and re-run when you refresh.
-              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Max Tokens</label>
@@ -735,17 +728,12 @@ function CreateMentalModelDialog({
                 min="256"
                 max="8192"
               />
-              <p className="text-xs text-muted-foreground">
-                Maximum tokens for the generated response (256-8192).
-              </p>
             </div>
           </TabsContent>
 
           <TabsContent value="options" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Tags <span className="text-muted-foreground font-normal">(optional)</span>
-              </label>
+              <label className="text-sm font-medium text-foreground">Tags</label>
               <Input
                 value={form.tags}
                 onChange={(e) => setForm({ ...form, tags: e.target.value })}
@@ -765,34 +753,13 @@ function CreateMentalModelDialog({
                 Auto-refresh after consolidation
               </label>
             </div>
-            <p className="text-xs text-muted-foreground -mt-2 ml-6">
-              Automatically refresh this mental model when memories are consolidated.
-            </p>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Fact Types <span className="text-muted-foreground font-normal">(optional)</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {(["world", "experience", "observation"] as const).map((ft) => (
-                  <label key={ft} className="flex items-center space-x-1.5 cursor-pointer">
-                    <Checkbox
-                      checked={form.factTypes.includes(ft)}
-                      onCheckedChange={(checked) =>
-                        setForm({
-                          ...form,
-                          factTypes: checked
-                            ? [...form.factTypes, ft]
-                            : form.factTypes.filter((f) => f !== ft),
-                        })
-                      }
-                    />
-                    <span className="text-sm capitalize">{ft}</span>
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Restrict which fact types are used when refreshing. Leave empty to use all types.
-              </p>
+              <label className="text-sm font-medium text-foreground">Fact Types</label>
+              <FactTypeCheckboxGroup
+                value={form.factTypes}
+                onChange={(v) => setForm({ ...form, factTypes: v as FactType[] })}
+              />
+              <p className="text-xs text-muted-foreground">Leave empty to include all types.</p>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -809,22 +776,15 @@ function CreateMentalModelDialog({
                 Exclude other mental models
               </label>
             </div>
-            <p className="text-xs text-muted-foreground -mt-2 ml-6">
-              Skip searching other mental models when refreshing this one.
-            </p>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
-                Exclude Mental Model IDs{" "}
-                <span className="text-muted-foreground font-normal">(optional)</span>
+                Exclude Mental Model IDs
               </label>
               <Input
                 value={form.excludeMentalModelIds}
                 onChange={(e) => setForm({ ...form, excludeMentalModelIds: e.target.value })}
                 placeholder="e.g., model-a, model-b (comma-separated)"
               />
-              <p className="text-xs text-muted-foreground">
-                Specific mental model IDs to exclude when refreshing.
-              </p>
             </div>
           </TabsContent>
         </Tabs>
@@ -947,21 +907,20 @@ function UpdateMentalModelDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="basic" className="py-2">
+        <Tabs defaultValue="general" className="py-2">
           <TabsList className="w-full">
-            <TabsTrigger value="basic" className="flex-1">
-              Basic
+            <TabsTrigger value="general" className="flex-1">
+              General
             </TabsTrigger>
             <TabsTrigger value="options" className="flex-1">
               Options
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="basic" className="space-y-4 pt-4">
+          <TabsContent value="general" className="space-y-4 pt-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">ID</label>
               <Input value={mentalModel.id} disabled className="bg-muted" />
-              <p className="text-xs text-muted-foreground">ID cannot be changed after creation.</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Name *</label>
@@ -978,9 +937,6 @@ function UpdateMentalModelDialog({
                 onChange={(e) => setForm({ ...form, sourceQuery: e.target.value })}
                 placeholder="e.g., How does the team prefer to communicate?"
               />
-              <p className="text-xs text-muted-foreground">
-                This query will be run to generate the initial content, and re-run when you refresh.
-              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Max Tokens</label>
@@ -992,17 +948,12 @@ function UpdateMentalModelDialog({
                 min="256"
                 max="8192"
               />
-              <p className="text-xs text-muted-foreground">
-                Maximum tokens for the generated response (256-8192).
-              </p>
             </div>
           </TabsContent>
 
           <TabsContent value="options" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Tags <span className="text-muted-foreground font-normal">(optional)</span>
-              </label>
+              <label className="text-sm font-medium text-foreground">Tags</label>
               <Input
                 value={form.tags}
                 onChange={(e) => setForm({ ...form, tags: e.target.value })}
@@ -1022,34 +973,13 @@ function UpdateMentalModelDialog({
                 Auto-refresh after consolidation
               </label>
             </div>
-            <p className="text-xs text-muted-foreground -mt-2 ml-6">
-              Automatically refresh this mental model when memories are consolidated.
-            </p>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Fact Types <span className="text-muted-foreground font-normal">(optional)</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {(["world", "experience", "observation"] as const).map((ft) => (
-                  <label key={ft} className="flex items-center space-x-1.5 cursor-pointer">
-                    <Checkbox
-                      checked={form.factTypes.includes(ft)}
-                      onCheckedChange={(checked) =>
-                        setForm({
-                          ...form,
-                          factTypes: checked
-                            ? [...form.factTypes, ft]
-                            : form.factTypes.filter((f) => f !== ft),
-                        })
-                      }
-                    />
-                    <span className="text-sm capitalize">{ft}</span>
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Restrict which fact types are used when refreshing. Leave empty to use all types.
-              </p>
+              <label className="text-sm font-medium text-foreground">Fact Types</label>
+              <FactTypeCheckboxGroup
+                value={form.factTypes}
+                onChange={(v) => setForm({ ...form, factTypes: v as FactType[] })}
+              />
+              <p className="text-xs text-muted-foreground">Leave empty to include all types.</p>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -1066,22 +996,15 @@ function UpdateMentalModelDialog({
                 Exclude other mental models
               </label>
             </div>
-            <p className="text-xs text-muted-foreground -mt-2 ml-6">
-              Skip searching other mental models when refreshing this one.
-            </p>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
-                Exclude Mental Model IDs{" "}
-                <span className="text-muted-foreground font-normal">(optional)</span>
+                Exclude Mental Model IDs
               </label>
               <Input
                 value={form.excludeMentalModelIds}
                 onChange={(e) => setForm({ ...form, excludeMentalModelIds: e.target.value })}
                 placeholder="e.g., model-a, model-b (comma-separated)"
               />
-              <p className="text-xs text-muted-foreground">
-                Specific mental model IDs to exclude when refreshing.
-              </p>
             </div>
           </TabsContent>
         </Tabs>
