@@ -362,10 +362,10 @@ for md_file in refs_dir.rglob("*.md"):
             url, frag = url.split('#', 1)
             anchor = '#' + frag
         if not url or url == '/':
-            return match.group(0)
+            return text  # strip link, keep text
         resolved = try_resolve(url, refs_dir)
         if resolved is None:
-            return match.group(0)
+            return text  # strip unresolvable link, keep text
         rel = os.path.relpath(resolved, md_file.parent)
         return f'[{text}]({rel}{anchor})'
 
