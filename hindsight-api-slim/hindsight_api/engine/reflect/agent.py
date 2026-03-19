@@ -363,6 +363,8 @@ async def run_reflect_agent(
         include_observations=include_observations,
         include_recall=include_recall,
     )
+    # Build set of enabled tool names to guard against LLM hallucinating disabled tool calls
+    enabled_tools: frozenset[str] = frozenset(t["function"]["name"] for t in tools if t.get("type") == "function")
 
     # Build initial messages (directives are injected into system prompt at START and END)
     system_prompt = build_system_prompt_for_tools(
@@ -791,6 +793,7 @@ async def run_reflect_agent(
                     search_observations_fn,
                     recall_fn,
                     expand_fn,
+                    enabled_tools=enabled_tools,
                 )
                 for tc in other_tools
             ]
@@ -980,6 +983,7 @@ async def _execute_tool_with_timing(
     search_observations_fn: Callable[[str, int], Awaitable[dict[str, Any]]],
     recall_fn: Callable[[str, int, int], Awaitable[dict[str, Any]]],
     expand_fn: Callable[[list[str], str], Awaitable[dict[str, Any]]],
+    enabled_tools: frozenset[str] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """Execute a tool call and return result with timing."""
     from hindsight_api.tracing import get_tracer
@@ -1013,6 +1017,7 @@ async def _execute_tool_with_timing(
                 search_observations_fn,
                 recall_fn,
                 expand_fn,
+                enabled_tools=enabled_tools,
             )
 
             # Set success attributes
@@ -1052,10 +1057,15 @@ async def _execute_tool(
     search_observations_fn: Callable[[str, int], Awaitable[dict[str, Any]]],
     recall_fn: Callable[[str, int, int], Awaitable[dict[str, Any]]],
     expand_fn: Callable[[list[str], str], Awaitable[dict[str, Any]]],
+    enabled_tools: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Execute a single tool by name."""
     # Normalize tool name for various LLM output formats
     tool_name = _normalize_tool_name(tool_name)
+
+    # Guard against LLMs hallucinating calls to tools that were not provided
+    if enabled_tools is not None and tool_name not in enabled_tools and tool_name not in ("done", "expand"):
+        return {"error": f"Tool '{tool_name}' is not available. Use only the tools provided to you."}
 
     if tool_name == "search_mental_models":
         query = args.get("query")
