@@ -42,6 +42,12 @@ await client.createBank('my-bank');
 hindsight bank create my-bank
 ```
 
+### Go
+
+```go
+# Section 'create-bank' not found in api/memory-banks.go
+```
+
 ## Bank Configuration
 
 Each memory bank can be configured independently per operation. Configuration can be set via the [bank config API](#updating-configuration), the Control Plane UI, or [server-wide environment variables](../configuration.md).
@@ -214,6 +220,22 @@ await client.updateBankConfig('architect-bank', {
 });
 ```
 
+### CLI
+
+```bash
+hindsight bank create architect-bank \
+  --mission "You're a senior software architect - keep track of system designs, technology decisions, and architectural patterns. Prefer simplicity over cutting-edge." \
+  --skepticism 4 \
+  --literalism 4 \
+  --empathy 2
+```
+
+### Go
+
+```go
+# Section 'bank-with-disposition' not found in api/memory-banks.go
+```
+
 | Value | Behaviour |
 |-------|-----------|
 | `1` | Trusting — accepts information at face value |
@@ -300,6 +322,24 @@ await client.updateBankConfig('my-bank', {
 });
 ```
 
+### CLI
+
+```bash
+hindsight bank set-config my-bank \
+  --retain-mission "Always include technical decisions, API design choices, and architectural trade-offs. Ignore meeting logistics and social exchanges." \
+  --retain-extraction-mode verbose \
+  --observations-mission "Observations are stable facts about people and projects. Always include preferences, skills, and recurring patterns. Ignore one-off events." \
+  --disposition-skepticism 4 \
+  --disposition-literalism 4 \
+  --disposition-empathy 2
+```
+
+### Go
+
+```go
+# Section 'update-bank-config' not found in api/memory-banks.go
+```
+
 You can update any subset of fields — only the keys you provide are changed.
 
 ### Reading the Current Configuration
@@ -322,6 +362,22 @@ const { config, overrides } = await client.getBankConfig('my-bank');
 // overrides — only fields overridden at the bank level
 ```
 
+### CLI
+
+```bash
+# Returns resolved config (server defaults merged with bank overrides)
+hindsight bank config my-bank
+
+# Show only bank-specific overrides
+hindsight bank config my-bank --overrides-only
+```
+
+### Go
+
+```go
+# Section 'get-bank-config' not found in api/memory-banks.go
+```
+
 The response distinguishes:
 - **`config`** — the fully resolved configuration (server defaults merged with bank overrides)
 - **`overrides`** — only the fields explicitly overridden for this bank
@@ -340,6 +396,19 @@ client.reset_bank_config("my-bank")
 ```javascript
 // Remove all bank-level overrides, reverting to server defaults
 await client.resetBankConfig('my-bank');
+```
+
+### CLI
+
+```bash
+# Remove all bank-level overrides, reverting to server defaults
+hindsight bank reset-config my-bank -y
+```
+
+### Go
+
+```go
+# Section 'reset-bank-config' not found in api/memory-banks.go
 ```
 
 This removes all bank-level overrides. The bank reverts to server-wide defaults (set via environment variables).
@@ -391,6 +460,21 @@ const directive = await client.createDirective(
 console.log(`Created directive: ${directive.id}`);
 ```
 
+### CLI
+
+```bash
+# Create a directive (hard rule for reflect)
+hindsight directive create "$BANK_ID" \
+  "Formal Language" \
+  "Always respond in formal English, avoiding slang and colloquialisms."
+```
+
+### Go
+
+```go
+# Section 'create-directive' not found in api/directives.go
+```
+
 ### Listing Directives
 
 ### Python
@@ -412,6 +496,19 @@ const directives = await client.listDirectives(BANK_ID);
 for (const d of directives.items) {
     console.log(`- ${d.name}: ${d.content.slice(0, 50)}...`);
 }
+```
+
+### CLI
+
+```bash
+# List all directives in a bank
+hindsight directive list "$BANK_ID"
+```
+
+### Go
+
+```go
+# Section 'list-directives' not found in api/directives.go
 ```
 
 ### Updating Directives
@@ -440,6 +537,18 @@ const updated = await client.updateDirective(BANK_ID, directiveId, {
 console.log(`Directive active: ${updated.is_active}`);
 ```
 
+### CLI
+
+```bash
+# Section 'update-directive' not found in api/directives.sh
+```
+
+### Go
+
+```go
+# Section 'update-directive' not found in api/directives.go
+```
+
 ### Deleting Directives
 
 ### Python
@@ -457,6 +566,18 @@ client.delete_directive(
 ```javascript
 // Delete a directive
 await client.deleteDirective(BANK_ID, directiveId);
+```
+
+### CLI
+
+```bash
+# Section 'delete-directive' not found in api/directives.sh
+```
+
+### Go
+
+```go
+# Section 'delete-directive' not found in api/directives.go
 ```
 
 ### Directives vs Disposition

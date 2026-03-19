@@ -28,7 +28,7 @@ All documentation is in `references/` organized by category:
 references/
 ├── best-practices.md # START HERE — missions, tags, formats, anti-patterns
 ├── faq.md            # Common questions and decisions
-├── changelog.md      # Release history and version changes
+├── changelog/        # Release history and version changes (index.md + integrations/)
 ├── openapi.json      # Full OpenAPI spec — endpoint schemas, request/response models
 ├── developer/
 │   ├── api/          # Core operations: retain, recall, reflect, memory banks

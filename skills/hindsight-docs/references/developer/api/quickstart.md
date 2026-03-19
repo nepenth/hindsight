@@ -105,6 +105,16 @@ hindsight memory recall my-bank "What does Alice do?"
 hindsight memory reflect my-bank "Tell me about Alice"
 ```
 
+### Go
+
+```bash
+go get github.com/vectorize-io/hindsight/hindsight-clients/go
+```
+
+```go
+# Section 'quickstart-full' not found in api/quickstart.go
+```
+
 ---
 
 ## What's Happening

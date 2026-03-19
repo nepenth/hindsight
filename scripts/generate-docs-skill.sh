@@ -159,7 +159,7 @@ done
 
 # Process standalone pages (e.g. best-practices, faq) from src/pages/
 print_info "Processing standalone pages..."
-for page in best-practices faq changelog; do
+for page in best-practices faq; do
     for ext in md mdx; do
         src="$PAGES_DIR/$page.$ext"
         if [ -f "$src" ]; then
@@ -174,6 +174,38 @@ for page in best-practices faq changelog; do
         fi
     done
 done
+
+# Process changelog — may be a single file or a directory
+if [ -f "$PAGES_DIR/changelog.md" ] || [ -f "$PAGES_DIR/changelog.mdx" ]; then
+    for ext in md mdx; do
+        src="$PAGES_DIR/changelog.$ext"
+        if [ -f "$src" ]; then
+            dest="$REFS_DIR/changelog.md"
+            mkdir -p "$(dirname "$dest")"
+            if [[ "$src" == *.mdx ]]; then
+                convert_mdx_to_md "$src" "$dest"
+            else
+                cp "$src" "$dest"
+            fi
+            print_info "Included page: changelog.$ext"
+        fi
+    done
+elif [ -d "$PAGES_DIR/changelog" ]; then
+    find "$PAGES_DIR/changelog" -type f \( -name "*.md" -o -name "*.mdx" \) | while read -r file; do
+        rel="${file#$PAGES_DIR/}"
+        dest="$REFS_DIR/$rel"
+        if [[ "$file" == *.mdx ]]; then
+            dest="${dest%.mdx}.md"
+        fi
+        mkdir -p "$(dirname "$dest")"
+        if [[ "$file" == *.mdx ]]; then
+            convert_mdx_to_md "$file" "$dest"
+        else
+            cp "$file" "$dest"
+        fi
+        print_info "Included changelog: ${file#$PAGES_DIR/changelog/}"
+    done
+fi
 
 # Copy OpenAPI spec into the skill
 OPENAPI_SRC="$ROOT_DIR/hindsight-docs/static/openapi.json"
@@ -217,7 +249,7 @@ All documentation is in `references/` organized by category:
 references/
 ├── best-practices.md # START HERE — missions, tags, formats, anti-patterns
 ├── faq.md            # Common questions and decisions
-├── changelog.md      # Release history and version changes
+├── changelog/        # Release history and version changes (index.md + integrations/)
 ├── openapi.json      # Full OpenAPI spec — endpoint schemas, request/response models
 ├── developer/
 │   ├── api/          # Core operations: retain, recall, reflect, memory banks
