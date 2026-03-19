@@ -7407,21 +7407,10 @@ class MemoryEngine(MemoryEngineInterface):
 
         operation_id = uuid.uuid4()
 
-        # Insert operation record into database
-        async with acquire_with_retry(pool) as conn:
-            await conn.execute(
-                f"""
-                INSERT INTO {fq_table("async_operations")} (operation_id, bank_id, operation_type, result_metadata, status)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                operation_id,
-                bank_id,
-                operation_type,
-                json.dumps(result_metadata or {}),
-                "pending",
-            )
-
-        # Build and submit task payload
+        # Build full payload before INSERT so task_payload is included atomically.
+        # Previously the INSERT omitted task_payload and a separate submit_task call
+        # did an UPDATE — a crash between the two left a null-payload row that the
+        # worker's claim query (task_payload IS NOT NULL) could never pick up.
         full_payload = {
             "type": task_type,
             "operation_id": str(operation_id),
@@ -7429,6 +7418,24 @@ class MemoryEngine(MemoryEngineInterface):
             **task_payload,
         }
 
+        # Insert operation record with task_payload in a single atomic statement
+        async with acquire_with_retry(pool) as conn:
+            await conn.execute(
+                f"""
+                INSERT INTO {fq_table("async_operations")} (operation_id, bank_id, operation_type, result_metadata, status, task_payload)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                """,
+                operation_id,
+                bank_id,
+                operation_type,
+                json.dumps(result_metadata or {}),
+                "pending",
+                json.dumps(full_payload),
+            )
+
+        # For SyncTaskBackend: executes the task immediately.
+        # For BrokerTaskBackend: does an idempotent UPDATE (payload already set above),
+        # kept for symmetry and to support any future notification mechanisms.
         await self._task_backend.submit_task(full_payload)
 
         logger.info(f"{operation_type} task queued for bank_id={bank_id}, operation_id={operation_id}")
