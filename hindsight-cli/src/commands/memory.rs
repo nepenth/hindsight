@@ -342,6 +342,9 @@ pub fn reflect(
         tags: None,
         tags_match: TagsMatch::Any,
         tag_groups: None,
+        fact_types: None,
+        exclude_mental_models: false,
+        exclude_mental_model_ids: None,
     };
 
     let response = client.reflect(agent_id, &request, verbose);
