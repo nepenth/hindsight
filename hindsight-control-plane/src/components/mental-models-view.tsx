@@ -753,7 +753,7 @@ function CreateMentalModelDialog({
                 Auto-refresh after consolidation
               </label>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <label className="text-sm font-medium text-foreground">Fact Types</label>
               <FactTypeCheckboxGroup
                 value={form.factTypes}
@@ -773,7 +773,7 @@ function CreateMentalModelDialog({
                 htmlFor="exclude-mental-models"
                 className="text-sm font-medium text-foreground cursor-pointer"
               >
-                Exclude other mental models
+                Exclude all mental models
               </label>
             </div>
             <div className="space-y-2">
@@ -973,7 +973,7 @@ function UpdateMentalModelDialog({
                 Auto-refresh after consolidation
               </label>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <label className="text-sm font-medium text-foreground">Fact Types</label>
               <FactTypeCheckboxGroup
                 value={form.factTypes}
@@ -993,7 +993,7 @@ function UpdateMentalModelDialog({
                 htmlFor="update-exclude-mental-models"
                 className="text-sm font-medium text-foreground cursor-pointer"
               >
-                Exclude other mental models
+                Exclude all mental models
               </label>
             </div>
             <div className="space-y-2">
