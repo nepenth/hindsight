@@ -44,7 +44,7 @@ hindsight bank create my-bank
 
 ## Bank Configuration
 
-Each memory bank can be configured independently per operation. Configuration can be set via the [bank config API](#updating-configuration), the [Control Plane UI](/), or [server-wide environment variables](/developer/configuration).
+Each memory bank can be configured independently per operation. Configuration can be set via the [bank config API](#updating-configuration), the Control Plane UI, or [server-wide environment variables](../configuration.md).
 
 ### retain_mission {#retain-configuration}
 
@@ -77,7 +77,7 @@ Maximum number of characters per chunk when splitting content for fact extractio
 
 Default: `3000`
 
-See [Retain configuration](/developer/configuration#retain) for environment variable names and defaults.
+See [Retain configuration](../configuration.md#retain) for environment variable names and defaults.
 
 ### entity_labels {#entity-labels}
 
@@ -172,7 +172,7 @@ Total token budget for source facts included with observations in the consolidat
 
 Per-observation token cap for source facts in the consolidation prompt. Each observation independently gets at most this many tokens of source facts, preventing a single observation with many source facts from consuming the entire budget. `-1` = unlimited. Leave unset to use the server default (`256`).
 
-See [Observations configuration](/developer/configuration#observations) for environment variable names and defaults.
+See [Observations configuration](../configuration.md#observations) for environment variable names and defaults.
 
 ### reflect_mission
 
@@ -344,7 +344,7 @@ await client.resetBankConfig('my-bank');
 
 This removes all bank-level overrides. The bank reverts to server-wide defaults (set via environment variables).
 
-You can also update configuration directly from the [Control Plane UI](/) — navigate to a bank and open the **Configuration** tab.
+You can also update configuration directly from the Control Plane UI — navigate to a bank and open the **Configuration** tab.
 
 ---
 

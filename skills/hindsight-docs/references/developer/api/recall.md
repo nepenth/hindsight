@@ -8,7 +8,7 @@ When you **recall**, Hindsight runs four retrieval strategies in parallel — se
 {/* Import raw source files */}
 
 :::info How Recall Works
-Learn about the four retrieval strategies (semantic, keyword, graph, temporal) and RRF fusion in the [Recall Architecture](/developer/retrieval) guide.
+Learn about the four retrieval strategies (semantic, keyword, graph, temporal) and RRF fusion in the [Recall Architecture](../retrieval.md) guide.
 > **💡 Prerequisites**
 > 
 Make sure you've completed the [Quick Start](./quickstart) to install the client and start the server.
