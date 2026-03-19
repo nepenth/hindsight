@@ -803,7 +803,9 @@ async def run_reflect_agent(
                         "tool_call_id": tc.id,
                         "name": tc.name,
                         "content": json.dumps(
-                            {"error": f"Tool '{_normalize_tool_name(tc.name)}' is not available. Use only the tools provided to you."}
+                            {
+                                "error": f"Tool '{_normalize_tool_name(tc.name)}' is not available. Use only the tools provided to you."
+                            }
                         ),
                     }
                 )
