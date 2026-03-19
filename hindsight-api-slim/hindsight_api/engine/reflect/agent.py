@@ -316,6 +316,8 @@ async def run_reflect_agent(
     response_schema: dict | None = None,
     directives: list[dict[str, Any]] | None = None,
     has_mental_models: bool = False,
+    include_observations: bool = True,
+    include_recall: bool = True,
     budget: str | None = None,
     max_context_tokens: int = 100_000,
 ) -> ReflectAgentResult:
@@ -355,7 +357,12 @@ async def run_reflect_agent(
     directive_rules = _extract_directive_rules(directives) if directives else None
 
     # Get tools for this agent (with directive compliance field if directives exist)
-    tools = get_reflect_tools(directive_rules=directive_rules)
+    tools = get_reflect_tools(
+        directive_rules=directive_rules,
+        include_mental_models=has_mental_models,
+        include_observations=include_observations,
+        include_recall=include_recall,
+    )
 
     # Build initial messages (directives are injected into system prompt at START and END)
     system_prompt = build_system_prompt_for_tools(
@@ -538,19 +545,18 @@ async def run_reflect_agent(
         llm_start = time.time()
 
         # Determine tool_choice for this iteration.
-        # Force the full hierarchical retrieval path before allowing auto:
-        # With mental models:
-        #   0 → search_mental_models, 1 → search_observations, 2 → recall, 3+ → auto
-        # Without mental models:
-        #   0 → search_observations, 1 → recall, 2+ → auto
-        if iteration == 0 and has_mental_models:
-            iter_tool_choice: str | dict = {"type": "function", "function": {"name": "search_mental_models"}}
-        elif iteration == 0:
-            iter_tool_choice = {"type": "function", "function": {"name": "search_observations"}}
-        elif iteration == 1 and has_mental_models:
-            iter_tool_choice = {"type": "function", "function": {"name": "search_observations"}}
-        elif iteration == 1 or (iteration == 2 and has_mental_models):
-            iter_tool_choice = {"type": "function", "function": {"name": "recall"}}
+        # Force the full hierarchical retrieval path (only for enabled tools) before allowing auto.
+        # Build the forced sequence from the tools that are actually enabled.
+        forced_sequence = []
+        if has_mental_models:
+            forced_sequence.append("search_mental_models")
+        if include_observations:
+            forced_sequence.append("search_observations")
+        if include_recall:
+            forced_sequence.append("recall")
+
+        if iteration < len(forced_sequence):
+            iter_tool_choice: str | dict = {"type": "function", "function": {"name": forced_sequence[iteration]}}
         else:
             iter_tool_choice = "auto"
 
