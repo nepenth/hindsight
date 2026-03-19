@@ -76,9 +76,35 @@ Creating a mental model runs a reflect operation in the background and saves the
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Human-readable name for the mental model |
 | `source_query` | string | Yes | The query to run to generate content |
+| `id` | string | No | Custom ID for the mental model (alphanumeric lowercase with hyphens). Auto-generated if omitted. |
 | `tags` | list | No | Tags for filtering during retrieval |
 | `max_tokens` | int | No | Maximum tokens for the mental model content |
 | `trigger` | object | No | Trigger settings (see [Automatic Refresh](#automatic-refresh)) |
+
+---
+
+## Create with Custom ID
+
+Assign a stable, human-readable ID to a mental model so you can retrieve or update it by name instead of relying on the auto-generated UUID:
+
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={mentalModelsPy} section="create-mental-model-with-id" language="python" />
+</TabItem>
+<TabItem value="node" label="Node.js">
+<CodeSnippet code={mentalModelsMjs} section="create-mental-model-with-id" language="javascript" />
+</TabItem>
+<TabItem value="cli" label="CLI">
+<CodeSnippet code={mentalModelsSh} section="create-mental-model-with-id" language="bash" />
+</TabItem>
+<TabItem value="go" label="Go">
+<CodeSnippet code={mentalModelsGo} section="create-mental-model-with-id" language="go" />
+</TabItem>
+</Tabs>
+
+:::tip
+Custom IDs must be lowercase alphanumeric and may contain hyphens (e.g. `team-policies`, `q4-status`). If a mental model with that ID already exists, the request is rejected.
+:::
 
 ---
 

@@ -24,25 +24,39 @@ await new Promise(r => setTimeout(r, 2000));
 
 // [docs:create-mental-model]
 // Create a mental model (runs reflect in background)
-const result = await client.createMentalModel(BANK_ID, {
-    name: 'Team Communication Preferences',
-    sourceQuery: 'How does the team prefer to communicate?',
-    tags: ['team', 'communication'],
-});
+const result = await client.createMentalModel(
+    BANK_ID,
+    'Team Communication Preferences',
+    'How does the team prefer to communicate?',
+    { tags: ['team', 'communication'] },
+);
 
 // Returns an operation_id — check operations endpoint for completion
 console.log(`Operation ID: ${result.operation_id}`);
 // [/docs:create-mental-model]
 
+// [docs:create-mental-model-with-id]
+// Create a mental model with a specific custom ID
+const resultWithId = await client.createMentalModel(
+    BANK_ID,
+    'Communication Policy',
+    "What are the team's communication guidelines?",
+    { id: 'communication-policy' },
+);
+
+console.log(`Created with custom ID: ${resultWithId.operation_id}`);
+// [/docs:create-mental-model-with-id]
+
 await new Promise(r => setTimeout(r, 5000));
 
 // [docs:create-mental-model-with-trigger]
 // Create a mental model with automatic refresh enabled
-const result2 = await client.createMentalModel(BANK_ID, {
-    name: 'Project Status',
-    sourceQuery: 'What is the current project status?',
-    trigger: { refresh_after_consolidation: true },
-});
+const result2 = await client.createMentalModel(
+    BANK_ID,
+    'Project Status',
+    'What is the current project status?',
+    { trigger: { refreshAfterConsolidation: true } },
+);
 
 // This mental model will automatically refresh when observations are updated
 console.log(`Operation ID: ${result2.operation_id}`);

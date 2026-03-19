@@ -80,7 +80,9 @@ func main() {
 		log.Fatalf("Failed to list documents: %v", err)
 	}
 	for _, d := range docs.Items {
-		fmt.Printf("%s: %d memories\n", d.GetId(), d.GetMemoryUnitCount())
+		id, _ := d["id"].(string)
+		memCount, _ := d["memory_unit_count"].(float64)
+		fmt.Printf("%s: %d memories\n", id, int(memCount))
 	}
 	// [/docs:document-list]
 

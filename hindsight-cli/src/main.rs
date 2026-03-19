@@ -726,6 +726,15 @@ enum MentalModelCommands {
         /// Mental model ID
         mental_model_id: String,
     },
+
+    /// Get the change history of a mental model
+    History {
+        /// Bank ID
+        bank_id: String,
+
+        /// Mental model ID
+        mental_model_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -981,6 +990,9 @@ fn run() -> Result<()> {
             }
             MentalModelCommands::Refresh { bank_id, mental_model_id } => {
                 commands::mental_model::refresh(&client, &bank_id, &mental_model_id, verbose, output_format)
+            }
+            MentalModelCommands::History { bank_id, mental_model_id } => {
+                commands::mental_model::history(&client, &bank_id, &mental_model_id, verbose, output_format)
             }
         },
 

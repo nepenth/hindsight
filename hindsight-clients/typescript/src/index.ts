@@ -628,6 +628,7 @@ export class HindsightClient {
         name: string,
         sourceQuery: string,
         options?: {
+            id?: string;
             tags?: string[];
             maxTokens?: number;
             trigger?: { refreshAfterConsolidation?: boolean };
@@ -637,6 +638,7 @@ export class HindsightClient {
             client: this.client,
             path: { bank_id: bankId },
             body: {
+                id: options?.id,
                 name,
                 source_query: sourceQuery,
                 tags: options?.tags,

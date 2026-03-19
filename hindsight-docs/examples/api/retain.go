@@ -114,7 +114,7 @@ func main() {
 	// [docs:retain-files]
 	// Open a file and upload it — Hindsight converts it to text and extracts memories.
 	// Supports: PDF, DOCX, PPTX, XLSX, images (OCR), audio (transcription), and text formats.
-	f, err := os.Open("examples/api/sample.pdf")
+	f, err := os.Open("../../hindsight-docs/examples/api/sample.pdf")
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
 	}

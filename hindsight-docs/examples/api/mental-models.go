@@ -59,6 +59,19 @@ func main() {
 	fmt.Printf("Operation ID: %s\n", result.GetOperationId())
 	// [/docs:create-mental-model]
 
+	// [docs:create-mental-model-with-id]
+	// Create a mental model with a specific custom ID
+	mmID := "communication-policy"
+	resultWithID, _, _ := client.MentalModelsAPI.CreateMentalModel(ctx, mmBankID).
+		CreateMentalModelRequest(hindsight.CreateMentalModelRequest{
+			Id:          *hindsight.NewNullableString(&mmID),
+			Name:        "Communication Policy",
+			SourceQuery: "What are the team's communication guidelines?",
+		}).Execute()
+
+	fmt.Printf("Created with custom ID: %s\n", resultWithID.GetOperationId())
+	// [/docs:create-mental-model-with-id]
+
 	time.Sleep(5 * time.Second)
 
 	// [docs:create-mental-model-with-trigger]

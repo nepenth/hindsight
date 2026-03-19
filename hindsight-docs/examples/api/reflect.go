@@ -46,7 +46,7 @@ func main() {
 	// [/docs:reflect-basic]
 
 	// [docs:reflect-with-params]
-	budgetMid := hindsight.BUDGET_MID
+	budgetMid := hindsight.MID
 	client.MemoryAPI.Reflect(ctx, "my-bank").
 		ReflectRequest(hindsight.ReflectRequest{
 			Query:  "We're considering a hybrid work policy. What do you think about remote work?",

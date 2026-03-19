@@ -61,7 +61,7 @@ func main() {
 	// [/docs:recall-basic]
 
 	// [docs:recall-with-options]
-	budgetHigh := hindsight.BUDGET_HIGH
+	budgetHigh := hindsight.HIGH
 	maxTokens := int32(8000)
 	traceTrue := true
 	detailedResponse, _, _ := client.MemoryAPI.RecallMemories(ctx, "my-bank").
@@ -129,7 +129,7 @@ func main() {
 	// [/docs:recall-source-facts]
 
 	// [docs:recall-budget-levels]
-	budgetLow := hindsight.BUDGET_LOW
+	budgetLow := hindsight.LOW
 	// Quick lookup
 	client.MemoryAPI.RecallMemories(ctx, "my-bank").
 		RecallRequest(hindsight.RecallRequest{

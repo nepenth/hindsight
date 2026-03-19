@@ -27,6 +27,14 @@ hindsight mental-model create "$BANK_ID" \
   "How does the team prefer to communicate?"
 # [/docs:create-mental-model]
 
+# [docs:create-mental-model-with-id]
+# Create a mental model with a specific custom ID
+hindsight mental-model create "$BANK_ID" \
+  "Communication Policy" \
+  "What are the team's communication guidelines?" \
+  --id communication-policy
+# [/docs:create-mental-model-with-id]
+
 sleep 5
 
 # [docs:create-mental-model-with-trigger]
