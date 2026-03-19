@@ -789,10 +789,10 @@ class Hindsight:
         bank_id: str,
         name: str,
         source_query: str,
-        id: str | None = None,
         tags: list[str] | None = None,
         max_tokens: int | None = None,
         trigger: dict[str, Any] | None = None,
+        id: str | None = None,
     ):
         """
         Create a mental model (runs reflect in background).
@@ -801,10 +801,10 @@ class Hindsight:
             bank_id: The memory bank ID
             name: Human-readable name for the mental model
             source_query: The query to run to generate content
-            id: Optional custom ID for the mental model (alphanumeric lowercase with hyphens)
             tags: Optional tags for filtering during retrieval
             max_tokens: Optional maximum tokens for the mental model content
             trigger: Optional trigger settings (e.g., {"refresh_after_consolidation": True})
+            id: Optional custom ID for the mental model (alphanumeric lowercase with hyphens)
 
         Returns:
             CreateMentalModelResponse with operation_id
