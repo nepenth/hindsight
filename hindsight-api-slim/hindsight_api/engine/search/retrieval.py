@@ -148,11 +148,15 @@ async def retrieve_semantic_bm25_combined(
     # --- Parameter layout ---
     # $1 = query_emb_str  (semantic arms)
     # $2 = bank_id
-    # $3 = limit          (BM25 LIMIT; semantic uses inlined hnsw_fetch literal)
-    # $4 = bm25_text      (only when tokens present)
-    # $N = tags           (N=4 when no tokens, N=5 when tokens present)
-    # $M+ = tag_groups params (one per leaf, starting after tags param)
-    tags_param_idx = 5 if tokens else 4
+    # When tokens present:
+    #   $3 = limit          (BM25 LIMIT; semantic uses inlined hnsw_fetch literal)
+    #   $4 = bm25_text
+    #   $5 = tags           (if present)
+    #   $6+ = tag_groups params (one per leaf)
+    # When no tokens ($3 is skipped — not included in params to avoid type inference gap):
+    #   $3 = tags           (if present)
+    #   $4+ = tag_groups params (one per leaf)
+    tags_param_idx = 5 if tokens else 3
     tags_clause = build_tags_where_clause_simple(tags, tags_param_idx, match=tags_match)
 
     # tag_groups params start immediately after the tags param slot
@@ -222,9 +226,10 @@ async def retrieve_semantic_bm25_combined(
 
     query = "\nUNION ALL\n".join(arms)
 
-    params: list = [query_emb_str, bank_id, limit]
+    params: list = [query_emb_str, bank_id]
     if tokens:
-        params.append(bm25_text_param)
+        params.append(limit)  # $3: BM25 LIMIT (only referenced when tokens are present)
+        params.append(bm25_text_param)  # $4
     if tags:
         params.append(tags)
     params.extend(groups_params)
