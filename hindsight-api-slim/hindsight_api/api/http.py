@@ -172,10 +172,9 @@ class RecallRequest(BaseModel):
     @field_validator("query")
     @classmethod
     def validate_query_not_empty(cls, v: str) -> str:
-        import re
+        from ..engine.search.retrieval import tokenize_query
 
-        tokens = re.sub(r"[^\w\s]", " ", v.lower()).split()
-        if not tokens:
+        if not tokenize_query(v):
             raise ValueError("query must contain at least one word character after normalization")
         return v
 

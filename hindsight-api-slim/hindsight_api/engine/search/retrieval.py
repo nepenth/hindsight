@@ -10,6 +10,7 @@ Implements:
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Optional
@@ -24,6 +25,15 @@ from .tags import TagGroup, TagsMatch, build_tag_groups_where_clause, build_tags
 from .types import MPFPTimings, RetrievalResult
 
 logger = logging.getLogger(__name__)
+
+
+def tokenize_query(query_text: str) -> list[str]:
+    """Normalize query text and split into BM25 tokens.
+
+    Strips punctuation, lowercases, and splits on whitespace.
+    Returns an empty list when the query contains no word characters.
+    """
+    return re.sub(r"[^\w\s]", " ", query_text.lower()).split()
 
 
 @dataclass
@@ -129,12 +139,9 @@ async def retrieve_semantic_bm25_combined(
     Returns:
         Dict mapping fact_type -> (semantic_results, bm25_results)
     """
-    import re
-
     result_dict: dict[str, tuple[list[RetrievalResult], list[RetrievalResult]]] = {ft: ([], []) for ft in fact_types}
 
-    sanitized_text = re.sub(r"[^\w\s]", " ", query_text.lower())
-    tokens = [token for token in sanitized_text.split() if token]
+    tokens = tokenize_query(query_text)
 
     # Over-fetch for HNSW approximation; semantic results trimmed to limit in Python.
     hnsw_fetch = max(limit * 5, 100)
