@@ -6,7 +6,7 @@ Biomimetic long-term memory for [Claude Code](https://docs.anthropic.com/en/docs
 
 ```bash
 # 1. Add the Hindsight marketplace and install the plugin
-claude plugin marketplace add vectorize-io/hindsight --sparse hindsight-integrations
+claude plugin marketplace add vectorize-io/hindsight
 claude plugin install hindsight-memory
 
 # 2. Configure your LLM provider for memory extraction
