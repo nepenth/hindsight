@@ -154,73 +154,35 @@ The plugin hooks into Claude Code's lifecycle:
 
 This is completely automatic. Once installed, every conversation builds your agent's memory, and every new prompt benefits from everything it has learned.
 
-### Step 7: Set Up Hindsight
-
-You need a running Hindsight server. There are three options:
-
-**Option A: Local daemon (easiest)**
-
-The plugin can auto-manage a local `hindsight-embed` daemon. You just need [uv][8] installed and an LLM API key for fact extraction:
+### Step 7: Install the Hindsight Plugin
 
 ```bash
-# Install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Set an LLM provider — Hindsight uses it to extract facts from conversations
-# Pick one:
-export OPENAI_API_KEY="sk-your-key"          # Uses gpt-4o-mini
-# or
-export ANTHROPIC_API_KEY="your-key"           # Uses claude-3-5-haiku
-# or
-export GEMINI_API_KEY="your-key"              # Uses gemini-2.5-flash
-# or
-export GROQ_API_KEY="your-key"                # Uses groq
+claude plugin marketplace add vectorize-io/hindsight --sparse hindsight-integrations
+claude plugin install hindsight-memory
 ```
 
-That's it — the plugin will download and start `hindsight-embed` automatically on first use.
+### Step 8: Configure Your LLM Provider
 
-**Option B: External Hindsight server**
-
-If you have a Hindsight server running (cloud or self-hosted), you can point the plugin at it directly. No local LLM needed — the server handles fact extraction.
-
-**Option C: Manual local server**
-
-If you prefer to manage the daemon yourself:
+Hindsight needs an LLM to extract facts from conversations. Pick one:
 
 ```bash
-uvx hindsight-embed@latest daemon start
-# Runs on port 9077 by default
+# Option A: OpenAI (auto-detected)
+export OPENAI_API_KEY="sk-your-key"
+
+# Option B: Anthropic (auto-detected)
+export ANTHROPIC_API_KEY="your-key"
+
+# Option C: No API key needed — use Claude Code's own model (personal/local use only)
+export HINDSIGHT_LLM_PROVIDER=claude-code
+
+# Option D: Connect to an external Hindsight server instead of running locally
+mkdir -p ~/.hindsight
+echo '{"hindsightApiUrl": "https://your-hindsight-server.com"}' > ~/.hindsight/claude-code.json
 ```
 
-### Step 8: Install the Hindsight Plugin
+Options A, B, and C all run a local Hindsight daemon automatically on first use — no separate setup required. Option D skips the local daemon entirely and points the plugin at an existing server.
 
-In your Claude Code session:
-
-```
-/plugin install hindsight-memory@claude-plugins-official
-/reload-plugins
-```
-
-The plugin is pure Python with zero external dependencies — no `pip install` required.
-
-### Step 9: Configure the Connection
-
-Edit the plugin's `settings.json` to match your setup.
-
-**For Option A (auto-managed daemon)** — no changes needed. The defaults work out of the box. The plugin will start a daemon on port `9077` and auto-detect your LLM provider from environment variables.
-
-**For Option B (external server)** — set your server URL:
-
-```json
-{
-  "hindsightApiUrl": "https://your-hindsight-server.com",
-  "hindsightApiToken": "your-token-if-needed"
-}
-```
-
-**For Option C (manual local server)** — if your server runs on the default port (`9077`), no changes needed. The plugin will detect it automatically.
-
-### Step 10: Customize Your Agent's Memory
+### Step 9: Customize Your Agent's Memory
 
 These are the settings that shape how your agent remembers. The defaults work well, but here's what you might want to tune:
 
@@ -244,7 +206,7 @@ These are the settings that shape how your agent remembers. The defaults work we
 
 The full configuration reference is in the [plugin README][9].
 
-### Step 11: Relaunch and Verify
+### Step 10: Relaunch and Verify
 
 Restart Claude Code with both plugins:
 
@@ -252,7 +214,7 @@ Restart Claude Code with both plugins:
 claude --channels plugin:telegram@claude-plugins-official
 ```
 
-Send your bot a few messages. Then check the logs — with `"debug": true` in settings.json, you'll see:
+Send your bot a few messages. Then check the logs — with `"debug": true` in `~/.hindsight/claude-code.json`, you'll see:
 
 ```
 [Hindsight] Recalling from bank 'my-telegram-agent', query length: 142
@@ -262,13 +224,7 @@ Send your bot a few messages. Then check the logs — with `"debug": true` in se
 
 Memory is flowing. Every prompt gets relevant context injected. Every conversation gets retained.
 
-Turn off debug mode once you've verified:
-
-```json
-{
-  "debug": false
-}
-```
+Turn off debug mode once you've verified by removing or setting `"debug": false` in `~/.hindsight/claude-code.json`.
 
 
 ## What This Looks Like in Practice
@@ -344,7 +300,7 @@ With this configuration, each project directory gets its own memory bank. Your f
 
 **No memories being recalled**: Memories need at least one retain cycle before they're available. Send a few messages, wait for the async retain to process, then check on the next prompt. Enable `"debug": true` to see the recall/retain flow.
 
-**Hindsight daemon not starting**: Ensure `uvx` is on your PATH (`pip install uv` or `brew install uv`). Check that an LLM API key is set. Review logs at `~/.hindsight/profiles/claude-code.log`.
+**Hindsight daemon not starting**: Check that an LLM API key (or `HINDSIGHT_LLM_PROVIDER=claude-code`) is set. Review logs at `~/.hindsight/profiles/claude-code.log`.
 
 **High latency on recall**: The recall hook has a 12-second timeout (the API call itself times out at 10s, with margin for processing). Try `"recallBudget": "low"` for faster responses, or reduce `"recallMaxTokens"`.
 
@@ -364,7 +320,6 @@ Set it up, use it for a week, and see the difference.
 [5]:	https://vectorize.io/hindsight
 [6]:	https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/openclaw
 [7]:	https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/claude-code
-[8]:	https://docs.astral.sh/uv/
 [9]:	https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/claude-code
 [10]:	https://openclaw.ai
 [11]:	https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/claude-code
