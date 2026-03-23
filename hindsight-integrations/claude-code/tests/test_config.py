@@ -83,38 +83,39 @@ class TestLoadConfig:
         cfg = load_config()
         assert cfg["hindsightApiUrl"] == "http://myserver:8080"
 
-    def test_user_settings_json_overrides_plugin_settings(self, tmp_path, monkeypatch):
+    def test_user_config_overrides_plugin_settings(self, tmp_path, monkeypatch):
         plugin_root = tmp_path / "plugin"
-        plugin_data = tmp_path / "data"
         plugin_root.mkdir()
-        plugin_data.mkdir()
 
         # Plugin default ships with "low"
         (plugin_root / "settings.json").write_text(json.dumps({"recallBudget": "low"}))
-        # User overrides to "high"
-        (plugin_data / "settings.json").write_text(json.dumps({"recallBudget": "high"}))
+        # User overrides to "high" via ~/.hindsight/claude-code.json
+        user_cfg = tmp_path / ".hindsight" / "claude-code.json"
+        user_cfg.parent.mkdir()
+        user_cfg.write_text(json.dumps({"recallBudget": "high"}))
 
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
-        monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(plugin_data))
+        import lib.config as cfg_mod
+        monkeypatch.setattr(cfg_mod, "USER_CONFIG_PATH", str(user_cfg))
         cfg = load_config()
         assert cfg["recallBudget"] == "high"
 
-    def test_user_settings_json_without_plugin_data_env(self, tmp_path, monkeypatch):
-        """When CLAUDE_PLUGIN_DATA is not set, user settings.json is skipped gracefully."""
+    def test_user_config_missing_falls_back_gracefully(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
-        monkeypatch.delenv("CLAUDE_PLUGIN_DATA", raising=False)
+        import lib.config as cfg_mod
+        monkeypatch.setattr(cfg_mod, "USER_CONFIG_PATH", str(tmp_path / "nonexistent.json"))
         cfg = load_config()
         assert cfg["recallBudget"] == "mid"  # default
 
-    def test_env_var_wins_over_user_settings_json(self, tmp_path, monkeypatch):
+    def test_env_var_wins_over_user_config(self, tmp_path, monkeypatch):
         plugin_root = tmp_path / "plugin"
-        plugin_data = tmp_path / "data"
         plugin_root.mkdir()
-        plugin_data.mkdir()
+        user_cfg = tmp_path / "claude-code.json"
+        user_cfg.write_text(json.dumps({"recallBudget": "low"}))
 
-        (plugin_data / "settings.json").write_text(json.dumps({"recallBudget": "low"}))
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
-        monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(plugin_data))
         monkeypatch.setenv("HINDSIGHT_RECALL_BUDGET", "high")
+        import lib.config as cfg_mod
+        monkeypatch.setattr(cfg_mod, "USER_CONFIG_PATH", str(user_cfg))
         cfg = load_config()
         assert cfg["recallBudget"] == "high"

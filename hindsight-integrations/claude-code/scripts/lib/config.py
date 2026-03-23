@@ -100,18 +100,21 @@ def _load_settings_file(path: str, config: dict) -> None:
         debug_log(config, f"Failed to load {path}: {e}")
 
 
+USER_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".hindsight", "claude-code.json")
+
+
 def load_config() -> dict:
     """Load plugin configuration from settings.json + env overrides.
 
     Loading order (later entries win):
       1. Built-in defaults
       2. Plugin default settings.json  (CLAUDE_PLUGIN_ROOT/settings.json)
-      3. User settings.json            (CLAUDE_PLUGIN_DATA/settings.json)
+      3. User config                   (~/.hindsight/claude-code.json)
       4. Environment variable overrides
 
-    The user settings.json at CLAUDE_PLUGIN_DATA is the recommended way to
-    configure the plugin — it lives at a stable, version-independent path and
-    persists across plugin updates.
+    ~/.hindsight/claude-code.json is the recommended place to configure the
+    plugin — same convention as ~/.openclaw/openclaw.json. It is stable across
+    plugin updates and marketplace changes.
     """
     config = dict(DEFAULTS)
 
@@ -121,11 +124,8 @@ def load_config() -> dict:
         plugin_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     _load_settings_file(os.path.join(plugin_root, "settings.json"), config)
 
-    # 2. User settings.json — stable path, persists across plugin updates
-    #    Location: ~/.claude/plugins/data/<plugin-id>/settings.json
-    plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA", "")
-    if plugin_data:
-        _load_settings_file(os.path.join(plugin_data, "settings.json"), config)
+    # 2. User config — stable, version-independent, matches openclaw convention
+    _load_settings_file(USER_CONFIG_PATH, config)
 
     # Apply environment variable overrides
     for env_name, (key, typ) in ENV_OVERRIDES.items():
