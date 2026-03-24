@@ -56,7 +56,13 @@ class HindsightToolSpec(BaseToolSpec):
         agent = ReActAgent(tools=tools, llm=llm)
     """
 
-    spec_functions = ["retain_memory", "recall_memory", "reflect_on_memory"]
+    # Tuples provide both sync and async implementations to LlamaIndex.
+    # Async is used by async agents (ReActAgent, etc.); sync is a fallback.
+    spec_functions = [
+        ("retain_memory", "aretain_memory"),
+        ("recall_memory", "arecall_memory"),
+        ("reflect_on_memory", "areflect_on_memory"),
+    ]
 
     def __init__(
         self,
@@ -124,6 +130,70 @@ class HindsightToolSpec(BaseToolSpec):
         self._reflect_tags = reflect_tags
         self._reflect_tags_match = reflect_tags_match
 
+    def _retain_kwargs(self, content: str) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "bank_id": self._bank_id,
+            "content": content,
+        }
+        if self._tags:
+            kwargs["tags"] = self._tags
+        if self._retain_metadata:
+            kwargs["metadata"] = self._retain_metadata
+        if self._retain_document_id:
+            kwargs["document_id"] = self._retain_document_id
+        return kwargs
+
+    def _recall_kwargs(self, query: str) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "bank_id": self._bank_id,
+            "query": query,
+            "budget": self._budget,
+            "max_tokens": self._max_tokens,
+        }
+        if self._recall_tags:
+            kwargs["tags"] = self._recall_tags
+            kwargs["tags_match"] = self._recall_tags_match
+        if self._recall_types:
+            kwargs["types"] = self._recall_types
+        if self._recall_include_entities:
+            kwargs["include_entities"] = True
+        return kwargs
+
+    def _reflect_kwargs(self, query: str) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "bank_id": self._bank_id,
+            "query": query,
+            "budget": self._budget,
+        }
+        if self._reflect_context:
+            kwargs["context"] = self._reflect_context
+        effective_reflect_max = self._reflect_max_tokens or self._max_tokens
+        if effective_reflect_max:
+            kwargs["max_tokens"] = effective_reflect_max
+        if self._reflect_response_schema:
+            kwargs["response_schema"] = self._reflect_response_schema
+        effective_reflect_tags = (
+            self._reflect_tags if self._reflect_tags is not None else self._recall_tags
+        )
+        effective_reflect_tags_match = (
+            self._reflect_tags_match or self._recall_tags_match
+        )
+        if effective_reflect_tags:
+            kwargs["tags"] = effective_reflect_tags
+            kwargs["tags_match"] = effective_reflect_tags_match
+        return kwargs
+
+    @staticmethod
+    def _format_recall(response: Any) -> str:
+        if not response.results:
+            return "No relevant memories found."
+        lines = []
+        for i, result in enumerate(response.results, 1):
+            lines.append(f"{i}. {result.text}")
+        return "\n".join(lines)
+
+    # -- Sync methods (used outside async contexts) --
+
     def retain_memory(self, content: str) -> str:
         """Store information to long-term memory for later retrieval.
 
@@ -134,17 +204,7 @@ class HindsightToolSpec(BaseToolSpec):
             content: The information to store in memory.
         """
         try:
-            retain_kwargs: dict[str, Any] = {
-                "bank_id": self._bank_id,
-                "content": content,
-            }
-            if self._tags:
-                retain_kwargs["tags"] = self._tags
-            if self._retain_metadata:
-                retain_kwargs["metadata"] = self._retain_metadata
-            if self._retain_document_id:
-                retain_kwargs["document_id"] = self._retain_document_id
-            self._client.retain(**retain_kwargs)
+            self._client.retain(**self._retain_kwargs(content))
             return "Memory stored successfully."
         except Exception as e:
             logger.error(f"Retain failed: {e}")
@@ -160,26 +220,8 @@ class HindsightToolSpec(BaseToolSpec):
             query: What to search for in memory.
         """
         try:
-            recall_kwargs: dict[str, Any] = {
-                "bank_id": self._bank_id,
-                "query": query,
-                "budget": self._budget,
-                "max_tokens": self._max_tokens,
-            }
-            if self._recall_tags:
-                recall_kwargs["tags"] = self._recall_tags
-                recall_kwargs["tags_match"] = self._recall_tags_match
-            if self._recall_types:
-                recall_kwargs["types"] = self._recall_types
-            if self._recall_include_entities:
-                recall_kwargs["include_entities"] = True
-            response = self._client.recall(**recall_kwargs)
-            if not response.results:
-                return "No relevant memories found."
-            lines = []
-            for i, result in enumerate(response.results, 1):
-                lines.append(f"{i}. {result.text}")
-            return "\n".join(lines)
+            response = self._client.recall(**self._recall_kwargs(query))
+            return self._format_recall(response)
         except Exception as e:
             logger.error(f"Recall failed: {e}")
             raise HindsightError(f"Recall failed: {e}") from e
@@ -194,31 +236,57 @@ class HindsightToolSpec(BaseToolSpec):
             query: The question to reflect on using stored memories.
         """
         try:
-            reflect_kwargs: dict[str, Any] = {
-                "bank_id": self._bank_id,
-                "query": query,
-                "budget": self._budget,
-            }
-            if self._reflect_context:
-                reflect_kwargs["context"] = self._reflect_context
-            effective_reflect_max = self._reflect_max_tokens or self._max_tokens
-            if effective_reflect_max:
-                reflect_kwargs["max_tokens"] = effective_reflect_max
-            if self._reflect_response_schema:
-                reflect_kwargs["response_schema"] = self._reflect_response_schema
-            # Reflect tags: use reflect-specific or fall back to recall tags
-            effective_reflect_tags = (
-                self._reflect_tags
-                if self._reflect_tags is not None
-                else self._recall_tags
-            )
-            effective_reflect_tags_match = (
-                self._reflect_tags_match or self._recall_tags_match
-            )
-            if effective_reflect_tags:
-                reflect_kwargs["tags"] = effective_reflect_tags
-                reflect_kwargs["tags_match"] = effective_reflect_tags_match
-            response = self._client.reflect(**reflect_kwargs)
+            response = self._client.reflect(**self._reflect_kwargs(query))
+            return response.text or "No relevant memories found."
+        except Exception as e:
+            logger.error(f"Reflect failed: {e}")
+            raise HindsightError(f"Reflect failed: {e}") from e
+
+    # -- Async methods (used by async agents like ReActAgent) --
+
+    async def aretain_memory(self, content: str) -> str:
+        """Store information to long-term memory for later retrieval.
+
+        Use this to save important facts, user preferences, decisions,
+        or any information that should be remembered across conversations.
+
+        Args:
+            content: The information to store in memory.
+        """
+        try:
+            await self._client.aretain(**self._retain_kwargs(content))
+            return "Memory stored successfully."
+        except Exception as e:
+            logger.error(f"Retain failed: {e}")
+            raise HindsightError(f"Retain failed: {e}") from e
+
+    async def arecall_memory(self, query: str) -> str:
+        """Search long-term memory for relevant information.
+
+        Use this to find previously stored facts, preferences, or context.
+        Returns a numbered list of matching memories.
+
+        Args:
+            query: What to search for in memory.
+        """
+        try:
+            response = await self._client.arecall(**self._recall_kwargs(query))
+            return self._format_recall(response)
+        except Exception as e:
+            logger.error(f"Recall failed: {e}")
+            raise HindsightError(f"Recall failed: {e}") from e
+
+    async def areflect_on_memory(self, query: str) -> str:
+        """Synthesize a thoughtful answer from long-term memories.
+
+        Use this when you need a coherent summary or reasoned response
+        about what you know, rather than raw memory facts.
+
+        Args:
+            query: The question to reflect on using stored memories.
+        """
+        try:
+            response = await self._client.areflect(**self._reflect_kwargs(query))
             return response.text or "No relevant memories found."
         except Exception as e:
             logger.error(f"Reflect failed: {e}")
@@ -308,13 +376,13 @@ def create_hindsight_tools(
         reflect_tags_match=reflect_tags_match,
     )
 
-    spec_functions: list[str] = []
+    spec_functions: list[tuple[str, str]] = []
     if include_retain:
-        spec_functions.append("retain_memory")
+        spec_functions.append(("retain_memory", "aretain_memory"))
     if include_recall:
-        spec_functions.append("recall_memory")
+        spec_functions.append(("recall_memory", "arecall_memory"))
     if include_reflect:
-        spec_functions.append("reflect_on_memory")
+        spec_functions.append(("reflect_on_memory", "areflect_on_memory"))
 
     if not spec_functions:
         return []

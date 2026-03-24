@@ -1,6 +1,6 @@
 """Unit tests for Hindsight LlamaIndex tools."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from hindsight_llamaindex import (
@@ -13,11 +13,14 @@ from hindsight_llamaindex.errors import HindsightError
 
 
 def _mock_client():
-    """Create a mock Hindsight client with sync methods."""
+    """Create a mock Hindsight client with sync and async methods."""
     client = MagicMock()
     client.retain = MagicMock()
     client.recall = MagicMock()
     client.reflect = MagicMock()
+    client.aretain = AsyncMock()
+    client.arecall = AsyncMock()
+    client.areflect = AsyncMock()
     return client
 
 
@@ -47,9 +50,9 @@ def _mock_retain_response():
 class TestHindsightToolSpec:
     def test_spec_functions_list(self):
         assert HindsightToolSpec.spec_functions == [
-            "retain_memory",
-            "recall_memory",
-            "reflect_on_memory",
+            ("retain_memory", "aretain_memory"),
+            ("recall_memory", "arecall_memory"),
+            ("reflect_on_memory", "areflect_on_memory"),
         ]
 
     def test_to_tool_list_returns_three_tools(self):
@@ -61,7 +64,7 @@ class TestHindsightToolSpec:
     def test_to_tool_list_selective(self):
         client = _mock_client()
         spec = HindsightToolSpec(bank_id="test", client=client)
-        tools = spec.to_tool_list(spec_functions=["recall_memory"])
+        tools = spec.to_tool_list(spec_functions=[("recall_memory", "arecall_memory")])
         assert len(tools) == 1
         assert tools[0].metadata.name == "recall_memory"
 
@@ -399,12 +402,22 @@ class TestLlamaIndexCompatibility:
         agent = ReActAgent(tools=tools, llm=MockLLM())
         assert agent is not None
 
+    def test_tools_have_both_sync_and_async(self):
+        """Each tool should have both sync fn and async fn."""
+        client = _mock_client()
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        tools = spec.to_tool_list()
+
+        for tool in tools:
+            assert tool._fn is not None, f"{tool.metadata.name} missing sync fn"
+            assert tool._async_fn is not None, f"{tool.metadata.name} missing async fn"
+
     def test_retain_tool_callable_via_function_tool(self):
         """FunctionTool.call() should invoke retain_memory correctly."""
         client = _mock_client()
         client.retain.return_value = _mock_retain_response()
         spec = HindsightToolSpec(bank_id="test", client=client)
-        tools = spec.to_tool_list(spec_functions=["retain_memory"])
+        tools = spec.to_tool_list(spec_functions=[("retain_memory", "aretain_memory")])
         tool = tools[0]
 
         result = tool.call(content="test memory")
@@ -416,7 +429,7 @@ class TestLlamaIndexCompatibility:
         client = _mock_client()
         client.recall.return_value = _mock_recall_response(["some fact"])
         spec = HindsightToolSpec(bank_id="test", client=client)
-        tools = spec.to_tool_list(spec_functions=["recall_memory"])
+        tools = spec.to_tool_list(spec_functions=[("recall_memory", "arecall_memory")])
         tool = tools[0]
 
         result = tool.call(query="test query")
