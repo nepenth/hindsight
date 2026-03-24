@@ -2,11 +2,13 @@
 title: "Adding Long-Term Memory to LangGraph and LangChain Agents"
 description: Learn how to add long-term memory to LangGraph and LangChain agents using three integration patterns — tools, nodes, and BaseStore — with per-user memory banks and semantic recall.
 authors: [DK09876]
-date: 2026-03-17
+date: 2026-03-24
 tags: [langgraph, langchain, integrations, agents, memory]
 image: /img/blog/langgraph-longterm-memory.png
 hide_table_of_contents: true
 ---
+
+![Adding Long-Term Memory to LangGraph and LangChain Agents](/img/blog/langgraph-longterm-memory.png)
 
 LangGraph agents are stateful by design — checkpointers save graph state between steps, and the Store API persists data across threads. But neither gives agents true long-term memory: the ability to extract meaning from conversations, build up knowledge over time, and recall it semantically when relevant.
 
