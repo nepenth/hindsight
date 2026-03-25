@@ -245,6 +245,10 @@ async def test_llm_provider_memory_operations(provider: str, model: str):
     if provider == "mock":
         pytest.skip("Mock provider is a test stub, not designed for real operations")
 
+    # Skip Bedrock lite models - they have a 10K output token limit which is too low for fact extraction (needs 64K)
+    if provider == "bedrock" and "lite" in model.lower():
+        pytest.skip(f"Bedrock model {model} has a 10K output token limit, too low for fact extraction")
+
     should_skip, reason = should_skip_provider(provider, model)
     if should_skip:
         pytest.skip(f"Skipping {provider}/{model}: {reason}")
