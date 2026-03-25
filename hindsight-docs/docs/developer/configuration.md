@@ -160,7 +160,7 @@ To switch between backends:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HINDSIGHT_API_LLM_PROVIDER` | Provider: `openai`, `openai-codex`, `claude-code`, `anthropic`, `gemini`, `groq`, `minimax`, `ollama`, `lmstudio`, `vertexai`, `litellm` | `openai` |
+| `HINDSIGHT_API_LLM_PROVIDER` | Provider: `openai`, `openai-codex`, `claude-code`, `anthropic`, `gemini`, `groq`, `minimax`, `ollama`, `lmstudio`, `vertexai`, `bedrock`, `litellm` | `openai` |
 | `HINDSIGHT_API_LLM_API_KEY` | API key for LLM provider | - |
 | `HINDSIGHT_API_LLM_MODEL` | Model name | `gpt-5-mini` |
 | `HINDSIGHT_API_LLM_BASE_URL` | Custom LLM endpoint | Provider default |
@@ -233,12 +233,14 @@ export HINDSIGHT_API_LLM_PROVIDER=claude-code
 export HINDSIGHT_API_LLM_MODEL=claude-sonnet-4-5-20250929
 # No API key needed - uses claude auth login credentials
 
-# LiteLLM (100+ providers via LiteLLM SDK)
-# AWS Bedrock - uses AWS credentials from environment (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION_NAME)
-export HINDSIGHT_API_LLM_PROVIDER=litellm
-export HINDSIGHT_API_LLM_MODEL=bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0
-# No API key needed for Bedrock - uses boto3 credential chain
+# AWS Bedrock (native support - no API key needed, uses AWS credentials)
+export HINDSIGHT_API_LLM_PROVIDER=bedrock
+export HINDSIGHT_API_LLM_MODEL=us.anthropic.claude-3-5-haiku-20241022-v1:0
+export AWS_ACCESS_KEY_ID=your-access-key
+export AWS_SECRET_ACCESS_KEY=your-secret-key
+export AWS_REGION_NAME=us-east-1
 
+# LiteLLM (100+ providers via LiteLLM SDK)
 # Azure OpenAI via LiteLLM
 export HINDSIGHT_API_LLM_PROVIDER=litellm
 export HINDSIGHT_API_LLM_API_KEY=your-azure-api-key

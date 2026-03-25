@@ -127,6 +127,7 @@ _PROVIDERS_WITHOUT_API_KEY = frozenset(
         "mock",
         "vertexai",
         "litellm",
+        "bedrock",
     }
 )
 
@@ -238,6 +239,17 @@ def create_llm_provider(
             reasoning_effort=reasoning_effort,
         )
 
+    elif provider_lower == "bedrock":
+        # Bedrock is a first-class alias backed by LiteLLM with auto-prefixed model names
+        bedrock_model = model if model.startswith("bedrock/") else f"bedrock/{model}"
+        return LiteLLMLLM(
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+            model=bedrock_model,
+            reasoning_effort=reasoning_effort,
+        )
+
     elif provider_lower in ("openai", "groq", "ollama", "lmstudio", "minimax"):
         return OpenAICompatibleLLM(
             provider=provider,
@@ -309,6 +321,7 @@ class LLMProvider:
             "mock",
             "minimax",
             "litellm",
+            "bedrock",
         ]
         if self.provider not in valid_providers:
             raise ValueError(f"Invalid LLM provider: {self.provider}. Must be one of: {', '.join(valid_providers)}")
