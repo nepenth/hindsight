@@ -1,10 +1,5 @@
----
-title: "Your AWS Strands Agent Forgets Everything Between Runs. Here's the Fix."
-authors: [benfrank241]
-date: 2026-03-25T12:00
-tags: [strands, aws, agents, python, memory, tutorial]
-image: /img/blog/strands-persistent-memory.png
----
+# Why Your AWS Strands Agent Keeps Starting From Scratch (And How to Stop It)
+
 ## TL;DR
 
 - AWS Strands agents are stateless by default — every session starts cold
@@ -12,6 +7,8 @@ image: /img/blog/strands-persistent-memory.png
 - `memory_instructions()` pre-loads relevant memories directly into the system prompt before the agent starts
 - Works with any Strands-compatible LLM backend: Bedrock, Anthropic, OpenAI
 - You control what gets remembered, how much is recalled, and how memories are scoped with tags
+
+<!-- truncate -->
 
 ---
 
