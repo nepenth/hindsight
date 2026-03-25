@@ -1,4 +1,11 @@
-# Why Your AWS Strands Agent Keeps Starting From Scratch (And How to Stop It)
+---
+title: "Why Your AWS Strands Agent Keeps Starting From Scratch (And How to Stop It)"
+authors: [benfrank241]
+date: 2026-03-25T12:00
+tags: [strands, aws, agents, python, memory, tutorial]
+image: /img/blog/strands-persistent-memory.png
+hide_table_of_contents: true
+---
 
 AWS Strands agents are stateless by default — every session starts cold. Here's how to add persistent long-term memory using `hindsight-strands`, so your agent remembers what matters across runs.
 
@@ -67,7 +74,15 @@ User session
 pip install hindsight-strands
 ```
 
-You'll also need a running Hindsight instance. The quickest local setup:
+You'll also need a running Hindsight instance. Two options:
+
+**Option 1 — Hindsight Cloud (no setup required)**
+
+Sign up at [ui.hindsight.vectorize.io](https://ui.hindsight.vectorize.io/signup) and grab your API URL and key from the dashboard. Pass them directly to `create_hindsight_tools()`.
+
+> **Note:** Use Hindsight Cloud if you want to skip self-hosting entirely — free to get started.
+
+**Option 2 — Self-hosted with Docker**
 
 ```bash
 export OPENAI_API_KEY=sk-...
