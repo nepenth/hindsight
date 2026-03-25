@@ -233,11 +233,7 @@ export function DataView({ factType }: DataViewProps) {
   const executeSearch = () => {
     if (currentBank) {
       setCurrentPage(1);
-      loadData(
-        undefined,
-        searchQuery || undefined,
-        tagFilters.length > 0 ? tagFilters : undefined
-      );
+      loadData(undefined, searchQuery || undefined, tagFilters.length > 0 ? tagFilters : undefined);
     }
   };
 
@@ -356,7 +352,11 @@ export function DataView({ factType }: DataViewProps) {
                       onClick={() => {
                         const newLimit = Math.min(data.total_units, fetchLimit + 1000);
                         setFetchLimit(newLimit);
-                        loadData(newLimit, searchQuery || undefined, tagFilters.length > 0 ? tagFilters : undefined);
+                        loadData(
+                          newLimit,
+                          searchQuery || undefined,
+                          tagFilters.length > 0 ? tagFilters : undefined
+                        );
                       }}
                       className="ml-2 text-primary hover:underline"
                     >
