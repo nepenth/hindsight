@@ -33,10 +33,11 @@ def _run_hook(module_name, hook_input, monkeypatch, tmp_path, urlopen_side_effec
     (tmp_path / "plugin_root").mkdir(exist_ok=True)
     (tmp_path / "plugin_data").mkdir(exist_ok=True)
 
-    # Strip real HINDSIGHT_* env vars
+    # Strip real HINDSIGHT_* env vars and neutralize user config (~/.hindsight/claude-code.json)
     for k in list(os.environ):
         if k.startswith("HINDSIGHT_"):
             monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
 
     for k, v in (extra_env or {}).items():
         monkeypatch.setenv(k, v)
@@ -329,6 +330,49 @@ class TestRetainHook:
         assert "first question" in item["content"]
         assert "second question" in item["content"]
 
+    def test_full_session_respects_retain_every_n_turns(self, monkeypatch, tmp_path):
+        """In full-session mode, retainEveryNTurns should still gate when retain fires."""
+        messages = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "world"}]
+        transcript = make_transcript_file(tmp_path, messages)
+        hook_input = make_hook_input(transcript_path=transcript, session_id="sess-throttle")
+        captured = {}
+
+        def capture(req, timeout=None):
+            if "/memories" in req.full_url and "/recall" not in req.full_url:
+                captured["called"] = True
+                captured["body"] = json.loads(req.data.decode())
+            return FakeHTTPResponse({})
+
+        # retainEveryNTurns=3 in full-session mode — first 2 calls should be skipped
+        _run_hook(
+            "retain", hook_input, monkeypatch, tmp_path,
+            urlopen_side_effect=capture,
+            extra_settings={"retainEveryNTurns": 3},
+        )
+        # Turn 1 of 3 — should NOT retain
+        assert "called" not in captured
+
+        # Turn 2 — still skip
+        captured.clear()
+        _run_hook(
+            "retain", hook_input, monkeypatch, tmp_path,
+            urlopen_side_effect=capture,
+            extra_settings={"retainEveryNTurns": 3},
+        )
+        assert "called" not in captured
+
+        # Turn 3 — should fire, with full session content and session_id as doc ID
+        captured.clear()
+        _run_hook(
+            "retain", hook_input, monkeypatch, tmp_path,
+            urlopen_side_effect=capture,
+            extra_settings={"retainEveryNTurns": 3},
+        )
+        assert "called" in captured, "retain should fire on turn 3"
+        item = captured["body"]["items"][0]
+        assert item["document_id"] == "sess-throttle"  # full-session uses session_id
+        assert "hello" in item["content"]
+
     def test_chunked_retain_skips_below_threshold(self, monkeypatch, tmp_path):
         """With retainEveryNTurns=5 and retainMode=chunked, first call should be skipped."""
         (tmp_path / "plugin_root").mkdir(exist_ok=True)
@@ -359,8 +403,7 @@ class TestRetainHook:
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin_root"))
         monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "plugin_data"))
         monkeypatch.setenv("HINDSIGHT_RETAIN_MODE", "chunked")
-        # Ensure retainEveryNTurns isn't overridden by user config (~/.hindsight/claude-code.json)
-        monkeypatch.setattr("lib.config.USER_CONFIG_PATH", str(tmp_path / "nonexistent_user_config.json"))
+        monkeypatch.setenv("HOME", str(tmp_path))
 
         stdin_data = io.StringIO(json.dumps(hook_input))
         scripts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))

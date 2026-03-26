@@ -102,13 +102,15 @@ def main():
     retain_full_window = False
     messages_to_retain = all_messages
 
-    if retain_mode == "chunked" and retain_every_n > 1:
+    # Respect retainEveryNTurns in both modes
+    if retain_every_n > 1:
         turn_count = increment_turn_count(session_id)
         if turn_count % retain_every_n != 0:
             next_at = ((turn_count // retain_every_n) + 1) * retain_every_n
             debug_log(config, f"Turn {turn_count}/{retain_every_n}, skipping retain (next at turn {next_at})")
             return
 
+    if retain_mode == "chunked" and retain_every_n > 1:
         # Sliding window: N turns + configured overlap
         overlap_turns = config.get("retainOverlapTurns", 0)
         window_turns = retain_every_n + overlap_turns
@@ -116,8 +118,7 @@ def main():
         retain_full_window = True
         debug_log(
             config,
-            f"Turn {turn_count}: chunked retain firing "
-            f"(window: {window_turns} turns, {len(messages_to_retain)} messages)",
+            f"Chunked retain firing (window: {window_turns} turns, {len(messages_to_retain)} messages)",
         )
     else:
         # Full session mode: retain all messages, always as full window
