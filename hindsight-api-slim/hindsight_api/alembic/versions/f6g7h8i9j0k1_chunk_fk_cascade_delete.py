@@ -24,7 +24,13 @@ def upgrade() -> None:
     the memory_units rows survived with chunk_id = NULL, leaving ghost records.
     Switching to CASCADE ensures they are removed together with their chunk.
     """
-    op.drop_constraint("memory_units_chunk_fkey", "memory_units", type_="foreignkey")
+    from alembic import context
+
+    schema = context.config.get_main_option("target_schema")
+    schema_prefix = f'"{schema}".' if schema else ""
+    # Use raw SQL with IF EXISTS so this is safe on schemas where the FK was
+    # already dropped or never existed under this name.
+    op.execute(f"ALTER TABLE {schema_prefix}memory_units DROP CONSTRAINT IF EXISTS memory_units_chunk_fkey")
     op.create_foreign_key(
         "memory_units_chunk_fkey", "memory_units", "chunks", ["chunk_id"], ["chunk_id"], ondelete="CASCADE"
     )
