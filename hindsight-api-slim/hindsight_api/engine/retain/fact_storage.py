@@ -219,10 +219,12 @@ async def handle_document_tracking(
     is_first_batch: bool,
     retain_params: dict | None = None,
     document_tags: list[str] | None = None,
-    delta_mode: bool = False,
 ) -> None:
     """
-    Handle document tracking in the database.
+    Handle document tracking in the database (full-replace mode).
+
+    Deletes the existing document (cascading to all units and links) on the
+    first batch, then inserts the new document record.
 
     Args:
         conn: Database connection
@@ -232,8 +234,6 @@ async def handle_document_tracking(
         is_first_batch: Whether this is the first batch (for chunked operations)
         retain_params: Optional parameters passed during retain (context, event_date, etc.)
         document_tags: Optional list of tags to associate with the document
-        delta_mode: If True, skip full document delete (delta retain handles
-            chunk-level deletes separately)
     """
     import hashlib
 
@@ -241,17 +241,51 @@ async def handle_document_tracking(
     combined_content = _sanitize_text(combined_content) or ""
     content_hash = hashlib.sha256(combined_content.encode()).hexdigest()
 
-    if not delta_mode:
-        # Legacy full-replace mode: delete old document first (cascades to units and links)
-        # Only delete on the first batch to avoid deleting data we just inserted
-        if is_first_batch:
-            await conn.fetchval(
-                f"DELETE FROM {fq_table('documents')} WHERE id = $1 AND bank_id = $2 RETURNING id",
-                document_id,
-                bank_id,
-            )
+    # Delete old document first (cascades to units and links)
+    # Only delete on the first batch to avoid deleting data we just inserted
+    if is_first_batch:
+        await conn.fetchval(
+            f"DELETE FROM {fq_table('documents')} WHERE id = $1 AND bank_id = $2 RETURNING id",
+            document_id,
+            bank_id,
+        )
 
-    # Insert document (or update if exists)
+    # Insert document (or update if exists from concurrent operations)
+    await _upsert_document_row(conn, bank_id, document_id, combined_content, content_hash, retain_params, document_tags)
+
+
+async def upsert_document_metadata(
+    conn,
+    bank_id: str,
+    document_id: str,
+    combined_content: str,
+    retain_params: dict | None = None,
+    document_tags: list[str] | None = None,
+) -> None:
+    """
+    Update document metadata without deleting existing facts/chunks.
+
+    Used by delta retain: the document row is upserted but chunks and
+    memory_units are managed separately at the chunk level.
+    """
+    import hashlib
+
+    combined_content = _sanitize_text(combined_content) or ""
+    content_hash = hashlib.sha256(combined_content.encode()).hexdigest()
+
+    await _upsert_document_row(conn, bank_id, document_id, combined_content, content_hash, retain_params, document_tags)
+
+
+async def _upsert_document_row(
+    conn,
+    bank_id: str,
+    document_id: str,
+    combined_content: str,
+    content_hash: str,
+    retain_params: dict | None = None,
+    document_tags: list[str] | None = None,
+) -> None:
+    """Insert or update a document row."""
     await conn.execute(
         f"""
         INSERT INTO {fq_table("documents")} (id, bank_id, original_text, content_hash, metadata, retain_params, tags)
