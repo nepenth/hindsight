@@ -379,7 +379,7 @@ A few principles that apply anywhere you're doing hybrid retrieval:
 
 Every `recall_memory` call in Hindsight runs this stack. The 420ms bound is the latency budget an agent pays when it reaches into memory — and that budget holds even as memory banks grow into the tens of thousands of facts.
 
-If you want to use this retrieval architecture without building it yourself, [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) runs it for you. The [recall docs](https://docs.hindsight.vectorize.io/docs/concepts/recall) cover the full technical reference, including how budget controls which strategies run and how reranking is applied.
+If you want to use this retrieval architecture without building it yourself, [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) runs it for you. The [recall docs](https://hindsight.vectorize.io/developer/retrieval) cover the full technical reference, including how budget controls which strategies run and how reranking is applied.
 
 ## Building Parallel Hybrid Search That Holds Up in Production
 
