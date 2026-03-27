@@ -41,10 +41,13 @@ def strip_memory_tags(content: str) -> str:
 def read_transcript(transcript_path: str) -> list:
     """Read a Codex JSONL transcript and return list of {role, content} dicts.
 
-    Codex format:
-      {"session_id": "...", "ts": ..., "msg": {"type": "user_message", "message": "..."}}
+    Codex disk format (rollout-*.jsonl):
+      User:      {"type":"response_item","payload":{"type":"message","role":"user",
+                   "content":[{"type":"input_text","text":"..."}]}}
+      Assistant: {"type":"response_item","payload":{"type":"message","role":"assistant",
+                   "content":[{"type":"output_text","text":"..."}],"phase":"final_answer"}}
 
-    Supports flat format for testing:
+    Flat format for testing:
       {"role": "user", "content": "..."}
     """
     if not transcript_path or not os.path.isfile(transcript_path):
@@ -58,18 +61,26 @@ def read_transcript(transcript_path: str) -> list:
                     continue
                 try:
                     entry = json.loads(line)
-                    # Codex nested format: {msg: {type, message}}
-                    msg = entry.get("msg", {})
-                    if isinstance(msg, dict):
-                        msg_type = msg.get("type", "")
-                        if msg_type == "user_message":
-                            text = msg.get("message", "")
+                    # Codex response_item format
+                    if entry.get("type") == "response_item":
+                        payload = entry.get("payload", {})
+                        if payload.get("type") == "message":
+                            role = payload.get("role", "")
+                            if role not in ("user", "assistant"):
+                                continue
+                            # Only include final_answer for assistant (not reasoning/intermediary)
+                            if role == "assistant" and payload.get("phase") != "final_answer":
+                                continue
+                            content_blocks = payload.get("content", [])
+                            text_parts = []
+                            for block in content_blocks:
+                                if isinstance(block, dict) and block.get("type") in ("input_text", "output_text"):
+                                    t = block.get("text", "").strip()
+                                    if t:
+                                        text_parts.append(t)
+                            text = "\n".join(text_parts).strip()
                             if text:
-                                messages.append({"role": "user", "content": text})
-                        elif msg_type == "agent_message":
-                            text = msg.get("message", "")
-                            if text:
-                                messages.append({"role": "assistant", "content": text})
+                                messages.append({"role": role, "content": text})
                     # Flat format (testing / future compatibility)
                     elif "role" in entry and "content" in entry:
                         messages.append({"role": entry["role"], "content": entry["content"]})
