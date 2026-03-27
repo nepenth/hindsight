@@ -20,6 +20,8 @@ class HindsightLlamaIndexConfig:
         tags: Default tags applied when storing memories.
         recall_tags: Default tags to filter when searching memories.
         recall_tags_match: Tag matching mode (any/all/any_strict/all_strict).
+        context: Source label for retain operations (default: "llamaindex").
+        mission: Bank mission for fact extraction context.
         verbose: Enable verbose logging.
     """
 
@@ -30,6 +32,8 @@ class HindsightLlamaIndexConfig:
     tags: Optional[list[str]] = None
     recall_tags: Optional[list[str]] = None
     recall_tags_match: str = "any"
+    context: str = "llamaindex"
+    mission: Optional[str] = None
     verbose: bool = False
 
 
@@ -44,6 +48,8 @@ def configure(
     tags: Optional[list[str]] = None,
     recall_tags: Optional[list[str]] = None,
     recall_tags_match: str = "any",
+    context: str = "llamaindex",
+    mission: Optional[str] = None,
     verbose: bool = False,
 ) -> HindsightLlamaIndexConfig:
     """Configure Hindsight connection and default settings.
@@ -56,6 +62,8 @@ def configure(
         tags: Default tags for retain operations.
         recall_tags: Default tags to filter recall/search.
         recall_tags_match: Tag matching mode.
+        context: Source label for retain operations.
+        mission: Bank mission for fact extraction context.
         verbose: Enable verbose logging.
 
     Returns:
@@ -74,6 +82,8 @@ def configure(
         tags=tags,
         recall_tags=recall_tags,
         recall_tags_match=recall_tags_match,
+        context=context,
+        mission=mission,
         verbose=verbose,
     )
 

@@ -18,9 +18,11 @@ def _mock_client():
     client.retain = MagicMock()
     client.recall = MagicMock()
     client.reflect = MagicMock()
+    client.create_bank = MagicMock()
     client.aretain = AsyncMock()
     client.arecall = AsyncMock()
     client.areflect = AsyncMock()
+    client.acreate_bank = AsyncMock()
     return client
 
 
@@ -161,9 +163,10 @@ class TestRetainTool:
         spec = HindsightToolSpec(bank_id="test-bank", client=client)
         result = spec.retain_memory("The user likes Python")
         assert result == "Memory stored successfully."
-        client.retain.assert_called_once_with(
-            bank_id="test-bank", content="The user likes Python"
-        )
+        call_kwargs = client.retain.call_args[1]
+        assert call_kwargs["bank_id"] == "test-bank"
+        assert call_kwargs["content"] == "The user likes Python"
+        assert call_kwargs["context"] == "llamaindex"
 
     def test_retain_passes_tags(self):
         client = _mock_client()
@@ -187,7 +190,7 @@ class TestRetainTool:
         call_kwargs = client.retain.call_args[1]
         assert call_kwargs["metadata"] == {"source": "chat", "session": "abc"}
 
-    def test_retain_passes_document_id(self):
+    def test_retain_passes_explicit_document_id(self):
         client = _mock_client()
         client.retain.return_value = _mock_retain_response()
         spec = HindsightToolSpec(
@@ -197,12 +200,58 @@ class TestRetainTool:
         call_kwargs = client.retain.call_args[1]
         assert call_kwargs["document_id"] == "session-123"
 
-    def test_retain_raises_hindsight_error(self):
+    def test_retain_auto_generates_document_id(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        spec.retain_memory("content")
+        call_kwargs = client.retain.call_args[1]
+        doc_id = call_kwargs["document_id"]
+        # Auto-generated format: {session_id}-{timestamp_ms}
+        parts = doc_id.rsplit("-", 1)
+        assert len(parts) == 2
+        assert parts[1].isdigit()
+
+    def test_retain_passes_context_label(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(bank_id="test", client=client, retain_context="my-app")
+        spec.retain_memory("content")
+        call_kwargs = client.retain.call_args[1]
+        assert call_kwargs["context"] == "my-app"
+
+    def test_retain_defaults_to_llamaindex_context(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        spec.retain_memory("content")
+        call_kwargs = client.retain.call_args[1]
+        assert call_kwargs["context"] == "llamaindex"
+
+    def test_retain_async_processing(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(bank_id="test", client=client, retain_async=True)
+        spec.retain_memory("content")
+        call_kwargs = client.retain.call_args[1]
+        assert call_kwargs["async_processing"] is True
+
+    def test_retain_sync_processing(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(bank_id="test", client=client, retain_async=False)
+        spec.retain_memory("content")
+        call_kwargs = client.retain.call_args[1]
+        assert "async_processing" not in call_kwargs
+
+    def test_retain_returns_error_message_on_failure(self):
+        """Errors are returned gracefully, not raised."""
         client = _mock_client()
         client.retain.side_effect = RuntimeError("connection refused")
         spec = HindsightToolSpec(bank_id="test", client=client)
-        with pytest.raises(HindsightError, match="Retain failed"):
-            spec.retain_memory("content")
+        result = spec.retain_memory("content")
+        assert "Failed to store memory" in result
+        assert "connection refused" in result
 
 
 class TestRecallTool:
@@ -270,12 +319,13 @@ class TestRecallTool:
         call_kwargs = client.recall.call_args[1]
         assert call_kwargs["include_entities"] is True
 
-    def test_recall_raises_hindsight_error(self):
+    def test_recall_returns_error_message_on_failure(self):
+        """Errors are returned gracefully, not raised."""
         client = _mock_client()
         client.recall.side_effect = RuntimeError("timeout")
         spec = HindsightToolSpec(bank_id="test", client=client)
-        with pytest.raises(HindsightError, match="Recall failed"):
-            spec.recall_memory("query")
+        result = spec.recall_memory("query")
+        assert "Failed to search memory" in result
 
 
 class TestReflectTool:
@@ -360,12 +410,78 @@ class TestReflectTool:
         assert call_kwargs["tags"] == ["scope:user"]
         assert call_kwargs["tags_match"] == "any"
 
-    def test_reflect_raises_hindsight_error(self):
+    def test_reflect_returns_error_message_on_failure(self):
+        """Errors are returned gracefully, not raised."""
         client = _mock_client()
         client.reflect.side_effect = RuntimeError("timeout")
         spec = HindsightToolSpec(bank_id="test", client=client)
-        with pytest.raises(HindsightError, match="Reflect failed"):
-            spec.reflect_on_memory("query")
+        result = spec.reflect_on_memory("query")
+        assert "Failed to reflect on memory" in result
+
+
+class TestBankMission:
+    def test_creates_bank_with_mission_on_first_use(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(
+            bank_id="test-bank", client=client, mission="Track user preferences"
+        )
+        spec.retain_memory("content")
+        client.create_bank.assert_called_once_with(
+            bank_id="test-bank",
+            name="test-bank",
+            mission="Track user preferences",
+        )
+
+    def test_bank_creation_is_idempotent(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        client.recall.return_value = _mock_recall_response(["fact"])
+        spec = HindsightToolSpec(
+            bank_id="test-bank", client=client, mission="my mission"
+        )
+        spec.retain_memory("content")
+        spec.recall_memory("query")
+        # create_bank should only be called once
+        assert client.create_bank.call_count == 1
+
+    def test_bank_creation_failure_is_graceful(self):
+        client = _mock_client()
+        client.create_bank.side_effect = RuntimeError("already exists")
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(
+            bank_id="test-bank", client=client, mission="my mission"
+        )
+        # Should not raise
+        result = spec.retain_memory("content")
+        assert result == "Memory stored successfully."
+
+    def test_no_bank_creation_without_mission(self):
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(bank_id="test-bank", client=client)
+        spec.retain_memory("content")
+        client.create_bank.assert_not_called()
+
+    def test_mission_from_config(self):
+        reset_config()
+        configure(
+            hindsight_api_url="http://localhost:8888",
+            mission="config mission",
+        )
+        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+            mock_instance = _mock_client()
+            mock_cls.return_value = mock_instance
+            mock_instance.retain.return_value = _mock_retain_response()
+
+            spec = HindsightToolSpec(bank_id="test")
+            spec.retain_memory("content")
+            mock_instance.create_bank.assert_called_once_with(
+                bank_id="test",
+                name="test",
+                mission="config mission",
+            )
+        reset_config()
 
 
 class TestLlamaIndexCompatibility:
@@ -483,3 +599,15 @@ class TestConfigFallback:
             spec.retain_memory("content")
             call_kwargs = mock_instance.retain.call_args[1]
             assert call_kwargs["tags"] == ["config:tag"]
+
+    def test_context_falls_back_to_config(self):
+        configure(hindsight_api_url="http://localhost:8888", context="my-app")
+        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+            mock_instance = _mock_client()
+            mock_cls.return_value = mock_instance
+            mock_instance.retain.return_value = _mock_retain_response()
+
+            spec = HindsightToolSpec(bank_id="test")
+            spec.retain_memory("content")
+            call_kwargs = mock_instance.retain.call_args[1]
+            assert call_kwargs["context"] == "my-app"

@@ -5,6 +5,8 @@ LlamaIndex-compatible tools backed by Hindsight's retain/recall/reflect APIs.
 """
 
 import logging
+import time
+import uuid
 from typing import Any, Optional
 
 from hindsight_client import Hindsight
@@ -12,7 +14,6 @@ from llama_index.core.tools.tool_spec.base import BaseToolSpec
 
 from ._client import resolve_client
 from .config import get_config
-from .errors import HindsightError
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,10 @@ class HindsightToolSpec(BaseToolSpec):
         recall_tags: Tags to filter when searching memories.
         recall_tags_match: Tag matching mode (any/all/any_strict/all_strict).
         retain_metadata: Default metadata dict for retain operations.
-        retain_document_id: Default document_id for retain (groups/upserts memories).
+        retain_document_id: Default document_id for retain. If None,
+            auto-generates ``{session_id}-{timestamp_ms}`` per call.
+        retain_context: Source label for retain operations (default: "llamaindex").
+        retain_async: If True, retain calls use async processing (non-blocking).
         recall_types: Fact types to filter (world, experience, opinion, observation).
         recall_include_entities: Include entity information in recall results.
         reflect_context: Additional context for reflect operations.
@@ -42,6 +46,8 @@ class HindsightToolSpec(BaseToolSpec):
         reflect_response_schema: JSON schema to constrain reflect output format.
         reflect_tags: Tags to filter memories used in reflect (defaults to recall_tags).
         reflect_tags_match: Tag matching for reflect (defaults to recall_tags_match).
+        mission: Bank mission for fact extraction. If provided, the bank
+            is created/updated with this mission on first use.
 
     Example::
 
@@ -79,6 +85,8 @@ class HindsightToolSpec(BaseToolSpec):
         # Retain options
         retain_metadata: Optional[dict[str, str]] = None,
         retain_document_id: Optional[str] = None,
+        retain_context: Optional[str] = None,
+        retain_async: bool = True,
         # Recall options
         recall_types: Optional[list[str]] = None,
         recall_include_entities: bool = False,
@@ -88,10 +96,14 @@ class HindsightToolSpec(BaseToolSpec):
         reflect_response_schema: Optional[dict[str, Any]] = None,
         reflect_tags: Optional[list[str]] = None,
         reflect_tags_match: Optional[str] = None,
+        # Bank management
+        mission: Optional[str] = None,
     ):
         super().__init__()
         self._client = resolve_client(client, hindsight_api_url, api_key)
         self._bank_id = bank_id
+        self._session_id = str(uuid.uuid4())[:8]
+        self._bank_initialized = False
 
         # Resolve effective values using None-sentinel config fallback
         config = get_config()
@@ -118,6 +130,12 @@ class HindsightToolSpec(BaseToolSpec):
         # Retain-specific
         self._retain_metadata = retain_metadata
         self._retain_document_id = retain_document_id
+        self._retain_context = (
+            retain_context
+            if retain_context is not None
+            else (config.context if config else "llamaindex")
+        )
+        self._retain_async = retain_async
 
         # Recall-specific
         self._recall_types = recall_types
@@ -130,17 +148,62 @@ class HindsightToolSpec(BaseToolSpec):
         self._reflect_tags = reflect_tags
         self._reflect_tags_match = reflect_tags_match
 
+        # Bank management
+        self._mission = (
+            mission if mission is not None else (config.mission if config else None)
+        )
+
+    def _ensure_bank(self) -> None:
+        """Create/update the bank with mission if not already done."""
+        if self._bank_initialized or not self._mission:
+            return
+        try:
+            self._client.create_bank(
+                bank_id=self._bank_id,
+                name=self._bank_id,
+                mission=self._mission,
+            )
+            self._bank_initialized = True
+            logger.debug(f"Created/updated bank: {self._bank_id}")
+        except Exception as e:
+            # Bank may already exist — that's fine
+            self._bank_initialized = True
+            logger.debug(f"Bank creation for {self._bank_id}: {e}")
+
+    async def _aensure_bank(self) -> None:
+        """Async version of _ensure_bank."""
+        if self._bank_initialized or not self._mission:
+            return
+        try:
+            await self._client.acreate_bank(
+                bank_id=self._bank_id,
+                name=self._bank_id,
+                mission=self._mission,
+            )
+            self._bank_initialized = True
+            logger.debug(f"Created/updated bank: {self._bank_id}")
+        except Exception as e:
+            self._bank_initialized = True
+            logger.debug(f"Bank creation for {self._bank_id}: {e}")
+
+    def _generate_document_id(self) -> str:
+        """Generate a unique document_id for retain operations."""
+        return f"{self._session_id}-{int(time.time() * 1000)}"
+
     def _retain_kwargs(self, content: str) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "bank_id": self._bank_id,
             "content": content,
+            "context": self._retain_context,
         }
         if self._tags:
             kwargs["tags"] = self._tags
         if self._retain_metadata:
             kwargs["metadata"] = self._retain_metadata
-        if self._retain_document_id:
-            kwargs["document_id"] = self._retain_document_id
+        # Use explicit document_id if set, otherwise auto-generate
+        kwargs["document_id"] = self._retain_document_id or self._generate_document_id()
+        if self._retain_async:
+            kwargs["async_processing"] = True
         return kwargs
 
     def _recall_kwargs(self, query: str) -> dict[str, Any]:
@@ -204,11 +267,12 @@ class HindsightToolSpec(BaseToolSpec):
             content: The information to store in memory.
         """
         try:
+            self._ensure_bank()
             self._client.retain(**self._retain_kwargs(content))
             return "Memory stored successfully."
         except Exception as e:
             logger.error(f"Retain failed: {e}")
-            raise HindsightError(f"Retain failed: {e}") from e
+            return f"Failed to store memory: {e}"
 
     def recall_memory(self, query: str) -> str:
         """Search long-term memory for relevant information.
@@ -220,11 +284,12 @@ class HindsightToolSpec(BaseToolSpec):
             query: What to search for in memory.
         """
         try:
+            self._ensure_bank()
             response = self._client.recall(**self._recall_kwargs(query))
             return self._format_recall(response)
         except Exception as e:
             logger.error(f"Recall failed: {e}")
-            raise HindsightError(f"Recall failed: {e}") from e
+            return f"Failed to search memory: {e}"
 
     def reflect_on_memory(self, query: str) -> str:
         """Synthesize a thoughtful answer from long-term memories.
@@ -236,11 +301,12 @@ class HindsightToolSpec(BaseToolSpec):
             query: The question to reflect on using stored memories.
         """
         try:
+            self._ensure_bank()
             response = self._client.reflect(**self._reflect_kwargs(query))
             return response.text or "No relevant memories found."
         except Exception as e:
             logger.error(f"Reflect failed: {e}")
-            raise HindsightError(f"Reflect failed: {e}") from e
+            return f"Failed to reflect on memory: {e}"
 
     # -- Async methods (used by async agents like ReActAgent) --
 
@@ -254,11 +320,12 @@ class HindsightToolSpec(BaseToolSpec):
             content: The information to store in memory.
         """
         try:
+            await self._aensure_bank()
             await self._client.aretain(**self._retain_kwargs(content))
             return "Memory stored successfully."
         except Exception as e:
             logger.error(f"Retain failed: {e}")
-            raise HindsightError(f"Retain failed: {e}") from e
+            return f"Failed to store memory: {e}"
 
     async def arecall_memory(self, query: str) -> str:
         """Search long-term memory for relevant information.
@@ -270,11 +337,12 @@ class HindsightToolSpec(BaseToolSpec):
             query: What to search for in memory.
         """
         try:
+            await self._aensure_bank()
             response = await self._client.arecall(**self._recall_kwargs(query))
             return self._format_recall(response)
         except Exception as e:
             logger.error(f"Recall failed: {e}")
-            raise HindsightError(f"Recall failed: {e}") from e
+            return f"Failed to search memory: {e}"
 
     async def areflect_on_memory(self, query: str) -> str:
         """Synthesize a thoughtful answer from long-term memories.
@@ -286,11 +354,12 @@ class HindsightToolSpec(BaseToolSpec):
             query: The question to reflect on using stored memories.
         """
         try:
+            await self._aensure_bank()
             response = await self._client.areflect(**self._reflect_kwargs(query))
             return response.text or "No relevant memories found."
         except Exception as e:
             logger.error(f"Reflect failed: {e}")
-            raise HindsightError(f"Reflect failed: {e}") from e
+            return f"Failed to reflect on memory: {e}"
 
 
 def create_hindsight_tools(
@@ -307,6 +376,8 @@ def create_hindsight_tools(
     # Retain options
     retain_metadata: Optional[dict[str, str]] = None,
     retain_document_id: Optional[str] = None,
+    retain_context: Optional[str] = None,
+    retain_async: bool = True,
     # Recall options
     recall_types: Optional[list[str]] = None,
     recall_include_entities: bool = False,
@@ -316,6 +387,8 @@ def create_hindsight_tools(
     reflect_response_schema: Optional[dict[str, Any]] = None,
     reflect_tags: Optional[list[str]] = None,
     reflect_tags_match: Optional[str] = None,
+    # Bank management
+    mission: Optional[str] = None,
     include_retain: bool = True,
     include_recall: bool = True,
     include_reflect: bool = True,
@@ -337,7 +410,10 @@ def create_hindsight_tools(
         recall_tags: Tags to filter when searching memories.
         recall_tags_match: Tag matching mode (any/all/any_strict/all_strict).
         retain_metadata: Default metadata dict for retain operations.
-        retain_document_id: Default document_id for retain (groups/upserts memories).
+        retain_document_id: Default document_id for retain. If None,
+            auto-generates per call.
+        retain_context: Source label for retain operations.
+        retain_async: If True, retain uses async processing (non-blocking).
         recall_types: Fact types to filter (world, experience, opinion, observation).
         recall_include_entities: Include entity information in recall results.
         reflect_context: Additional context for reflect operations.
@@ -345,6 +421,7 @@ def create_hindsight_tools(
         reflect_response_schema: JSON schema to constrain reflect output format.
         reflect_tags: Tags to filter memories used in reflect (defaults to recall_tags).
         reflect_tags_match: Tag matching for reflect (defaults to recall_tags_match).
+        mission: Bank mission for fact extraction context.
         include_retain: Include the retain (store) tool.
         include_recall: Include the recall (search) tool.
         include_reflect: Include the reflect (synthesize) tool.
@@ -367,6 +444,8 @@ def create_hindsight_tools(
         recall_tags_match=recall_tags_match,
         retain_metadata=retain_metadata,
         retain_document_id=retain_document_id,
+        retain_context=retain_context,
+        retain_async=retain_async,
         recall_types=recall_types,
         recall_include_entities=recall_include_entities,
         reflect_context=reflect_context,
@@ -374,6 +453,7 @@ def create_hindsight_tools(
         reflect_response_schema=reflect_response_schema,
         reflect_tags=reflect_tags,
         reflect_tags_match=reflect_tags_match,
+        mission=mission,
     )
 
     spec_functions: list[tuple[str, str]] = []
