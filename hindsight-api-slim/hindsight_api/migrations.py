@@ -176,6 +176,7 @@ def run_migrations(
     database_url: str,
     script_location: str | None = None,
     schema: str | None = None,
+    migration_database_url: str | None = None,
 ) -> None:
     """
     Run database migrations to the latest version using programmatic Alembic configuration.
@@ -216,10 +217,10 @@ def run_migrations(
     # Prefer a dedicated migration URL that bypasses connection poolers (e.g.
     # PgBouncer in transaction mode).  Session-level advisory locks don't
     # survive a PgBouncer transaction-mode cycle, so the distributed lock is
-    # ineffective when the app URL goes through a pooler.  Set
+    # ineffective when the app URL goes through a pooler.  Configure
     # HINDSIGHT_API_MIGRATION_DATABASE_URL to the direct PostgreSQL endpoint
     # (e.g. hindsight-pg-rw) to restore correct locking behaviour.
-    migration_url = os.getenv("HINDSIGHT_API_MIGRATION_DATABASE_URL") or database_url
+    migration_url = migration_database_url or database_url
 
     try:
         # Determine script location
