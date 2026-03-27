@@ -1191,8 +1191,17 @@ async def _consolidate_batch_with_llm(
                 response_format=response_model,
                 scope="consolidation",
             )
+            # Defensive truncation: some LLM providers may not enforce JSON schema max_length
+            creates = response.creates
+            if remaining_observation_slots is not None and remaining_observation_slots >= 0:
+                if len(creates) > remaining_observation_slots:
+                    logger.info(
+                        f"[CONSOLIDATION] Truncating {len(creates)} creates to {remaining_observation_slots} "
+                        f"(max_observations_per_scope={max_observations_per_scope})"
+                    )
+                    creates = creates[:remaining_observation_slots]
             return _BatchLLMResult(
-                creates=response.creates,
+                creates=creates,
                 updates=response.updates,
                 deletes=response.deletes,
                 obs_count=len(union_observations),

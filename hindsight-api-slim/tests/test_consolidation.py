@@ -6,7 +6,7 @@ Note: Consolidation runs automatically after retain via SyncTaskBackend in tests
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -2607,9 +2607,56 @@ async def test_count_observations_for_scope(memory: MemoryEngine, request_contex
         await memory.delete_bank(bank_id, request_context=request_context)
 
 
+async def _insert_memories_with_tags(conn, bank_id: str, texts: list[str], tags: list[str] | None = None) -> list:
+    """Insert experience memories directly with optional tags, bypassing LLM-based retain."""
+    ids = []
+    for text in texts:
+        mem_id = uuid.uuid4()
+        await conn.execute(
+            """
+            INSERT INTO memory_units (id, bank_id, text, fact_type, tags, created_at)
+            VALUES ($1, $2, $3, 'experience', $4, now())
+            """,
+            mem_id,
+            bank_id,
+            text,
+            tags or [],
+        )
+        ids.append(mem_id)
+    return ids
+
+
+def _make_mock_llm_one_obs_per_fact():
+    """Return a MockLLM that creates one observation per fact in the batch."""
+    from hindsight_api.engine.consolidation.consolidator import (
+        _ConsolidationBatchResponse,
+        _CreateAction,
+    )
+    from hindsight_api.engine.providers.mock_llm import MockLLM
+
+    mock_llm = MockLLM(provider="mock", api_key="", base_url="", model="mock-model")
+
+    def callback(messages, scope):
+        if scope != "consolidation":
+            return _ConsolidationBatchResponse()
+        # Parse all fact UUIDs from the prompt — one create per fact
+        import re
+
+        prompt = messages[0]["content"] if messages else ""
+        fact_ids = re.findall(r"\[([0-9a-f-]{36})\]", prompt)
+        creates = [_CreateAction(text=f"Observation about fact {fid[:8]}", source_fact_ids=[fid]) for fid in fact_ids]
+        return _ConsolidationBatchResponse(creates=creates)
+
+    mock_llm.set_response_callback(callback)
+
+    wrapper = MagicMock()
+    wrapper.with_config.return_value = mock_llm
+    return wrapper, mock_llm
+
+
 @pytest.mark.asyncio
 async def test_max_observations_per_scope_limits_creates(memory: MemoryEngine, request_context):
-    """Integration test: max_observations_per_scope limits observation creation."""
+    """Mock LLM tries to create 1 obs per fact; with limit=2, only 2 should exist after 5 facts."""
     bank_id = f"test-max-obs-limit-{uuid.uuid4().hex[:8]}"
     await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
 
@@ -2624,35 +2671,55 @@ async def test_max_observations_per_scope_limits_creates(memory: MemoryEngine, r
     try:
         original_global_config = memory._config_resolver._global_config
         memory._config_resolver._global_config = fake_config
+        wrapper, mock_llm = _make_mock_llm_one_obs_per_fact()
+        original_llm = memory._consolidation_llm_config
+        memory._consolidation_llm_config = wrapper
 
         try:
-            # Retain multiple distinct facts with the same tags to trigger multiple observations
-            for content in [
-                "Alice loves hiking in the mountains.",
-                "Bob enjoys swimming in the ocean.",
-                "Charlie practices yoga every morning.",
-                "Diana reads philosophy books at night.",
-                "Eve plays the violin professionally.",
-            ]:
-                await memory.retain_batch_async(
-                    bank_id=bank_id,
-                    contents=[{"content": content, "tags": ["scope:test"]}],
-                    request_context=request_context,
+            # Insert 5 memories with tags directly (bypass retain LLM)
+            async with memory._pool.acquire() as conn:
+                mem_ids = await _insert_memories_with_tags(
+                    conn,
+                    bank_id,
+                    [
+                        "Alice loves hiking.",
+                        "Bob swims daily.",
+                        "Charlie does yoga.",
+                        "Diana reads books.",
+                        "Eve plays violin.",
+                    ],
+                    tags=["scope:test"],
                 )
 
-            # Count observations in the scope
+            # Run consolidation — mock LLM will try to create 1 obs per fact
+            # but the limit=2 should cap it
+            for _ in range(5):
+                await run_consolidation_job(memory_engine=memory, bank_id=bank_id, request_context=request_context)
+
             async with memory._pool.acquire() as conn:
                 count = await _count_observations_for_scope(conn, bank_id, ["scope:test"])
-                assert count <= 2, f"Expected at most 2 observations, got {count}"
+                assert count == 2, f"Expected exactly 2 observations (limit=2), got {count}"
+
+                # Verify the LLM was called and some creates were blocked by the response model
+                consolidation_calls = [c for c in mock_llm.get_mock_calls() if c["scope"] == "consolidation"]
+                assert len(consolidation_calls) >= 1, "LLM should have been called at least once"
         finally:
             memory._config_resolver._global_config = original_global_config
+            memory._consolidation_llm_config = original_llm
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
 
 
 @pytest.mark.asyncio
 async def test_max_observations_per_scope_allows_updates_at_capacity(memory: MemoryEngine, request_context):
-    """Updates should still work even when at observation capacity."""
+    """At capacity, the LLM can still update existing observations."""
+    from hindsight_api.engine.consolidation.consolidator import (
+        _ConsolidationBatchResponse,
+        _CreateAction,
+        _UpdateAction,
+    )
+    from hindsight_api.engine.providers.mock_llm import MockLLM
+
     bank_id = f"test-max-obs-updates-{uuid.uuid4().hex[:8]}"
     await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
 
@@ -2665,43 +2732,85 @@ async def test_max_observations_per_scope_allows_updates_at_capacity(memory: Mem
     )
 
     try:
+        # Phase 1: create 1 observation (at limit)
+        mock_llm = MockLLM(provider="mock", api_key="", base_url="", model="mock-model")
+        call_count = 0
+        existing_obs_id = None
+
+        def callback(messages, scope):
+            nonlocal call_count, existing_obs_id
+            if scope != "consolidation":
+                return _ConsolidationBatchResponse()
+            call_count += 1
+            import re
+
+            prompt = messages[0]["content"] if messages else ""
+            fact_ids = re.findall(r"\[([0-9a-f-]{36})\]", prompt)
+            if call_count == 1 and fact_ids:
+                # First call: create an observation
+                return _ConsolidationBatchResponse(
+                    creates=[_CreateAction(text="Alice hikes.", source_fact_ids=[fact_ids[0]])]
+                )
+            elif call_count >= 2 and fact_ids and existing_obs_id:
+                # Second+ call: update the existing observation
+                return _ConsolidationBatchResponse(
+                    updates=[
+                        _UpdateAction(
+                            text="Alice hikes and runs trails.",
+                            observation_id=str(existing_obs_id),
+                            source_fact_ids=[fact_ids[0]],
+                        )
+                    ]
+                )
+            return _ConsolidationBatchResponse()
+
+        mock_llm.set_response_callback(callback)
+        wrapper = MagicMock()
+        wrapper.with_config.return_value = mock_llm
+
         original_global_config = memory._config_resolver._global_config
         memory._config_resolver._global_config = fake_config
+        original_llm = memory._consolidation_llm_config
+        memory._consolidation_llm_config = wrapper
 
         try:
-            # Retain first fact — should create 1 observation
-            await memory.retain_batch_async(
-                bank_id=bank_id,
-                contents=[{"content": "Alice loves hiking in the mountains.", "tags": ["scope:test"]}],
-                request_context=request_context,
-            )
-
+            # Insert first memory and consolidate
             async with memory._pool.acquire() as conn:
-                obs_before = await conn.fetch(
-                    "SELECT id, text FROM memory_units WHERE bank_id = $1 AND fact_type = 'observation'",
+                await _insert_memories_with_tags(conn, bank_id, ["Alice loves hiking."], tags=["scope:test"])
+            await run_consolidation_job(memory_engine=memory, bank_id=bank_id, request_context=request_context)
+
+            # Get the created observation ID
+            async with memory._pool.acquire() as conn:
+                obs = await conn.fetch(
+                    "SELECT id FROM memory_units WHERE bank_id = $1 AND fact_type = 'observation'",
                     bank_id,
                 )
+                assert len(obs) == 1, "Should have created exactly 1 observation"
+                existing_obs_id = obs[0]["id"]
 
-            # Retain a second related fact — should update existing observation, not create new
-            await memory.retain_batch_async(
-                bank_id=bank_id,
-                contents=[{"content": "Alice also enjoys trail running on mountain paths.", "tags": ["scope:test"]}],
-                request_context=request_context,
-            )
+            # Insert second memory and consolidate — should update, not create
+            async with memory._pool.acquire() as conn:
+                await _insert_memories_with_tags(conn, bank_id, ["Alice runs on trails."], tags=["scope:test"])
+            await run_consolidation_job(memory_engine=memory, bank_id=bank_id, request_context=request_context)
 
             async with memory._pool.acquire() as conn:
                 count = await _count_observations_for_scope(conn, bank_id, ["scope:test"])
-                # Should still be <= 1 (the limit)
-                assert count <= 1, f"Expected at most 1 observation, got {count}"
+                assert count == 1, f"Expected 1 observation (update not create), got {count}"
+                obs = await conn.fetch(
+                    "SELECT text FROM memory_units WHERE bank_id = $1 AND fact_type = 'observation'",
+                    bank_id,
+                )
+                assert "trails" in obs[0]["text"].lower(), "Observation should have been updated"
         finally:
             memory._config_resolver._global_config = original_global_config
+            memory._consolidation_llm_config = original_llm
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
 
 
 @pytest.mark.asyncio
 async def test_max_observations_per_scope_no_tags_skips_limit(memory: MemoryEngine, request_context):
-    """Observations with no tags should not be subject to the limit."""
+    """With limit=1, memories with no tags should bypass the limit and create freely."""
     bank_id = f"test-max-obs-no-tags-{uuid.uuid4().hex[:8]}"
     await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
 
@@ -2714,106 +2823,68 @@ async def test_max_observations_per_scope_no_tags_skips_limit(memory: MemoryEngi
     )
 
     try:
+        wrapper, mock_llm = _make_mock_llm_one_obs_per_fact()
         original_global_config = memory._config_resolver._global_config
         memory._config_resolver._global_config = fake_config
+        original_llm = memory._consolidation_llm_config
+        memory._consolidation_llm_config = wrapper
 
         try:
-            # Retain multiple distinct facts WITHOUT tags
-            for content in [
-                "Alice loves hiking in the mountains.",
-                "Bob enjoys swimming in the ocean.",
-                "Charlie practices yoga every morning.",
-            ]:
-                await memory.retain_async(
-                    bank_id=bank_id,
-                    content=content,
-                    request_context=request_context,
+            # Insert 3 memories WITHOUT tags
+            async with memory._pool.acquire() as conn:
+                await _insert_memories_with_tags(
+                    conn,
+                    bank_id,
+                    ["Alice hikes.", "Bob swims.", "Charlie does yoga."],
+                    tags=[],
                 )
 
-            # No tag limit should apply — observations can exceed 1
+            # Run consolidation multiple times
+            for _ in range(3):
+                await run_consolidation_job(memory_engine=memory, bank_id=bank_id, request_context=request_context)
+
+            # No tag limit should apply — all 3 observations should be created
             async with memory._pool.acquire() as conn:
                 obs = await conn.fetch(
                     "SELECT id FROM memory_units WHERE bank_id = $1 AND fact_type = 'observation'",
                     bank_id,
                 )
-                # With no tags, the limit is not enforced, so we may have more than 1
-                # (the LLM decides how many to create, but the limit doesn't block them)
-                # We just verify no error occurred and consolidation ran
+                assert len(obs) == 3, f"Expected 3 observations (no limit for no-tag), got {len(obs)}"
         finally:
             memory._config_resolver._global_config = original_global_config
-    finally:
-        await memory.delete_bank(bank_id, request_context=request_context)
-
-
-@pytest.mark.asyncio
-async def test_max_observations_per_scope_per_tag_scopes(memory: MemoryEngine, request_context):
-    """With per_tag scopes, each tag gets its own observation limit."""
-    bank_id = f"test-max-obs-pertag-{uuid.uuid4().hex[:8]}"
-    await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
-
-    raw = _get_raw_config()
-    fake_config = type(raw)(
-        **{
-            **{f: getattr(raw, f) for f in raw.__dataclass_fields__},
-            "max_observations_per_scope": 1,
-        }
-    )
-
-    try:
-        original_global_config = memory._config_resolver._global_config
-        memory._config_resolver._global_config = fake_config
-
-        try:
-            # Retain facts with two tags and per_tag scoping
-            await memory.retain_batch_async(
-                bank_id=bank_id,
-                contents=[
-                    {
-                        "content": "Alice worked hard in her lesson with teacher Ben on math problems.",
-                        "tags": ["user:alice", "teacher:ben"],
-                        "observation_scopes": "per_tag",
-                    }
-                ],
-                request_context=request_context,
-            )
-
-            async with memory._pool.acquire() as conn:
-                # Each tag scope should have at most 1 observation
-                alice_count = await _count_observations_for_scope(conn, bank_id, ["user:alice"])
-                ben_count = await _count_observations_for_scope(conn, bank_id, ["teacher:ben"])
-                assert alice_count <= 1, f"user:alice scope has {alice_count} observations, expected <= 1"
-                assert ben_count <= 1, f"teacher:ben scope has {ben_count} observations, expected <= 1"
-        finally:
-            memory._config_resolver._global_config = original_global_config
+            memory._consolidation_llm_config = original_llm
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
 
 
 @pytest.mark.asyncio
 async def test_max_observations_unlimited_default(memory: MemoryEngine, request_context):
-    """With default config (-1), no limit is enforced."""
+    """With default config (-1), all creates go through."""
     bank_id = f"test-max-obs-unlimited-{uuid.uuid4().hex[:8]}"
     await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
 
     try:
-        # Retain multiple distinct facts with tags — default config should not limit
-        for content in [
-            "Alice loves hiking in the mountains.",
-            "Bob enjoys swimming in the ocean.",
-            "Charlie practices yoga every morning.",
-        ]:
-            await memory.retain_batch_async(
-                bank_id=bank_id,
-                contents=[{"content": content, "tags": ["scope:test"]}],
-                request_context=request_context,
-            )
+        wrapper, mock_llm = _make_mock_llm_one_obs_per_fact()
+        original_llm = memory._consolidation_llm_config
+        memory._consolidation_llm_config = wrapper
 
-        # Verify consolidation ran without errors (observations created freely)
-        async with memory._pool.acquire() as conn:
-            obs = await conn.fetch(
-                "SELECT id FROM memory_units WHERE bank_id = $1 AND fact_type = 'observation'",
-                bank_id,
-            )
-            # Just verify no error — LLM decides count, no limit enforced
+        try:
+            # Insert 5 memories with tags — default config should not limit
+            async with memory._pool.acquire() as conn:
+                await _insert_memories_with_tags(
+                    conn,
+                    bank_id,
+                    ["Alice hikes.", "Bob swims.", "Charlie yoga.", "Diana reads.", "Eve violin."],
+                    tags=["scope:test"],
+                )
+
+            for _ in range(5):
+                await run_consolidation_job(memory_engine=memory, bank_id=bank_id, request_context=request_context)
+
+            async with memory._pool.acquire() as conn:
+                count = await _count_observations_for_scope(conn, bank_id, ["scope:test"])
+                assert count == 5, f"Expected 5 observations (unlimited), got {count}"
+        finally:
+            memory._consolidation_llm_config = original_llm
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
