@@ -31,8 +31,21 @@ def upgrade() -> None:
     # Use raw SQL with IF EXISTS so this is safe on schemas where the FK was
     # already dropped or never existed under this name.
     op.execute(f"ALTER TABLE {schema_prefix}memory_units DROP CONSTRAINT IF EXISTS memory_units_chunk_fkey")
-    op.create_foreign_key(
-        "memory_units_chunk_fkey", "memory_units", "chunks", ["chunk_id"], ["chunk_id"], ondelete="CASCADE"
+    # Use a DO block so the ADD is also idempotent: if the FK already exists (e.g.
+    # the schema was provisioned after the base migration already added it) the
+    # duplicate_object exception is swallowed rather than failing the migration.
+    op.execute(
+        f"""
+        DO $$ BEGIN
+            ALTER TABLE {schema_prefix}memory_units
+                ADD CONSTRAINT memory_units_chunk_fkey
+                FOREIGN KEY (chunk_id)
+                REFERENCES {schema_prefix}chunks (chunk_id)
+                ON DELETE CASCADE;
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$;
+        """
     )
 
 
