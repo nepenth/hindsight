@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from ..db_utils import acquire_with_retry, retry_with_backoff
+from ..db_utils import acquire_with_retry
 from . import bank_utils
 
 
@@ -667,15 +667,17 @@ async def retain_batch(
             log_buffer.append(f"{'=' * 60}")
             logger.info("\n" + "\n".join(log_buffer) + "\n")
 
-    # Backpressure: limit concurrent DB transactions to prevent contention on
-    # entity/link tables when many documents are ingested into the same bank.
+    # Backpressure: limit concurrent DB phases (Phase 1 reads + Phase 2 writes)
+    # to prevent I/O contention on the HNSW index and connection pool saturation.
     # The semaphore is acquired here (after LLM extraction) so LLM calls run
-    # in full parallelism while only the DB-heavy phase is throttled.
+    # in full parallelism while only the DB-heavy phases are throttled.
+    # No retry_with_backoff — deadlocks are prevented by sorted bulk INSERT,
+    # and transient timeouts are handled by the worker poller's task-level retry.
     if db_semaphore is not None:
         async with db_semaphore:
-            await retry_with_backoff(_run_db_work)
+            await _run_db_work()
     else:
-        await retry_with_backoff(_run_db_work)
+        await _run_db_work()
     return result_unit_ids, usage
 
 
@@ -934,9 +936,9 @@ async def _try_delta_retain(
 
     if db_semaphore is not None:
         async with db_semaphore:
-            await retry_with_backoff(_run_delta_db_work)
+            await _run_delta_db_work()
     else:
-        await retry_with_backoff(_run_delta_db_work)
+        await _run_delta_db_work()
     return result_unit_ids, usage
 
 
