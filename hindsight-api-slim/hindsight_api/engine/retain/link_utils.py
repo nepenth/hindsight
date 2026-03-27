@@ -731,7 +731,7 @@ async def create_semantic_links_batch(
     bank_id: str,
     unit_ids: list[str],
     embeddings: list[list[float]],
-    top_k: int = 5,
+    top_k: int = 50,
     threshold: float = 0.7,
     log_buffer: list[str] = None,
 ) -> int:
