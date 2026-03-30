@@ -171,15 +171,13 @@ The agent retains this to the team bank. It's extracted as a fact: *"The JWT val
 
 ## Seeding the Bank on Day One
 
-The shared bank starts empty. Agents fill it organically over time, but there's no reason to wait weeks for useful context to accumulate.
+The shared bank starts empty. With the hook-based plugin, agents fill it automatically: Hindsight's extraction pipeline runs at the end of every session, pulling relevant facts into the bank based on the `retainMission` you've configured. No explicit commands, no tool calls. The bank builds up in the background as your team does normal work.
 
-You can seed the bank manually by pointing an agent at your existing documentation. Ask your Claude Code or Codex agent to read through your architecture docs, your runbooks, your Confluence or Notion pages, and retain the key facts to the team bank. One session can bootstrap weeks of organic accumulation.
+That said, there's no reason to wait weeks for useful context to accumulate. You can bootstrap the bank on day one by running a focused session with your existing documentation. Open your architecture docs, runbooks, or Confluence pages, and work through them with your agent. As you discuss the content, Hindsight extracts facts from the conversation automatically. One session can pre-populate weeks' worth of context.
 
-A practical starting prompt:
+A practical approach: share a doc or paste in a section, ask your agent to explain what it means for how the codebase is structured, and let the session proceed naturally. At the end, Hindsight processes the conversation and retains what matches your `retainMission`.
 
-> "I'm going to share some internal documentation with you. Read each section and use the Hindsight retain tool to store any facts that would be useful for other engineers working on this codebase, architectural decisions, known issues, conventions, deployment processes. Don't retain process documentation or meeting notes, just the durable technical facts."
-
-Then paste in your most important docs. Within an hour, every agent on the team is working with a pre-populated base of context that would otherwise take months to build up naturally.
+If you're using [Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) with the MCP integration, Claude also has access to explicit `retain` and `recall` tools it can call directly. In that mode, you can ask Claude to retain a specific fact on demand, which is useful when you want to be precise about what goes into the bank. Note that MCP OAuth is a Hindsight Cloud feature; the open-source self-hosted deployment uses the hook-based approach described above.
 
 You can also check the [Hindsight cookbook](https://github.com/vectorize-io/hindsight-cookbook) for scripts that bulk-seed a bank from files or URLs.
 
