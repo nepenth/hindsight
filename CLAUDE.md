@@ -11,9 +11,15 @@ Hindsight is an agent memory system that provides long-term memory for AI agents
 
 ## Development Commands
 
+### Local Development (API + UI)
+```bash
+# Start both API server and control plane UI
+./scripts/dev/start.sh
+```
+
 ### API Server (Python/FastAPI)
 ```bash
-# Start API server (loads .env automatically)
+# Start API server only (loads .env automatically)
 ./scripts/dev/start-api.sh
 
 # Run all tests (parallelized with pytest-xdist)
