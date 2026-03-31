@@ -71,10 +71,13 @@ results = await asyncio.gather(*tasks, return_exceptions=True)
 results = await asyncio.gather(*tasks, return_exceptions=True)
 ```
 
+<<<<<<< HEAD
 ### Branch Hygiene
 - **Always start new feature branches from `origin/main`** — rebase to ensure a clean base.
 - **Only include commits relevant to the PR/branch/feature** — no unrelated changes. If the branch contains commits that don't belong, they must be removed before merging.
 
+=======
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 ### General Principles
 - Don't add features, refactor code, or make "improvements" beyond what was asked
 - Don't add unnecessary error handling for impossible scenarios
@@ -84,6 +87,7 @@ results = await asyncio.gather(*tasks, return_exceptions=True)
 
 ## Review Steps
 
+<<<<<<< HEAD
 ### 1. Check branch hygiene
 
 - Run `git log --oneline main..HEAD` to list all commits on the branch.
@@ -95,6 +99,13 @@ results = await asyncio.gather(*tasks, return_exceptions=True)
 Run `git diff --name-only HEAD` (unstaged) and `git diff --cached --name-only` (staged) to get all changed files. If there are no local changes, diff against the base branch using `git diff main...HEAD --name-only` and `git diff main...HEAD` to review all commits on the current branch.
 
 ### 3. Run linters
+=======
+### 1. Identify changed files
+
+Run `git diff --name-only HEAD` (unstaged) and `git diff --cached --name-only` (staged) to get all changed files. If there are no local changes, diff against the base branch using `git diff main...HEAD --name-only` and `git diff main...HEAD` to review all commits on the current branch.
+
+### 2. Run linters
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 ```bash
 ./scripts/hooks/lint.sh
@@ -102,7 +113,11 @@ Run `git diff --name-only HEAD` (unstaged) and `git diff --cached --name-only` (
 
 Report any failures. Do NOT fix them yourself — just report.
 
+<<<<<<< HEAD
 ### 4. Check for dead code
+=======
+### 3. Check for dead code
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each changed Python file, check for:
 - Unused imports (Ruff should catch these, but verify)
@@ -115,7 +130,11 @@ For each changed TypeScript file, check for:
 - Unused variables or functions
 - Commented-out code
 
+<<<<<<< HEAD
 ### 5. Check type safety (Python)
+=======
+### 4. Check type safety (Python)
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each changed Python file, check for violations:
 - **No raw `dict` for structured data** — should use Pydantic models
@@ -123,7 +142,11 @@ For each changed Python file, check for violations:
 - **Missing type hints** on function parameters and return types
 - **Missing `@field_validator`** for datetime fields that should be timezone-aware
 
+<<<<<<< HEAD
 ### 6. Check for missing tests
+=======
+### 5. Check for missing tests
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each new or significantly changed function/endpoint/class:
 - Check if there is a corresponding test addition or update
@@ -133,21 +156,33 @@ For each new or significantly changed function/endpoint/class:
 
 Flag any new logic that lacks test coverage.
 
+<<<<<<< HEAD
 ### 7. Check API consistency
+=======
+### 6. Check API consistency
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 If any files in `hindsight-api-slim/hindsight_api/api/` were changed:
 - Were the OpenAPI specs regenerated? (`./scripts/generate-openapi.sh`)
 - Were the client SDKs regenerated? (`./scripts/generate-clients.sh`)
 - Were the control plane proxy routes updated? (`hindsight-control-plane/src/app/api/`)
 
+<<<<<<< HEAD
 ### 8. Check code comments
+=======
+### 7. Check code comments
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each non-trivial change:
 - **New non-obvious logic** — is there a comment explaining the reasoning?
 - **Changed approach** — does the comment include what was done before and why it changed?
 - **Stale comments** — do existing comments near the changed code still accurately describe the behavior?
 
+<<<<<<< HEAD
 ### 9. Review against other coding standards
+=======
+### 8. Review against other coding standards
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 Check the diff for violations of the standards listed above:
 - Python files at project root (not allowed)
@@ -159,12 +194,19 @@ Check the diff for violations of the standards listed above:
 - Premature abstractions or speculative helpers
 - Backwards-compatibility hacks (unused vars, re-exports, "removed" comments)
 
+<<<<<<< HEAD
 ### 10. Report findings
+=======
+### 9. Report findings
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 Present a clear summary organized by severity:
 
 **Must fix** — issues that will break CI or violate hard project rules:
+<<<<<<< HEAD
 - Unrelated commits on the branch
+=======
+>>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 - Lint failures
 - Missing type hints on public functions
 - Raw dict usage for structured data
