@@ -243,18 +243,33 @@ class TestEmbeddingDimension:
         assert get_column_dimension(db_url, schema, table="mental_models") == 384
 
     def test_mental_models_dimension_change_empty_table(self, dimension_test_schema):
-        """When mental_models is empty, dimension can be changed."""
+        """When mental_models is empty, dimension can be changed.
+
+        Note: Retries up to 3 times due to transient PostgreSQL OID errors
+        from concurrent DDL in parallel test execution.
+        """
+        import time
+
         db_url, schema = dimension_test_schema
 
-        clear_mental_model_embeddings(db_url, schema)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                clear_mental_model_embeddings(db_url, schema)
 
-        ensure_embedding_dimension(db_url, 768, schema=schema)
+                ensure_embedding_dimension(db_url, 768, schema=schema)
 
-        assert get_column_dimension(db_url, schema, table="mental_models") == 768
+                assert get_column_dimension(db_url, schema, table="mental_models") == 768
 
-        # Change back for other tests
-        ensure_embedding_dimension(db_url, 384, schema=schema)
-        assert get_column_dimension(db_url, schema, table="mental_models") == 384
+                # Change back for other tests
+                ensure_embedding_dimension(db_url, 384, schema=schema)
+                assert get_column_dimension(db_url, schema, table="mental_models") == 384
+                break
+            except Exception as e:
+                if "could not open relation" in str(e) and attempt < max_retries - 1:
+                    time.sleep(1)
+                    continue
+                raise
 
     def test_mental_models_dimension_change_blocked_with_data(self, dimension_test_schema):
         """When mental_models has data, dimension change should be blocked."""

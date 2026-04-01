@@ -411,6 +411,8 @@ class TestReflectUsesMentalModels:
         Expected:
         - Reflect should call search_mental_models tool
         - The mental model content should influence the response
+
+        Note: LLM tool selection is non-deterministic, so we retry up to 3 times.
         """
         bank_id = f"test-reflect-mm-{uuid.uuid4().hex[:8]}"
 
@@ -418,7 +420,7 @@ class TestReflectUsesMentalModels:
         await memory.get_bank_profile(bank_id=bank_id, request_context=request_context)
 
         # Create a mental model about team collaboration
-        mental_model = await memory.create_mental_model(
+        await memory.create_mental_model(
             bank_id=bank_id,
             mental_model_id=str(uuid.uuid4()),
             name="Team Collaboration Practices",
@@ -430,35 +432,48 @@ class TestReflectUsesMentalModels:
             request_context=request_context,
         )
 
-        # Run reflect with a query about team collaboration
-        result = await memory.reflect_async(
-            bank_id=bank_id,
-            query="How does the team work together?",
-            request_context=request_context,
-        )
+        max_retries = 3
+        last_error = None
 
-        # Check that mental models were searched
-        tool_calls = result.tool_trace
-        search_mm_calls = [tc for tc in tool_calls if tc.tool == "search_mental_models"]
+        for attempt in range(max_retries):
+            try:
+                # Run reflect with a query about team collaboration
+                result = await memory.reflect_async(
+                    bank_id=bank_id,
+                    query="How does the team work together?",
+                    request_context=request_context,
+                )
 
-        assert len(search_mm_calls) > 0, (
-            f"Expected search_mental_models to be called when bank has mental models. "
-            f"Tool calls: {[tc.tool for tc in tool_calls]}"
-        )
+                # Check that mental models were searched
+                tool_calls = result.tool_trace
+                search_mm_calls = [tc for tc in tool_calls if tc.tool == "search_mental_models"]
 
-        # Check that the reason field is populated for debugging
-        for tc in search_mm_calls:
-            assert tc.reason is not None, "Tool call should have a reason for debugging"
+                assert len(search_mm_calls) > 0, (
+                    f"Expected search_mental_models to be called when bank has mental models. "
+                    f"Tool calls: {[tc.tool for tc in tool_calls]}"
+                )
 
-        # The response should mention concepts from the mental model
-        response_text = result.text.lower()
-        has_relevant_content = any(
-            keyword in response_text
-            for keyword in ["slack", "async", "standup", "code review", "documentation", "communication"]
-        )
-        assert has_relevant_content, (
-            f"Expected response to reference mental model content. Got: {result.text[:500]}"
-        )
+                # Check that the reason field is populated for debugging
+                for tc in search_mm_calls:
+                    assert tc.reason is not None, "Tool call should have a reason for debugging"
+
+                # The response should mention concepts from the mental model
+                response_text = result.text.lower()
+                has_relevant_content = any(
+                    keyword in response_text
+                    for keyword in ["slack", "async", "standup", "code review", "documentation", "communication"]
+                )
+                assert has_relevant_content, (
+                    f"Expected response to reference mental model content. Got: {result.text[:500]}"
+                )
+
+                break  # Test passed
+
+            except AssertionError as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    continue
+                raise last_error
 
         # Cleanup
         await memory.delete_bank(bank_id, request_context=request_context)

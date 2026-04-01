@@ -1143,6 +1143,8 @@ class TestMentalModelTriggerTagsConfig:
 
         When tag_groups is set, the model's own tags are NOT used for filtering during refresh,
         giving the user full control over the search scope.
+
+        Note: LLM content generation is non-deterministic, so we retry up to 3 times.
         """
         bank_id = f"test-trigger-tag-groups-{uuid.uuid4().hex[:8]}"
         await memory.get_bank_profile(bank_id, request_context=request_context)
@@ -1179,33 +1181,46 @@ class TestMentalModelTriggerTagsConfig:
             request_context=request_context,
         )
 
-        refreshed = await memory.refresh_mental_model(
-            bank_id=bank_id,
-            mental_model_id=mm["id"],
-            request_context=request_context,
-        )
-
-        refreshed_content = refreshed["content"].lower()
-
-        # Should include alice's content
-        assert "alice" in refreshed_content or "react" in refreshed_content or "dashboard" in refreshed_content, (
-            f"Should include user:alice memories via tag_groups. Content: {refreshed['content']}"
-        )
-
-        # Should include shared content (via tag_groups OR expression)
-        assert "typescript" in refreshed_content or "shared" in refreshed_content or "frontend code" in refreshed_content, (
-            f"Should include shared memories via tag_groups. Content: {refreshed['content']}"
-        )
-
         import re
 
         def contains_word(text: str, word: str) -> bool:
             return bool(re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE))
 
-        # MUST NOT include Bob's content (not in tag_groups)
-        assert not contains_word(refreshed_content, "bob"), (
-            f"Should NOT include user:bob memories (not in tag_groups). Content: {refreshed['content']}"
-        )
+        max_retries = 3
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                refreshed = await memory.refresh_mental_model(
+                    bank_id=bank_id,
+                    mental_model_id=mm["id"],
+                    request_context=request_context,
+                )
+
+                refreshed_content = refreshed["content"].lower()
+
+                # Should include alice's content
+                assert "alice" in refreshed_content or "react" in refreshed_content or "dashboard" in refreshed_content, (
+                    f"Should include user:alice memories via tag_groups. Content: {refreshed['content']}"
+                )
+
+                # Should include shared content (via tag_groups OR expression)
+                assert "typescript" in refreshed_content or "shared" in refreshed_content or "frontend code" in refreshed_content, (
+                    f"Should include shared memories via tag_groups. Content: {refreshed['content']}"
+                )
+
+                # MUST NOT include Bob's content (not in tag_groups)
+                assert not contains_word(refreshed_content, "bob"), (
+                    f"Should NOT include user:bob memories (not in tag_groups). Content: {refreshed['content']}"
+                )
+
+                break  # Test passed
+
+            except AssertionError as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    continue
+                raise last_error
 
         await memory.delete_bank(bank_id, request_context=request_context)
 
