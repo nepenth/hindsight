@@ -1,0 +1,205 @@
+import React, {useMemo, useState, useCallback} from 'react';
+import Layout from '@theme/Layout';
+import templatesData from '@site/src/data/templates.json';
+import styles from './index.module.css';
+
+const CATEGORIES = ['all', 'support', 'research', 'personal', 'development', 'productivity'] as const;
+type Category = (typeof CATEGORIES)[number];
+
+const CATEGORY_LABELS: Record<Category, string> = {
+  all: 'All',
+  support: 'Support',
+  research: 'Research',
+  personal: 'Personal',
+  development: 'Development',
+  productivity: 'Productivity',
+};
+
+// Category icons (emoji-based for simplicity, no external deps)
+const CATEGORY_ICONS: Record<string, string> = {
+  support: '\uD83C\uDFA7',
+  research: '\uD83D\uDD2C',
+  personal: '\uD83D\uDCD3',
+  development: '\uD83D\uDCBB',
+  productivity: '\uD83D\uDCCB',
+};
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  manifest: Record<string, unknown>;
+}
+
+function TemplateCard({template, onSelect}: {template: Template; onSelect: () => void}) {
+  return (
+    <button className={styles.card} onClick={onSelect}>
+      <div className={styles.cardHeader}>
+        <span className={styles.categoryIcon}>{CATEGORY_ICONS[template.category] || '\uD83D\uDCC4'}</span>
+        <span className={styles.categoryBadge}>{template.category}</span>
+      </div>
+      <div className={styles.cardBody}>
+        <h3 className={styles.cardTitle}>{template.name}</h3>
+        <p className={styles.cardDescription}>{template.description}</p>
+      </div>
+      <div className={styles.cardFooter}>
+        <span className={styles.viewLabel}>View manifest &rarr;</span>
+      </div>
+    </button>
+  );
+}
+
+function ManifestModal({
+  template,
+  onClose,
+}: {
+  template: Template;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const json = JSON.stringify(template.manifest, null, 2);
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(json);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [json]);
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2 className={styles.modalTitle}>{template.name}</h2>
+            <p className={styles.modalDescription}>{template.description}</p>
+          </div>
+          <button className={styles.modalClose} onClick={onClose} aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <div className={styles.modalBody}>
+          <div className={styles.manifestHeader}>
+            <span className={styles.manifestLabel}>Template Manifest</span>
+            <button className={styles.copyButton} onClick={handleCopy}>
+              {copied ? 'Copied!' : 'Copy JSON'}
+            </button>
+          </div>
+          <pre className={styles.manifestCode}>
+            <code>{json}</code>
+          </pre>
+        </div>
+        <div className={styles.modalFooter}>
+          <p className={styles.usageHint}>
+            Use this manifest with <code>POST /v1/default/banks/&#123;bank_id&#125;/import</code> or
+            paste it in the bank creation dialog in the control plane.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function TemplateGallery(): React.ReactElement {
+  const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<Category>('all');
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+
+  const templates = templatesData.templates as Template[];
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return templates.filter((t) => {
+      if (selectedCategory !== 'all' && t.category !== selectedCategory) return false;
+      if (q && !t.name.toLowerCase().includes(q) && !t.description.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [templates, search, selectedCategory]);
+
+  return (
+    <Layout title="Template Gallery" description="Pre-built bank templates for common use cases">
+      <div className={styles.heroSection}>
+        <h1 className={styles.heroTitle}>Template Gallery</h1>
+        <p className={styles.heroSubtitle}>
+          Pre-built bank templates to get started fast. Browse, preview, and import into your Hindsight banks.
+        </p>
+
+        <div className={styles.searchWrapper}>
+          <input
+            type="text"
+            className={styles.searchInput}
+            placeholder="Search templates\u2026"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search templates"
+            autoComplete="off"
+          />
+          {search && (
+            <button className={styles.searchClear} onClick={() => setSearch('')} aria-label="Clear search">
+              &times;
+            </button>
+          )}
+        </div>
+
+        <div className={styles.heroStats}>
+          <span className={styles.stat}>
+            <strong>{templates.length}</strong> templates
+          </span>
+          <span className={styles.statDivider}>&middot;</span>
+          <span className={styles.stat}>
+            <strong>{new Set(templates.map((t) => t.category)).size}</strong> categories
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.page}>
+        <div className={styles.toolbar}>
+          <div className={styles.filterGroup}>
+            {CATEGORIES.map((c) => (
+              <button
+                key={c}
+                className={`${styles.filterPill} ${selectedCategory === c ? styles.filterPillActive : ''}`}
+                onClick={() => setSelectedCategory(c)}>
+                {CATEGORY_LABELS[c]}
+              </button>
+            ))}
+          </div>
+          <span className={styles.resultCount}>
+            {filtered.length} template{filtered.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className={styles.empty}>
+            <p>No templates match your search.</p>
+            <button
+              className={styles.resetButton}
+              onClick={() => {
+                setSearch('');
+                setSelectedCategory('all');
+              }}>
+              Reset filters
+            </button>
+          </div>
+        ) : (
+          <div className={styles.grid}>
+            {filtered.map((t) => (
+              <TemplateCard key={t.id} template={t} onSelect={() => setSelectedTemplate(t)} />
+            ))}
+          </div>
+        )}
+
+        <div className={styles.submitBanner}>
+          <div className={styles.submitBannerContent}>
+            <h3 className={styles.submitBannerTitle}>Have a template to share?</h3>
+            <p className={styles.submitBannerText}>
+              Add your template to the gallery by editing templates.json on GitHub.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {selectedTemplate && <ManifestModal template={selectedTemplate} onClose={() => setSelectedTemplate(null)} />}
+    </Layout>
+  );
+}

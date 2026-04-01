@@ -123,6 +123,12 @@ const sidebars: SidebarsConfig = {
           customProps: { icon: 'lu-webhook' },
         },
         {
+          type: 'doc',
+          id: 'developer/api/bank-templates',
+          label: 'Bank Templates',
+          customProps: { icon: 'lu-file-json' },
+        },
+        {
           type: 'link',
           href: '/api-reference',
           label: 'API Reference',

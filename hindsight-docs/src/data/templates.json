@@ -1,0 +1,220 @@
+{
+  "templates": [
+    {
+      "id": "customer-support",
+      "name": "Customer Support Agent",
+      "description": "Optimized for support agents handling customer interactions. High empathy, verbose extraction, and mental models that track sentiment trends and unresolved issues.",
+      "category": "support",
+      "manifest": {
+        "version": "1",
+        "description": "Customer support agent with empathy-focused disposition and issue tracking",
+        "bank": {
+          "reflect_mission": "You are helping a customer support agent remember past interactions, resolutions, and customer preferences. Prioritize actionable context that helps resolve issues faster.",
+          "retain_mission": "Extract customer issues, resolutions, sentiment, commitments made, and any customer preferences or context that would help in future interactions.",
+          "retain_extraction_mode": "verbose",
+          "disposition_skepticism": 2,
+          "disposition_literalism": 3,
+          "disposition_empathy": 5,
+          "enable_observations": true,
+          "observations_mission": "Track recurring customer pain points, resolution patterns, and shifts in customer sentiment over time."
+        },
+        "mental_models": [
+          {
+            "id": "sentiment-overview",
+            "name": "Customer Sentiment Overview",
+            "source_query": "What is the overall sentiment trend across recent customer interactions? Are customers generally satisfied, frustrated, or mixed?",
+            "tags": ["sentiment", "overview"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["experience", "observation"]
+            }
+          },
+          {
+            "id": "unresolved-issues",
+            "name": "Unresolved Issues Tracker",
+            "source_query": "What customer issues remain unresolved, were escalated, or are awaiting follow-up? Include any commitments or deadlines.",
+            "tags": ["issues", "tracking"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "research-assistant",
+      "name": "Research Assistant",
+      "description": "Designed for research workflows — tracks papers, methodologies, findings, and emerging themes. Concise extraction keeps the knowledge base clean.",
+      "category": "research",
+      "manifest": {
+        "version": "1",
+        "description": "Research assistant focused on tracking papers, methods, and emerging themes",
+        "bank": {
+          "reflect_mission": "You are a research assistant helping track academic papers, experiments, methodologies, and key findings. Synthesize knowledge across sources to identify patterns and gaps.",
+          "retain_mission": "Extract key findings, methodologies, paper references, author claims, statistical results, and connections between ideas.",
+          "retain_extraction_mode": "concise",
+          "disposition_skepticism": 4,
+          "disposition_literalism": 4,
+          "disposition_empathy": 2,
+          "enable_observations": true,
+          "observations_mission": "Identify emerging research themes, methodological trends, and connections between papers."
+        },
+        "mental_models": [
+          {
+            "id": "research-themes",
+            "name": "Emerging Research Themes",
+            "source_query": "What are the main research themes and topics that have been explored? What patterns or trends are emerging across the literature?",
+            "tags": ["themes", "overview"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["world", "observation"]
+            }
+          },
+          {
+            "id": "methodology-patterns",
+            "name": "Methodology Patterns",
+            "source_query": "What research methodologies and experimental approaches have been used? Which methods produced the strongest results?",
+            "tags": ["methodology"],
+            "max_tokens": 1024,
+            "trigger": {
+              "refresh_after_consolidation": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "personal-journal",
+      "name": "Personal Journal",
+      "description": "For personal life logging and journaling. High empathy disposition with mental models that track life events and relationship dynamics.",
+      "category": "personal",
+      "manifest": {
+        "version": "1",
+        "description": "Personal journal with empathetic disposition and life event tracking",
+        "bank": {
+          "reflect_mission": "You are a thoughtful personal memory assistant. Help recall life events, personal growth, and relationships with warmth and nuance. Respect the emotional weight of experiences.",
+          "retain_mission": "Extract life events, personal reflections, relationship dynamics, goals, milestones, and emotional context.",
+          "retain_extraction_mode": "verbose",
+          "disposition_skepticism": 1,
+          "disposition_literalism": 2,
+          "disposition_empathy": 5,
+          "enable_observations": true,
+          "observations_mission": "Track personal growth patterns, relationship dynamics, recurring themes in reflections, and progress toward goals."
+        },
+        "mental_models": [
+          {
+            "id": "life-events",
+            "name": "Life Events Timeline",
+            "source_query": "What are the significant life events, milestones, and experiences? How have they shaped things over time?",
+            "tags": ["events", "timeline"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["experience", "observation"]
+            }
+          },
+          {
+            "id": "relationships",
+            "name": "Relationship Map",
+            "source_query": "Who are the important people mentioned and what are the key dynamics of each relationship? How have these relationships evolved?",
+            "tags": ["relationships"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "code-review-buddy",
+      "name": "Code Review Buddy",
+      "description": "Tracks architectural decisions, tech debt, code patterns, and review feedback. High literalism and skepticism for precise technical memory.",
+      "category": "development",
+      "manifest": {
+        "version": "1",
+        "description": "Code review assistant focused on technical decisions and architecture patterns",
+        "bank": {
+          "reflect_mission": "You are a technical memory assistant for a software development team. Track architectural decisions, code review feedback, tech debt, and coding patterns. Be precise and factual.",
+          "retain_mission": "Extract architectural decisions (and their rationale), code review comments, bug root causes, tech debt items, and coding patterns or conventions.",
+          "retain_extraction_mode": "concise",
+          "disposition_skepticism": 4,
+          "disposition_literalism": 5,
+          "disposition_empathy": 1,
+          "enable_observations": true,
+          "observations_mission": "Track recurring code quality issues, architectural drift, and evolving team conventions."
+        },
+        "mental_models": [
+          {
+            "id": "architecture-decisions",
+            "name": "Architecture Decision Log",
+            "source_query": "What architectural and technical decisions have been made? What were the trade-offs and rationale for each?",
+            "tags": ["architecture", "decisions"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["world", "observation"]
+            }
+          },
+          {
+            "id": "tech-debt-tracker",
+            "name": "Tech Debt Tracker",
+            "source_query": "What known tech debt items, code quality issues, or improvement opportunities have been identified? What is their priority and status?",
+            "tags": ["tech-debt"],
+            "max_tokens": 1024,
+            "trigger": {
+              "refresh_after_consolidation": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "meeting-notes",
+      "name": "Meeting Notes",
+      "description": "Extracts action items, decisions, and ownership from meeting transcripts. Tracks commitments and decision history across meetings.",
+      "category": "productivity",
+      "manifest": {
+        "version": "1",
+        "description": "Meeting notes processor with action item and decision tracking",
+        "bank": {
+          "reflect_mission": "You are a meeting memory assistant. Help recall decisions, action items, commitments, and discussion context from meetings. Focus on what was decided and who owns what.",
+          "retain_mission": "Extract decisions made, action items with owners and deadlines, key discussion points, commitments, and any follow-up items.",
+          "retain_extraction_mode": "verbose",
+          "disposition_skepticism": 3,
+          "disposition_literalism": 4,
+          "disposition_empathy": 3,
+          "enable_observations": true,
+          "observations_mission": "Track action item completion patterns, recurring meeting topics, and decision follow-through."
+        },
+        "mental_models": [
+          {
+            "id": "action-items",
+            "name": "Open Action Items",
+            "source_query": "What action items are currently open or pending? Who owns each item and what are the deadlines?",
+            "tags": ["actions", "tracking"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["experience", "observation"]
+            }
+          },
+          {
+            "id": "decision-log",
+            "name": "Decision Log",
+            "source_query": "What key decisions have been made across meetings? What was the context and rationale for each decision?",
+            "tags": ["decisions"],
+            "max_tokens": 2048,
+            "trigger": {
+              "refresh_after_consolidation": true,
+              "fact_types": ["world", "observation"]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
