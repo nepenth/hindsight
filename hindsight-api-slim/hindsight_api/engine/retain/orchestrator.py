@@ -5,6 +5,7 @@ Coordinates all retain pipeline modules to store memories efficiently.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -507,251 +508,48 @@ async def retain_batch(
         if delta_result is not None:
             return delta_result
 
-    # --- Streaming chunk batching: check if we should process in mini-batches ---
-    chunk_batch_size = getattr(config, "retain_chunk_batch_size", 0)
-    if chunk_batch_size > 0:
-        chunk_size = getattr(config, "retain_chunk_size", 3000)
-        all_pre_chunks = []
-        for content in contents:
-            content_chunks = fact_extraction.chunk_text(content.content, chunk_size)
-            all_pre_chunks.extend(content_chunks)
+    # --- Always use the streaming pipeline (producer-consumer batching) ---
+    # Even small documents go through the same path — they just end up as a
+    # single batch. This eliminates the maintenance burden of two separate
+    # retain code paths.
+    chunk_batch_size = getattr(config, "retain_chunk_batch_size", 100)
+    chunk_size = getattr(config, "retain_chunk_size", 3000)
+    all_pre_chunks = []
+    for content in contents:
+        content_chunks = fact_extraction.chunk_text(content.content, chunk_size)
+        all_pre_chunks.extend(content_chunks)
 
-        total_pre_chunks = len(all_pre_chunks)
-        if total_pre_chunks > chunk_batch_size:
-            log_buffer.append(
-                f"[streaming] {total_pre_chunks} chunks > batch_size {chunk_batch_size} — "
-                f"processing in {(total_pre_chunks + chunk_batch_size - 1) // chunk_batch_size} mini-batches"
-            )
-            return await _streaming_retain_batch(
-                pool=pool,
-                embeddings_model=embeddings_model,
-                llm_config=llm_config,
-                entity_resolver=entity_resolver,
-                format_date_fn=format_date_fn,
-                bank_id=bank_id,
-                contents_dicts=contents_dicts,
-                contents=contents,
-                config=config,
-                document_id=effective_doc_id,
-                is_first_batch=is_first_batch,
-                fact_type_override=fact_type_override,
-                document_tags=document_tags,
-                agent_name=agent_name,
-                log_buffer=log_buffer,
-                start_time=start_time,
-                all_pre_chunks=all_pre_chunks,
-                chunk_batch_size=chunk_batch_size,
-                operation_id=operation_id,
-                schema=schema,
-                outbox_callback=outbox_callback,
-                db_semaphore=db_semaphore,
-            )
-
-    # --- Full retain path ---
-    extracted_facts, processed_facts, chunks, usage = await _extract_and_embed(
-        contents,
-        llm_config,
-        agent_name,
-        config,
-        embeddings_model,
-        format_date_fn,
-        fact_type_override,
-        log_buffer,
-        pool,
-        operation_id,
-        schema,
+    total_pre_chunks = len(all_pre_chunks)
+    num_batches = (total_pre_chunks + chunk_batch_size - 1) // chunk_batch_size if total_pre_chunks > 0 else 1
+    log_buffer.append(
+        f"[streaming] {total_pre_chunks} chunks, batch_size {chunk_batch_size} — "
+        f"{num_batches} batch{'es' if num_batches != 1 else ''}"
     )
 
-    if not extracted_facts:
-        await _handle_zero_facts_documents(
-            pool,
-            bank_id,
-            contents_dicts,
-            contents,
-            config,
-            document_id,
-            is_first_batch,
-            document_tags,
-            chunks,
-            log_buffer,
-            start_time,
-        )
-        return [[] for _ in contents], usage
-
-    # Group contents by document_id
-    contents_by_doc = defaultdict(list)
-    for idx, content_dict in enumerate(contents_dicts):
-        doc_id = content_dict.get("document_id")
-        contents_by_doc[doc_id].append((idx, content_dict))
-
-    # Database transaction (retried on deadlock)
-    result_unit_ids: list[list[str]] = []
-    log_buffer_pre_db = len(log_buffer)
-
-    async def _run_db_work() -> None:
-        nonlocal result_unit_ids
-        del log_buffer[log_buffer_pre_db:]
-        document_ids_added: list[str] = []
-        for pf in processed_facts:
-            pf.document_id = None
-            pf.chunk_id = None
-        entity_resolver.discard_pending_stats()
-
-        # ================================================================
-        # PHASE 1 — Entity Resolution (separate connection, read-heavy)
-        #
-        # Runs the expensive trigram GIN scan, co-occurrence fetch, and
-        # scoring on a dedicated connection outside any transaction.
-        # Also inserts new entities (idempotent DO NOTHING).
-        # This avoids holding the write transaction open during slow reads
-        # that previously caused TimeoutErrors under concurrent load.
-        # ================================================================
-        phase1 = await _pre_resolve_phase1(
-            pool, entity_resolver, bank_id, contents, processed_facts, config, log_buffer
-        )
-
-        # ================================================================
-        # PHASE 2 — Core Write Transaction (single connection, atomic)
-        #
-        # Inserts all retrieval-critical data in one transaction:
-        # facts, unit_entities, temporal/semantic/causal links.
-        # If this transaction fails, nothing is committed — clean rollback.
-        # Entity links for UI visualization are deferred to Phase 3.
-        # ================================================================
-        async with acquire_with_retry(pool) as conn:
-            async with conn.transaction():
-                # Handle document tracking
-                step_start = time.time()
-                doc_id_mapping = {}
-
-                if document_id:
-                    combined_content = "\n".join([c.get("content", "") for c in contents_dicts])
-                    retain_params, merged_tags = _build_retain_params(contents_dicts, document_tags)
-                    await fact_storage.handle_document_tracking(
-                        conn, bank_id, document_id, combined_content, is_first_batch, retain_params, merged_tags
-                    )
-                    document_ids_added.append(document_id)
-                    doc_id_mapping[None] = document_id
-                else:
-                    has_any_doc_ids = any(item.get("document_id") for item in contents_dicts)
-                    if has_any_doc_ids or chunks:
-                        for original_doc_id, doc_contents in contents_by_doc.items():
-                            actual_doc_id = original_doc_id
-                            should_create_doc = (original_doc_id is not None) or chunks
-                            if should_create_doc:
-                                if actual_doc_id is None:
-                                    actual_doc_id = str(uuid.uuid4())
-                                doc_id_mapping[original_doc_id] = actual_doc_id
-                                combined_content = "\n".join([c.get("content", "") for _, c in doc_contents])
-                                retain_params, merged_tags = _build_retain_params(
-                                    contents_dicts, document_tags, doc_contents=doc_contents
-                                )
-                                await fact_storage.handle_document_tracking(
-                                    conn,
-                                    bank_id,
-                                    actual_doc_id,
-                                    combined_content,
-                                    is_first_batch,
-                                    retain_params,
-                                    merged_tags,
-                                )
-                                document_ids_added.append(actual_doc_id)
-
-                if document_ids_added:
-                    log_buffer.append(
-                        f"  Document tracking: {len(document_ids_added)} documents in {time.time() - step_start:.3f}s"
-                    )
-
-                # Store chunks and map to facts
-                step_start = time.time()
-                chunk_id_map_by_doc = {}
-                if chunks:
-                    chunks_by_doc = defaultdict(list)
-                    for chunk in chunks:
-                        original_doc_id = contents_dicts[chunk.content_index].get("document_id")
-                        actual_doc_id = doc_id_mapping.get(original_doc_id, original_doc_id)
-                        if actual_doc_id is None and document_id:
-                            actual_doc_id = document_id
-                        chunks_by_doc[actual_doc_id].append(chunk)
-
-                    for doc_id, doc_chunks in chunks_by_doc.items():
-                        chunk_id_map = await chunk_storage.store_chunks_batch(conn, bank_id, doc_id, doc_chunks)
-                        for chunk_idx, chunk_id in chunk_id_map.items():
-                            chunk_id_map_by_doc[(doc_id, chunk_idx)] = chunk_id
-
-                    log_buffer.append(
-                        f"  Store chunks: {len(chunks)} chunks for {len(chunks_by_doc)} documents "
-                        f"in {time.time() - step_start:.3f}s"
-                    )
-
-                # Map chunk_ids and document_ids to facts
-                for fact, processed_fact in zip(extracted_facts, processed_facts):
-                    original_doc_id = contents_dicts[fact.content_index].get("document_id")
-                    actual_doc_id = doc_id_mapping.get(original_doc_id, original_doc_id)
-                    if actual_doc_id is None and document_id:
-                        actual_doc_id = document_id
-                    processed_fact.document_id = actual_doc_id
-                    if chunks and fact.chunk_index is not None:
-                        chunk_id = chunk_id_map_by_doc.get((actual_doc_id, fact.chunk_index))
-                        if chunk_id:
-                            processed_fact.chunk_id = chunk_id
-
-                # Insert facts and retrieval-critical links.
-                # Entity link building is deferred to Phase 3 (post-transaction).
-                result_unit_ids, phase3_ctx = await _insert_facts_and_links(
-                    conn,
-                    entity_resolver,
-                    bank_id,
-                    contents,
-                    extracted_facts,
-                    processed_facts,
-                    config,
-                    log_buffer,
-                    resolved_entity_ids=phase1.entities.resolved_entity_ids,
-                    entity_to_unit=phase1.entities.entity_to_unit,
-                    unit_to_entity_ids=phase1.entities.unit_to_entity_ids,
-                    semantic_ann_links=phase1.semantic_ann_links,
-                    outbox_callback=outbox_callback,
-                )
-
-            # ================================================================
-            # PHASE 3 — Best-Effort Display Data (post-transaction)
-            #
-            # Writes data used only for UI visualization and entity resolution
-            # quality, NOT for retrieval. If any of these fail, retrieval still
-            # works correctly via the unit_entities self-join and temporal/
-            # semantic links. Errors are logged but do not fail the retain.
-            #
-            # - Entity links: graph visualization in control plane
-            # - mention_count / last_seen: entity list sorting in API/UI
-            # - Co-occurrences: entity resolution scoring (0.3 weight factor)
-            # ================================================================
-            try:
-                await entity_resolver.flush_pending_stats()
-                await _build_and_insert_entity_links_phase3(pool, entity_resolver, bank_id, phase3_ctx, log_buffer)
-            except Exception:
-                logger.warning("Phase 3 (best-effort display data) failed — retrieval unaffected", exc_info=True)
-
-            total_time = time.time() - start_time
-            log_buffer.append(f"{'=' * 60}")
-            log_buffer.append(f"RETAIN_BATCH COMPLETE: {len(processed_facts)} units in {total_time:.3f}s")
-            if document_ids_added:
-                log_buffer.append(f"Documents: {', '.join(document_ids_added)}")
-            log_buffer.append(f"{'=' * 60}")
-            logger.info("\n" + "\n".join(log_buffer) + "\n")
-
-    # Backpressure: limit concurrent DB phases (Phase 1 reads + Phase 2 writes)
-    # to prevent I/O contention on the HNSW index and connection pool saturation.
-    # The semaphore is acquired here (after LLM extraction) so LLM calls run
-    # in full parallelism while only the DB-heavy phases are throttled.
-    # No retry_with_backoff — deadlocks are prevented by sorted bulk INSERT,
-    # and transient timeouts are handled by the worker poller's task-level retry.
-    if db_semaphore is not None:
-        async with db_semaphore:
-            await _run_db_work()
-    else:
-        await _run_db_work()
-    return result_unit_ids, usage
+    return await _streaming_retain_batch(
+        pool=pool,
+        embeddings_model=embeddings_model,
+        llm_config=llm_config,
+        entity_resolver=entity_resolver,
+        format_date_fn=format_date_fn,
+        bank_id=bank_id,
+        contents_dicts=contents_dicts,
+        contents=contents,
+        config=config,
+        document_id=effective_doc_id,
+        is_first_batch=is_first_batch,
+        fact_type_override=fact_type_override,
+        document_tags=document_tags,
+        agent_name=agent_name,
+        log_buffer=log_buffer,
+        start_time=start_time,
+        all_pre_chunks=all_pre_chunks,
+        chunk_batch_size=chunk_batch_size,
+        operation_id=operation_id,
+        schema=schema,
+        outbox_callback=outbox_callback,
+        db_semaphore=db_semaphore,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -916,31 +714,41 @@ async def _streaming_retain_batch(
     template_content = contents[0] if contents else RetainContent(content="")
 
     # Load existing chunk hashes BEFORE document tracking to detect recovery.
-    # If chunks already exist (from a prior crash mid-streaming), we must NOT
-    # delete them — use upsert_document_metadata instead of handle_document_tracking
-    # which would cascade-delete all committed chunks and facts.
+    # If chunks exist AND the document content hash matches, this is a retry of
+    # the same content — preserve existing data. If content differs, this is an
+    # update — cascade-delete old data and start fresh.
     existing_chunk_hashes: set[str] = set()
+    combined_content = "\n".join([c.get("content", "") for c in contents_dicts])
+    new_content_hash = hashlib.sha256(combined_content.encode()).hexdigest()
+    is_recovery = False
+
     try:
         async with acquire_with_retry(pool) as conn:
-            existing_rows = await chunk_storage.load_existing_chunks(conn, bank_id, effective_doc_id)
-            existing_chunk_hashes = {c.content_hash for c in existing_rows if c.content_hash}
-            if existing_chunk_hashes:
-                log_buffer.append(
-                    f"[streaming] RECOVERY: found {len(existing_chunk_hashes)} already-committed chunks — "
-                    f"will skip matching and preserve existing data"
-                )
+            # Check if document exists with matching content hash
+            doc_row = await conn.fetchrow(
+                f"SELECT content_hash FROM {fq_table('documents')} WHERE id = $1 AND bank_id = $2",
+                effective_doc_id,
+                bank_id,
+            )
+            if doc_row and doc_row["content_hash"] == new_content_hash:
+                # Same content — load chunk hashes for recovery skip
+                existing_rows = await chunk_storage.load_existing_chunks(conn, bank_id, effective_doc_id)
+                existing_chunk_hashes = {c.content_hash for c in existing_rows if c.content_hash}
+                if existing_chunk_hashes:
+                    is_recovery = True
+                    log_buffer.append(
+                        f"[streaming] RECOVERY: found {len(existing_chunk_hashes)} already-committed chunks — "
+                        f"will skip matching and preserve existing data"
+                    )
     except Exception:
         pass  # If we can't load, just process all chunks
 
-    # Create/update the document row ONCE with the full combined content.
-    # On recovery (existing chunks found), use upsert to avoid cascade-deleting
-    # the committed chunks and facts from the prior partial run.
-    combined_content = "\n".join([c.get("content", "") for c in contents_dicts])
+    # Create/update the document row.
     retain_params, merged_tags = _build_retain_params(contents_dicts, document_tags)
     async with acquire_with_retry(pool) as conn:
         async with conn.transaction():
-            if existing_chunk_hashes:
-                # Recovery: update document metadata without deleting existing data
+            if is_recovery:
+                # Recovery: same content, partially committed — preserve existing data
                 await fact_storage.upsert_document_metadata(
                     conn, bank_id, effective_doc_id, combined_content, retain_params, merged_tags
                 )
@@ -948,7 +756,7 @@ async def _streaming_retain_batch(
                     f"[streaming] Document {effective_doc_id} updated (recovery, preserving existing chunks)"
                 )
             else:
-                # Fresh: create document row (deletes old data if any from a different content)
+                # Fresh or update: cascade-delete old data if document exists
                 await fact_storage.handle_document_tracking(
                     conn, bank_id, effective_doc_id, combined_content, is_first_batch, retain_params, merged_tags
                 )
