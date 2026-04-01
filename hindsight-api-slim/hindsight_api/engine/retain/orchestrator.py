@@ -10,7 +10,6 @@ import json
 import logging
 import time
 import uuid
-from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -71,10 +70,10 @@ from . import (
 )
 from .types import (
     ChunkMetadata,
-    EntityLink,
     EntityResolutionResult,
     ExtractedFact,
     Phase1Result,
+    Phase3Context,
     ProcessedFact,
     RetainContent,
     RetainContentDict,
@@ -228,7 +227,7 @@ async def _insert_facts_and_links(
     semantic_ann_links: list[tuple],
     skip_semantic_links: bool = False,
     outbox_callback=None,
-) -> tuple[list[list[str]], list]:
+) -> tuple[list[list[str]], Phase3Context]:
     """
     Phase 2 of the retain pipeline: insert facts and retrieval-critical links.
 
@@ -238,17 +237,13 @@ async def _insert_facts_and_links(
     Entity link generation and insertion for UI visualization are NOT done here —
     only the unit_entities INSERT (FK to memory_units) stays in the transaction.
     Entity link building is deferred to Phase 3 (post-transaction, best-effort).
-
-    Returns:
-        Tuple of (result_unit_ids, phase3_context) where phase3_context contains
-        the data needed for deferred entity link building in Phase 3.
     """
     unit_ids = await fact_storage.insert_facts_batch(conn, bank_id, processed_facts)
     step_start = time.time()
     log_buffer.append(f"  Insert facts: {len(unit_ids)} units in {time.time() - step_start:.3f}s")
 
     # Context for Phase 3 entity link building (after transaction commits)
-    phase3_context: dict = {"unit_ids": [], "resolved_entity_ids": [], "entity_to_unit": [], "unit_to_entity_ids": {}}
+    phase3_context = Phase3Context()
 
     if unit_ids:
         # Entity resolution was done in Phase 1 (separate connection).
@@ -267,12 +262,12 @@ async def _insert_facts_and_links(
         await entity_resolver.link_units_to_entities_batch(unit_entity_pairs, conn=conn)
         log_buffer.append(f"  Insert unit_entities: {len(unit_entity_pairs)} pairs in {time.time() - step_start:.3f}s")
         # Save context for Phase 3 entity link building (after commit)
-        phase3_context = {
-            "unit_ids": unit_ids,
-            "resolved_entity_ids": resolved_entity_ids,
-            "entity_to_unit": remapped_entity_to_unit,
-            "unit_to_entity_ids": remapped_unit_to_entity_ids,
-        }
+        phase3_context = Phase3Context(
+            unit_ids=unit_ids,
+            resolved_entity_ids=resolved_entity_ids,
+            entity_to_unit=remapped_entity_to_unit,
+            unit_to_entity_ids=remapped_unit_to_entity_ids,
+        )
 
         # Create temporal links
         step_start = time.time()
@@ -317,7 +312,7 @@ async def _build_and_insert_entity_links_phase3(
     pool,
     entity_resolver,
     bank_id: str,
-    phase3_ctx: dict,
+    phase3_ctx: Phase3Context,
     log_buffer: list[str],
 ) -> None:
     """
@@ -327,11 +322,10 @@ async def _build_and_insert_entity_links_phase3(
     Entity links are for UI graph visualization only — retrieval uses
     the unit_entities self-join instead.
     """
-    # Build entity links from Phase 1 resolution data
-    p3_unit_ids = phase3_ctx.get("unit_ids", [])
-    p3_resolved = phase3_ctx.get("resolved_entity_ids", [])
-    p3_entity_to_unit = phase3_ctx.get("entity_to_unit", [])
-    p3_unit_to_entity_ids = phase3_ctx.get("unit_to_entity_ids", {})
+    p3_unit_ids = phase3_ctx.unit_ids
+    p3_resolved = phase3_ctx.resolved_entity_ids
+    p3_entity_to_unit = phase3_ctx.entity_to_unit
+    p3_unit_to_entity_ids = phase3_ctx.unit_to_entity_ids
 
     if not p3_unit_ids or not p3_resolved:
         return
@@ -1408,66 +1402,6 @@ def _build_contents(contents_dicts: list[RetainContentDict], document_tags: list
         )
         contents.append(content)
     return contents
-
-
-async def _handle_zero_facts_documents(
-    pool,
-    bank_id,
-    contents_dicts,
-    contents,
-    config,
-    document_id,
-    is_first_batch,
-    document_tags,
-    chunks,
-    log_buffer,
-    start_time,
-):
-    """Handle document tracking when zero facts were extracted."""
-    docs_tracked = 0
-    async with acquire_with_retry(pool) as conn:
-        async with conn.transaction():
-            contents_by_doc = defaultdict(list)
-            for idx, content_dict in enumerate(contents_dicts):
-                doc_id = content_dict.get("document_id")
-                contents_by_doc[doc_id].append((idx, content_dict))
-
-            if document_id:
-                combined_content = "\n".join([c.get("content", "") for c in contents_dicts])
-                retain_params, merged_tags = _build_retain_params(contents_dicts, document_tags)
-                await fact_storage.handle_document_tracking(
-                    conn, bank_id, document_id, combined_content, is_first_batch, retain_params, merged_tags
-                )
-                docs_tracked += 1
-            else:
-                has_any_doc_ids = any(item.get("document_id") for item in contents_dicts)
-                if has_any_doc_ids or chunks:
-                    for original_doc_id, doc_contents in contents_by_doc.items():
-                        should_create_doc = (original_doc_id is not None) or chunks
-                        if not should_create_doc:
-                            continue
-                        actual_doc_id = original_doc_id or str(uuid.uuid4())
-                        combined_content = "\n".join([c.get("content", "") for _, c in doc_contents])
-                        retain_params, merged_tags = _build_retain_params(
-                            contents_dicts, document_tags, doc_contents=doc_contents
-                        )
-                        await fact_storage.handle_document_tracking(
-                            conn,
-                            bank_id,
-                            actual_doc_id,
-                            combined_content,
-                            is_first_batch,
-                            retain_params,
-                            merged_tags,
-                        )
-                        docs_tracked += 1
-
-    total_time = time.time() - start_time
-    doc_status = f"{docs_tracked} document(s) tracked" if docs_tracked > 0 else "no document tracked"
-    logger.info(
-        f"RETAIN_BATCH COMPLETE: 0 facts extracted from {len(contents)} contents "
-        f"in {total_time:.3f}s ({doc_status}, no facts)"
-    )
 
 
 def _chunk_contents_for_delta(contents: list[RetainContent], config) -> dict[int, str]:
