@@ -30,6 +30,12 @@
     "ajv-formats": {
       "ajv": "^8.18.0"
     },
+    "ajv-keywords": {
+      "ajv": "^8.18.0"
+    },
+    "schema-utils": {
+      "ajv": "^8.18.0"
+    },
     "handlebars": ">=4.7.9",
     "path-to-regexp": ">=0.1.13",
     "brace-expansion": ">=1.1.13 <2.0.0 || >=2.0.3 <3.0.0"
