@@ -8,29 +8,31 @@ description: "Add long-term memory to Hermes Agent with Hindsight. Automatically
 
 Persistent long-term memory for [Hermes Agent](https://github.com/NousResearch/hermes-agent) using [Hindsight](https://vectorize.io/hindsight). Automatically recalls relevant context before every LLM call and retains conversations for future sessions — plus explicit retain/recall/reflect tools.
 
+:::note
+This page reflects the memory provider architecture introduced in [hermes-agent PR #4154](https://github.com/NousResearch/hermes-agent/pull/4154). If you're on an older version, see [Legacy Setup](#legacy-setup) below.
+:::
+
 ## Quick Start
 
 ```bash
-# 1. Install the plugin into Hermes's Python environment
-uv pip install hindsight-hermes --python $HOME/.hermes/hermes-agent/venv/bin/python
+# 1. Run the interactive memory setup wizard
+hermes memory setup
+# → Select "Hindsight" from the provider list
+# → The wizard installs the plugin and walks you through configuration
 
-# 2. Configure (choose one)
-# Option A: Config file (recommended)
-mkdir -p ~/.hindsight
-cat > ~/.hindsight/hermes.json << 'EOF'
-{
-  "hindsightApiUrl": "http://localhost:9077",
-  "bankId": "hermes"
-}
-EOF
-
-# Option B: Environment variables
-export HINDSIGHT_API_URL=http://localhost:9077
-export HINDSIGHT_BANK_ID=hermes
-
-# 3. Start Hermes — the plugin activates automatically
+# 2. Start Hermes — memory is active automatically
 hermes
 ```
+
+The setup wizard installs `hindsight-hermes` into Hermes's Python environment, creates `~/.hindsight/hermes.json`, and disables the conflicting built-in memory tool.
+
+## Memory CLI
+
+| Command | Description |
+|---------|-------------|
+| `hermes memory setup` | Interactive provider selection and configuration |
+| `hermes memory status` | Show the active memory provider |
+| `hermes memory off` | Disable the active external memory provider |
 
 ## Features
 
@@ -39,10 +41,6 @@ hermes
 - **Explicit tools** — `hindsight_retain`, `hindsight_recall`, `hindsight_reflect` for direct model control
 - **Config file** — `~/.hindsight/hermes.json` with the same field names as openclaw and claude-code integrations
 - **Zero config overhead** — env vars still work as overrides for CI/automation
-
-:::note
-The lifecycle hooks (`pre_llm_call`/`post_llm_call`) require hermes-agent with [PR #2823](https://github.com/NousResearch/hermes-agent/pull/2823) or later. On older versions, only the three tools are registered — hooks are silently skipped.
-:::
 
 ## Architecture
 
@@ -121,6 +119,9 @@ All settings are in `~/.hindsight/hermes.json`. Every setting can also be overri
 | `recallBudget` | `"mid"` | `HINDSIGHT_RECALL_BUDGET` | Recall effort: `low`, `mid`, `high` |
 | `recallMaxTokens` | `4096` | `HINDSIGHT_RECALL_MAX_TOKENS` | Max tokens in recall response |
 | `recallMaxQueryChars` | `800` | `HINDSIGHT_RECALL_MAX_QUERY_CHARS` | Max chars of user message used as query |
+| `recallContextTurns` | `1` | — | Prior turns included in recall query |
+| `recallTopK` | unlimited | — | Hard cap on memories injected per turn |
+| `recallTypes` | `["world", "experience"]` | — | Memory types to recall |
 | `recallPromptPreamble` | see below | — | Header text injected before recalled memories |
 
 Default preamble:
@@ -145,16 +146,6 @@ Default preamble:
 
 When using Hermes in gateway mode (multi-platform messaging), the plugin works across all platforms. Hermes creates a fresh `AIAgent` per message, and the plugin's `pre_llm_call` hook ensures relevant memories are recalled for each turn regardless of platform.
 
-## Disabling Hermes's Built-in Memory
-
-Hermes has a built-in `memory` tool that saves to local markdown files. If both are active, the LLM may prefer the built-in one. Disable it:
-
-```bash
-hermes tools disable memory
-```
-
-Re-enable later with `hermes tools enable memory`.
-
 ## Troubleshooting
 
 **Plugin not loading**: Verify the entry point is registered:
@@ -175,3 +166,29 @@ curl http://localhost:9077/health
 ```
 
 **Recall returning no memories**: Memories need at least one retain cycle. Try storing a fact first, then asking about it in a new session.
+
+---
+
+## Legacy Setup
+
+For hermes-agent versions before [PR #4154](https://github.com/NousResearch/hermes-agent/pull/4154), install and configure the plugin manually:
+
+```bash
+# 1. Install the plugin into Hermes's Python environment
+uv pip install hindsight-hermes --python $HOME/.hermes/hermes-agent/venv/bin/python
+
+# 2. Configure
+mkdir -p ~/.hindsight
+cat > ~/.hindsight/hermes.json << 'EOF'
+{
+  "hindsightApiUrl": "http://localhost:9077",
+  "bankId": "hermes"
+}
+EOF
+
+# 3. Disable Hermes's built-in memory tool to avoid conflicts
+hermes tools disable memory
+
+# 4. Start Hermes
+hermes
+```
