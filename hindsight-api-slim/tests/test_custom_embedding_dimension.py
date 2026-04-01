@@ -20,8 +20,7 @@ from hindsight_api.engine.embeddings import CohereEmbeddings, LocalSTEmbeddings,
 from hindsight_api.engine.query_analyzer import DateparserQueryAnalyzer
 from hindsight_api.engine.task_backend import SyncTaskBackend
 from hindsight_api.extensions import TenantContext, TenantExtension
-from hindsight_api.migrations import ensure_embedding_dimension as _ensure_embedding_dimension_raw
-from hindsight_api.migrations import run_migrations
+from hindsight_api.migrations import ensure_embedding_dimension, run_migrations
 
 # =============================================================================
 # Shared Utilities
@@ -50,49 +49,22 @@ def get_test_schema(prefix: str, worker_id: str) -> str:
     return f"{prefix}_{worker_id}"
 
 
-def _retry_on_oid_error(fn, max_retries=3):
-    """Retry a callable up to max_retries times on transient PostgreSQL OID errors.
-
-    Parallel xdist workers performing concurrent DDL can cause 'could not open
-    relation with OID' errors when PostgreSQL's relcache is invalidated.
-    """
-    import time
-
-    for attempt in range(max_retries):
-        try:
-            return fn()
-        except Exception as e:
-            if "could not open relation" in str(e) and attempt < max_retries - 1:
-                time.sleep(1)
-                continue
-            raise
-
-
-def ensure_embedding_dimension(db_url, dimension, schema=None):
-    """Wrapper around migrations.ensure_embedding_dimension with OID error retry."""
-    _retry_on_oid_error(lambda: _ensure_embedding_dimension_raw(db_url, dimension, schema=schema))
-
-
 def create_isolated_schema(db_url: str, schema_name: str, dimension: int | None = None):
     """Create an isolated schema with migrations and optional dimension adjustment."""
+    engine = create_engine(db_url)
 
-    def _create():
-        engine = create_engine(db_url)
+    # Create schema (drop first if exists from previous failed run)
+    with engine.connect() as conn:
+        conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+        conn.execute(text(f"CREATE SCHEMA {schema_name}"))
+        conn.commit()
 
-        # Create schema (drop first if exists from previous failed run)
-        with engine.connect() as conn:
-            conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-            conn.execute(text(f"CREATE SCHEMA {schema_name}"))
-            conn.commit()
+    # Run migrations in the isolated schema
+    run_migrations(db_url, schema=schema_name)
 
-        # Run migrations in the isolated schema
-        run_migrations(db_url, schema=schema_name)
-
-        # Adjust embedding dimension if specified
-        if dimension is not None:
-            ensure_embedding_dimension(db_url, dimension, schema=schema_name)
-
-    _retry_on_oid_error(_create)
+    # Adjust embedding dimension if specified
+    if dimension is not None:
+        ensure_embedding_dimension(db_url, dimension, schema=schema_name)
 
 
 def drop_schema(db_url: str, schema_name: str):
@@ -199,6 +171,7 @@ def dimension_test_schema(pg0_db_url, worker_id):
     drop_schema(pg0_db_url, schema_name)
 
 
+@pytest.mark.flaky(reruns=3)
 class TestEmbeddingDimension:
     """Tests for embedding dimension detection and adjustment."""
 
@@ -386,6 +359,7 @@ def request_context():
     return RequestContext()
 
 
+@pytest.mark.flaky(reruns=3)
 class TestOpenAIEmbeddings:
     """Tests for OpenAI embeddings provider."""
 

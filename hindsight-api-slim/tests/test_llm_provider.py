@@ -100,6 +100,7 @@ def should_skip_provider(provider: str, model: str = "") -> tuple[bool, str]:
 @pytest.mark.parametrize("provider,model", MODEL_MATRIX)
 @pytest.mark.asyncio
 @pytest.mark.timeout(300)  # Increase timeout for slow models like groq gpt-oss-120b
+@pytest.mark.flaky(reruns=3)
 async def test_llm_provider_api_methods(provider: str, model: str):
     """
     Test all LLM API methods used by Hindsight at runtime.
@@ -181,7 +182,6 @@ async def test_llm_provider_api_methods(provider: str, model: str):
             pytest.fail(f"{provider}/{model} call() structured output failed: {e}")
 
     # Test 4: call_with_tools() (tool calling)
-    # LLM tool calling is non-deterministic; retry up to 3 times
     try:
         tools = [
             {
@@ -201,56 +201,39 @@ async def test_llm_provider_api_methods(provider: str, model: str):
             }
         ]
 
-        max_tool_retries = 3
-        last_tool_error = None
-        for tool_attempt in range(max_tool_retries):
-            try:
-                result = await llm.call_with_tools(
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a helpful assistant with access to tools. Always use the provided tools to answer questions.",
-                        },
-                        {
-                            "role": "user",
-                            "content": "What's the weather like in Paris? Use the get_weather tool to find out.",
-                        },
-                    ],
-                    tools=tools,
-                    max_completion_tokens=500,  # Increased from 200 to give models enough space for tool calls
-                )
-            except (TimeoutError, OSError) as e:
-                # Transient network/timeout errors - retry
-                last_tool_error = e
-                if tool_attempt < max_tool_retries - 1:
-                    continue
-                pytest.fail(f"{provider}/{model} call_with_tools() failed after {max_tool_retries} retries: {e}")
+        result = await llm.call_with_tools(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant with access to tools. Always use the provided tools to answer questions.",
+                },
+                {
+                    "role": "user",
+                    "content": "What's the weather like in Paris? Use the get_weather tool to find out.",
+                },
+            ],
+            tools=tools,
+            max_completion_tokens=500,
+        )
 
-            assert result is not None, "call_with_tools() returned None"
-            assert hasattr(result, "tool_calls"), "Result missing 'tool_calls' attribute"
+        assert result is not None, "call_with_tools() returned None"
+        assert hasattr(result, "tool_calls"), "Result missing 'tool_calls' attribute"
 
-            # Nano models may hit token limits before making tool calls - that's acceptable
-            is_nano_model = "nano" in model.lower()
-            if is_nano_model and len(result.tool_calls) == 0:
-                # Check if it hit length limit (expected for nano models)
-                if hasattr(result, "finish_reason") and result.finish_reason == "length":
-                    print("  ✓ call_with_tools(): nano model hit token limit (expected)")
-                break
-            elif len(result.tool_calls) == 0:
-                last_tool_error = AssertionError("Expected at least 1 tool call, got 0")
-                if tool_attempt < max_tool_retries - 1:
-                    continue
-                pytest.fail(f"{provider}/{model} call_with_tools() failed: {last_tool_error}")
-            else:
-                # Verify tool call structure
-                tool_call = result.tool_calls[0]
-                assert hasattr(tool_call, "name"), "Tool call missing 'name'"
-                assert hasattr(tool_call, "arguments"), "Tool call missing 'arguments'"
-                assert tool_call.name == "get_weather", f"Expected 'get_weather', got '{tool_call.name}'"
-                assert "location" in tool_call.arguments, "Tool call arguments missing 'location'"
+        # Nano models may hit token limits before making tool calls - that's acceptable
+        is_nano_model = "nano" in model.lower()
+        if is_nano_model and len(result.tool_calls) == 0:
+            if hasattr(result, "finish_reason") and result.finish_reason == "length":
+                print("  ✓ call_with_tools(): nano model hit token limit (expected)")
+        else:
+            assert len(result.tool_calls) > 0, "Expected at least 1 tool call, got 0"
 
-                print(f"  ✓ call_with_tools(): {tool_call.name}({tool_call.arguments})")
-                break
+            tool_call = result.tool_calls[0]
+            assert hasattr(tool_call, "name"), "Tool call missing 'name'"
+            assert hasattr(tool_call, "arguments"), "Tool call missing 'arguments'"
+            assert tool_call.name == "get_weather", f"Expected 'get_weather', got '{tool_call.name}'"
+            assert "location" in tool_call.arguments, "Tool call arguments missing 'location'"
+
+            print(f"  ✓ call_with_tools(): {tool_call.name}({tool_call.arguments})")
     except Exception as e:
         pytest.fail(f"{provider}/{model} call_with_tools() failed: {e}")
 
