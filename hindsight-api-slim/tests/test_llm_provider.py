@@ -6,13 +6,15 @@ Tests validate that providers work correctly with:
 2. Reflect (memory retrieval with tool calling)
 3. Mental models (consolidated knowledge generation)
 """
+
 import os
 from datetime import datetime
-import pytest
-from hindsight_api.engine.llm_wrapper import LLMProvider
-from hindsight_api.engine.utils import extract_facts
-from hindsight_api.engine.search.think_utils import reflect
 
+import pytest
+
+from hindsight_api.engine.llm_wrapper import LLMProvider
+from hindsight_api.engine.search.think_utils import reflect
+from hindsight_api.engine.utils import extract_facts
 
 # Model matrix: (provider, model)
 MODEL_MATRIX = [
@@ -152,9 +154,9 @@ async def test_llm_provider_api_methods(provider: str, model: str):
 
     # Test 3: call() with response_format (structured output)
     # Skip for models that don't support structured output
-    skip_structured_output = (provider == "groq" and "gpt-oss-120b" in model.lower())
+    skip_structured_output = provider == "groq" and "gpt-oss-120b" in model.lower()
     if skip_structured_output:
-        print(f"  ⊘ call() structured output: skipped (model doesn't support response_format)")
+        print("  ⊘ call() structured output: skipped (model doesn't support response_format)")
     else:
         try:
             from pydantic import BaseModel
@@ -202,14 +204,27 @@ async def test_llm_provider_api_methods(provider: str, model: str):
         max_tool_retries = 3
         last_tool_error = None
         for tool_attempt in range(max_tool_retries):
-            result = await llm.call_with_tools(
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant with access to tools. Always use the provided tools to answer questions."},
-                    {"role": "user", "content": "What's the weather like in Paris? Use the get_weather tool to find out."},
-                ],
-                tools=tools,
-                max_completion_tokens=500,  # Increased from 200 to give models enough space for tool calls
-            )
+            try:
+                result = await llm.call_with_tools(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful assistant with access to tools. Always use the provided tools to answer questions.",
+                        },
+                        {
+                            "role": "user",
+                            "content": "What's the weather like in Paris? Use the get_weather tool to find out.",
+                        },
+                    ],
+                    tools=tools,
+                    max_completion_tokens=500,  # Increased from 200 to give models enough space for tool calls
+                )
+            except (TimeoutError, OSError) as e:
+                # Transient network/timeout errors - retry
+                last_tool_error = e
+                if tool_attempt < max_tool_retries - 1:
+                    continue
+                pytest.fail(f"{provider}/{model} call_with_tools() failed after {max_tool_retries} retries: {e}")
 
             assert result is not None, "call_with_tools() returned None"
             assert hasattr(result, "tool_calls"), "Result missing 'tool_calls' attribute"
@@ -219,10 +234,10 @@ async def test_llm_provider_api_methods(provider: str, model: str):
             if is_nano_model and len(result.tool_calls) == 0:
                 # Check if it hit length limit (expected for nano models)
                 if hasattr(result, "finish_reason") and result.finish_reason == "length":
-                    print(f"  ✓ call_with_tools(): nano model hit token limit (expected)")
+                    print("  ✓ call_with_tools(): nano model hit token limit (expected)")
                 break
             elif len(result.tool_calls) == 0:
-                last_tool_error = AssertionError(f"Expected at least 1 tool call, got 0")
+                last_tool_error = AssertionError("Expected at least 1 tool call, got 0")
                 if tool_attempt < max_tool_retries - 1:
                     continue
                 pytest.fail(f"{provider}/{model} call_with_tools() failed: {last_tool_error}")
@@ -291,7 +306,9 @@ async def test_llm_provider_memory_operations(provider: str, model: str):
     # Verify facts have required fields
     for fact in facts:
         assert fact.fact, f"{provider}/{model} fact missing text"
-        assert fact.fact_type in ["world", "experience", "opinion"], f"{provider}/{model} invalid fact_type: {fact.fact_type}"
+        assert fact.fact_type in ["world", "experience", "opinion"], (
+            f"{provider}/{model} invalid fact_type: {fact.fact_type}"
+        )
 
     # Test 2: Reflect (actual reflect function)
     response = await reflect(
@@ -317,10 +334,13 @@ async def test_llm_provider_memory_operations(provider: str, model: str):
     assert len(response) > 10, f"{provider}/{model} reflect response too short"
 
 
-@pytest.mark.parametrize("provider,model", [
-    ("claude-code", "claude-sonnet-4-20250514"),
-    ("openai-codex", "gpt-5.2-codex"),
-])
+@pytest.mark.parametrize(
+    "provider,model",
+    [
+        ("claude-code", "claude-sonnet-4-20250514"),
+        ("openai-codex", "gpt-5.2-codex"),
+    ],
+)
 @pytest.mark.asyncio
 async def test_llm_provider_consolidation(memory_no_llm_verify, request_context, provider: str, model: str):
     """
@@ -349,6 +369,7 @@ async def test_llm_provider_consolidation(memory_no_llm_verify, request_context,
 
     # Enable observations for this bank
     from hindsight_api.config import _get_raw_config
+
     config = _get_raw_config()
     original_value = config.enable_observations
     config.enable_observations = True
