@@ -15,15 +15,6 @@ const CATEGORY_LABELS: Record<Category, string> = {
   productivity: 'Productivity',
 };
 
-// Category icons (emoji-based for simplicity, no external deps)
-const CATEGORY_ICONS: Record<string, string> = {
-  support: '\uD83C\uDFA7',
-  research: '\uD83D\uDD2C',
-  personal: '\uD83D\uDCD3',
-  development: '\uD83D\uDCBB',
-  productivity: '\uD83D\uDCCB',
-};
-
 interface Template {
   id: string;
   name: string;
@@ -36,7 +27,6 @@ function TemplateCard({template, onSelect}: {template: Template; onSelect: () =>
   return (
     <button className={styles.card} onClick={onSelect}>
       <div className={styles.cardHeader}>
-        <span className={styles.categoryIcon}>{CATEGORY_ICONS[template.category] || '\uD83D\uDCC4'}</span>
         <span className={styles.categoryBadge}>{template.category}</span>
       </div>
       <div className={styles.cardBody}>
@@ -128,11 +118,12 @@ export default function TemplateGallery(): React.ReactElement {
           <input
             type="text"
             className={styles.searchInput}
-            placeholder="Search templates\u2026"
+            placeholder="Search templates..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search templates"
             autoComplete="off"
+            autoFocus
           />
           {search && (
             <button className={styles.searchClear} onClick={() => setSearch('')} aria-label="Clear search">
