@@ -148,7 +148,7 @@ def mcp_server_with_mental_models(mock_memory):
     """Create a FastMCP server with mental model tools registered (multi-bank mode)."""
     from fastmcp import FastMCP
 
-    mcp = FastMCP("test", stateless_http=True)
+    mcp = FastMCP("test")
     config = MCPToolsConfig(
         bank_id_resolver=lambda: "test-bank",
         include_bank_id_param=True,
@@ -218,7 +218,7 @@ class TestMentalModelToolRegistration:
     async def test_list_mental_models_propagates_request_context(self, mock_memory):
         from fastmcp import FastMCP
 
-        mcp = FastMCP("test", stateless_http=True)
+        mcp = FastMCP("test")
         config = MCPToolsConfig(
             bank_id_resolver=lambda: "test-bank",
             api_key_resolver=lambda: "test-api-key",
@@ -234,7 +234,7 @@ class TestMentalModelToolRegistration:
     async def test_create_mental_model_propagates_request_context(self, mock_memory):
         from fastmcp import FastMCP
 
-        mcp = FastMCP("test", stateless_http=True)
+        mcp = FastMCP("test")
         config = MCPToolsConfig(
             bank_id_resolver=lambda: "test-bank",
             api_key_resolver=lambda: "test-api-key",
@@ -281,7 +281,7 @@ class TestMentalModelToolRegistration:
         memory.get_bank_stats = AsyncMock(return_value={})
         memory.delete_bank = AsyncMock(return_value={})
 
-        mcp = FastMCP("test", stateless_http=True)
+        mcp = FastMCP("test")
         config = MCPToolsConfig(
             bank_id_resolver=lambda: "bank",
             include_bank_id_param=True,
@@ -311,7 +311,7 @@ def no_bank_mcp_server(mock_memory):
     """Create a multi-bank MCP server where bank_id_resolver returns None."""
     from fastmcp import FastMCP
 
-    mcp = FastMCP("test", stateless_http=True)
+    mcp = FastMCP("test")
     config = MCPToolsConfig(
         bank_id_resolver=lambda: None,
         include_bank_id_param=True,
@@ -718,7 +718,7 @@ def _make_mcp_server(mock_memory, tools, include_bank_id=True):
     """Helper to create an MCP server with specific tools."""
     from fastmcp import FastMCP
 
-    mcp = FastMCP("test", stateless_http=True)
+    mcp = FastMCP("test")
     config = MCPToolsConfig(
         bank_id_resolver=lambda: "test-bank",
         include_bank_id_param=include_bank_id,
