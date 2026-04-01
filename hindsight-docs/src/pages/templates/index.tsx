@@ -1,6 +1,8 @@
 import React, {useMemo, useState, useCallback} from 'react';
 import Layout from '@theme/Layout';
 import templatesData from '@site/src/data/templates.json';
+import templateSchema from '../../../static/bank-template-schema.json';
+import JsonSchemaViewer from '@site/src/components/JsonSchemaViewer';
 import styles from './index.module.css';
 
 const CATEGORIES = ['all', 'support', 'research', 'personal', 'development', 'productivity'] as const;
@@ -179,6 +181,17 @@ export default function TemplateGallery(): React.ReactElement {
             ))}
           </div>
         )}
+
+        <div className={styles.schemaSection}>
+          <h2 className={styles.schemaSectionTitle}>Manifest Schema</h2>
+          <p className={styles.schemaSectionDescription}>
+            The template manifest format. All fields in <code>bank</code>, <code>mental_models</code>, and{' '}
+            <code>directives</code> are optional sections. Expand each to see nested properties.
+            The live schema is also available at{' '}
+            <code>GET /v1/bank-template-schema</code>.
+          </p>
+          <JsonSchemaViewer schema={templateSchema} />
+        </div>
 
         <div className={styles.submitBanner}>
           <div className={styles.submitBannerContent}>
