@@ -1627,13 +1627,17 @@ async def _handle_zero_facts_documents(
 
 def _chunk_contents_for_delta(contents: list[RetainContent], config) -> dict[int, str]:
     """
-    Chunk contents the same way fact_extraction does, returning a map of
+    Chunk contents the same way the streaming path does, returning a map of
     global_chunk_index -> chunk_text.
+
+    Must use the same chunk_size as the streaming path (default 3000) so that
+    chunk boundaries match and delta can detect unchanged chunks.
+    Previously defaulted to 120000, causing all chunks to appear changed on retry.
     """
     result = {}
     global_chunk_idx = 0
     for content in contents:
-        chunk_size = getattr(config, "retain_chunk_size", 120000)
+        chunk_size = getattr(config, "retain_chunk_size", 3000)
         chunks = fact_extraction.chunk_text(content.content, chunk_size)
         for chunk_text in chunks:
             result[global_chunk_idx] = chunk_text
