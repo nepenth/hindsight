@@ -89,7 +89,7 @@ class TestImportValidation:
             f"/v1/default/banks/{bank_id}/import",
             json={"version": "999"},
         )
-        assert resp.status_code == 422  # Pydantic validation
+        assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_import_invalid_extraction_mode(self, api_client, bank_id):
@@ -133,7 +133,7 @@ class TestImportValidation:
                 ],
             },
         )
-        assert resp.status_code == 422  # Pydantic validation
+        assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_import_duplicate_directive_names(self, api_client, bank_id):
@@ -148,7 +148,7 @@ class TestImportValidation:
                 ],
             },
         )
-        assert resp.status_code == 422  # Pydantic validation
+        assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_import_missing_mental_model_id(self, api_client, bank_id):
@@ -162,7 +162,7 @@ class TestImportValidation:
                 ],
             },
         )
-        assert resp.status_code == 422  # Pydantic validation (id is required)
+        assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_import_invalid_mental_model_id_format(self, api_client, bank_id):
@@ -176,7 +176,7 @@ class TestImportValidation:
                 ],
             },
         )
-        assert resp.status_code == 422
+        assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_import_empty_manifest(self, api_client, bank_id):

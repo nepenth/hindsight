@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 
 from hindsight_api.engine.audit import AuditEntry, AuditLogger
 from hindsight_api.extensions import AuthenticationError
@@ -4406,15 +4406,29 @@ def _register_routes(app: FastAPI):
         operation_id="import_bank_template",
         tags=["Bank Templates"],
     )
-    @audited("import_bank_template", request_param="body")
+    @audited("import_bank_template", request_param=None)
     async def api_import_bank_template(
         bank_id: str,
-        body: BankTemplateManifest,
+        request: Request,
         dry_run: bool = Query(default=False, description="Validate only, do not apply changes"),
         request_context: RequestContext = Depends(get_request_context),
     ):
         """Import a bank template manifest."""
         try:
+            # Parse raw JSON and validate against the Pydantic model manually
+            # so we can return clean error messages instead of raw 422s.
+            raw_body = await request.json()
+            from pydantic import ValidationError
+
+            try:
+                body = BankTemplateManifest.model_validate(raw_body)
+            except ValidationError as e:
+                errors = [f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()]
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Template schema validation failed: {'; '.join(errors)}",
+                )
+
             # Semantic validation beyond Pydantic structural checks
             validation_errors = _validate_template(body)
             if validation_errors:
@@ -4633,7 +4647,7 @@ def _register_routes(app: FastAPI):
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.get(
-        "/v1/default/bank-template-schema",
+        "/v1/bank-template-schema",
         summary="Get bank template JSON Schema",
         description="Returns the JSON Schema for the bank template manifest format. "
         "Use this to validate template manifests before importing.",

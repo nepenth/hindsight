@@ -192,7 +192,7 @@ The manifest format is defined by a JSON Schema that you can use to validate tem
 **API endpoint** — fetch the live schema from your server:
 
 ```bash
-curl http://localhost:8888/v1/default/bank-template-schema
+curl http://localhost:8888/v1/bank-template-schema
 ```
 
 **Static schema** — also available as a static file: [bank-template-schema.json](/bank-template-schema.json)
