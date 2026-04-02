@@ -1103,13 +1103,12 @@ async def test_document_upsert_behavior(memory, request_context):
 
         assert len(v2_units) > 0, "Should create units for v2"
 
-        # Recall should return the updated information
+        # Recall should return the updated information (no fact_type filter — LLM may classify as world or experience)
         result = await memory.recall_async(
             bank_id=bank_id,
             query="What is the project status?",
             budget=Budget.MID,
             max_tokens=1000,
-            fact_type=["world"],
             request_context=request_context,
         )
 

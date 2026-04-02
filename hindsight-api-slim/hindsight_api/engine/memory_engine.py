@@ -3828,9 +3828,13 @@ class MemoryEngine(MemoryEngineInterface):
 
         if bank_id_for_consolidation:
             try:
-                await self.submit_async_consolidation(bank_id=bank_id_for_consolidation, request_context=request_context)
+                await self.submit_async_consolidation(
+                    bank_id=bank_id_for_consolidation, request_context=request_context
+                )
             except Exception as e:
-                logger.warning(f"Failed to submit consolidation after memory deletion for bank {bank_id_for_consolidation}: {e}")
+                logger.warning(
+                    f"Failed to submit consolidation after memory deletion for bank {bank_id_for_consolidation}: {e}"
+                )
 
         return result
 
