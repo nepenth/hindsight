@@ -1,0 +1,35 @@
+"""Hindsight-OpenAI-Agents: Persistent memory tools for OpenAI Agents SDK.
+
+Provides ``FunctionTool`` instances that give OpenAI agents long-term memory
+via Hindsight's retain/recall/reflect APIs.
+
+Basic usage::
+
+    from hindsight_client import Hindsight
+    from hindsight_openai_agents import create_hindsight_tools
+
+    client = Hindsight(base_url="http://localhost:8888")
+    tools = create_hindsight_tools(client=client, bank_id="user-123")
+
+    agent = Agent(name="assistant", tools=tools)
+"""
+
+from .config import (
+    HindsightOpenAIAgentsConfig,
+    configure,
+    get_config,
+    reset_config,
+)
+from .errors import HindsightError
+from .tools import create_hindsight_tools
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "configure",
+    "get_config",
+    "reset_config",
+    "HindsightOpenAIAgentsConfig",
+    "HindsightError",
+    "create_hindsight_tools",
+]
