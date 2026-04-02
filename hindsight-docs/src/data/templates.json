@@ -23,7 +23,6 @@
         "version": "1",
         "bank": {
           "retain_mission": "Extract user preferences, stated facts about themselves, requests they've made, topics they care about, and any commitments or follow-ups. Ignore small talk and filler.",
-          "retain_extraction_mode": "concise",
           "enable_observations": true,
           "observations_mission": "Track stable user preferences, communication style, recurring topics, and how the user's needs evolve over time."
         },
@@ -62,7 +61,6 @@
         "version": "1",
         "bank": {
           "retain_mission": "Extract technical decisions and their rationale, architectural choices, coding patterns and conventions, project structure facts, library/tool preferences, and recurring issues. Ignore transient debugging output and boilerplate.",
-          "retain_extraction_mode": "concise",
           "enable_observations": true,
           "observations_mission": "Track stable project facts: tech stack, team conventions, architecture patterns, and how the codebase evolves over time."
         },
@@ -103,7 +101,6 @@
         "version": "1",
         "bank": {
           "retain_mission": "Extract the user's preferences, routines, scheduled events, commitments, people they mention, and any personal context they share. Track what they ask for repeatedly and what they care about.",
-          "retain_extraction_mode": "verbose",
           "enable_observations": true,
           "observations_mission": "Track the user's stable preferences, recurring routines, important people and relationships, and how their priorities shift over time."
         },
