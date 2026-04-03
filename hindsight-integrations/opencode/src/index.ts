@@ -53,7 +53,7 @@ const HindsightPlugin: Plugin = async (input, options) => {
         lastRetainedTurn: new Map(),
     };
 
-    const tools = createTools(client, bankId, config);
+    const tools = createTools(client, bankId, config, state.missionsSet);
     const hooks = createHooks(client, bankId, config, state, input.client as unknown as Parameters<typeof createHooks>[4]);
 
     return {

@@ -10,6 +10,8 @@ import type { ToolDefinition } from '@opencode-ai/plugin/tool';
 import type { HindsightClient } from '@vectorize-io/hindsight-client';
 import type { HindsightConfig } from './config.js';
 import { formatMemories, formatCurrentTime } from './content.js';
+import { ensureBankMission } from './bank.js';
+import type { PluginState } from './hooks.js';
 
 export interface HindsightTools {
     hindsight_retain: ToolDefinition;
@@ -21,6 +23,7 @@ export function createTools(
     client: HindsightClient,
     bankId: string,
     config: HindsightConfig,
+    missionsSet?: Set<string>,
 ): HindsightTools {
     const hindsight_retain = tool({
         description:
@@ -37,6 +40,9 @@ export function createTools(
                 .describe('Optional context about where this information came from.'),
         },
         async execute(args) {
+            if (missionsSet) {
+                await ensureBankMission(client, bankId, config, missionsSet);
+            }
             await client.retain(bankId, args.content, {
                 context: args.context || config.retainContext,
                 tags: config.retainTags.length ? config.retainTags : undefined,
@@ -88,6 +94,9 @@ export function createTools(
                 .describe('Optional additional context to guide the reflection.'),
         },
         async execute(args) {
+            if (missionsSet) {
+                await ensureBankMission(client, bankId, config, missionsSet);
+            }
             const response = await client.reflect(bankId, args.query, {
                 context: args.context,
                 budget: config.recallBudget as 'low' | 'mid' | 'high',

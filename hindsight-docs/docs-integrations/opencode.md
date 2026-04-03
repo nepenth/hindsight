@@ -122,7 +122,7 @@ For multi-project isolation, enable dynamic bank ID derivation:
 export HINDSIGHT_DYNAMIC_BANK_ID=true
 ```
 
-The bank ID is composed from granularity fields (default: `agent::project`). Supported fields: `agent`, `project`, `session`, `channel`, `user`.
+The bank ID is composed from granularity fields (default: `agent::project`). Supported fields: `agent`, `project`, `channel`, `user`.
 
 For multi-user scenarios (e.g., shared agent serving multiple users):
 

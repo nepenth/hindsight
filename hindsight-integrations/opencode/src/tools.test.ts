@@ -275,6 +275,60 @@ describe('createTools', () => {
         });
     });
 
+    describe('bank mission setup', () => {
+        it('calls ensureBankMission before retain when missionsSet provided', async () => {
+            const client = {
+                retain: vi.fn().mockResolvedValue({}),
+                recall: vi.fn(),
+                reflect: vi.fn(),
+                createBank: vi.fn().mockResolvedValue({}),
+            } as any;
+            const missionsSet = new Set<string>();
+            const config = makeConfig({ bankMission: 'Extract technical decisions' });
+            const tools = createTools(client, 'test-bank', config, missionsSet);
+
+            await tools.hindsight_retain.execute({ content: 'fact' }, mockContext);
+
+            expect(client.createBank).toHaveBeenCalledWith('test-bank', {
+                reflectMission: 'Extract technical decisions',
+                retainMission: undefined,
+            });
+            expect(missionsSet.has('test-bank')).toBe(true);
+            expect(client.retain).toHaveBeenCalled();
+        });
+
+        it('calls ensureBankMission before reflect when missionsSet provided', async () => {
+            const client = {
+                retain: vi.fn(),
+                recall: vi.fn(),
+                reflect: vi.fn().mockResolvedValue({ text: 'answer' }),
+                createBank: vi.fn().mockResolvedValue({}),
+            } as any;
+            const missionsSet = new Set<string>();
+            const config = makeConfig({ bankMission: 'Synthesize project context' });
+            const tools = createTools(client, 'test-bank', config, missionsSet);
+
+            await tools.hindsight_reflect.execute({ query: 'summary' }, mockContext);
+
+            expect(client.createBank).toHaveBeenCalled();
+            expect(client.reflect).toHaveBeenCalled();
+        });
+
+        it('skips mission setup when missionsSet not provided (backward compat)', async () => {
+            const client = {
+                retain: vi.fn().mockResolvedValue({}),
+                recall: vi.fn(),
+                reflect: vi.fn(),
+            } as any;
+            const tools = createTools(client, 'test-bank', makeConfig());
+
+            await tools.hindsight_retain.execute({ content: 'fact' }, mockContext);
+
+            expect(client.retain).toHaveBeenCalled();
+            // No createBank call since missionsSet wasn't passed
+        });
+    });
+
     it('always uses constructor bankId', async () => {
         const client = {
             retain: vi.fn().mockResolvedValue({}),
