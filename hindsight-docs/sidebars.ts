@@ -198,6 +198,12 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'link',
+          href: '/sdks/integrations/cursor',
+          label: 'Cursor',
+          customProps: { icon: '/img/icons/terminal.svg' },
+        },
+        {
+          type: 'link',
           href: '/sdks/integrations/codex',
           label: 'OpenAI Codex CLI',
           customProps: { icon: '/img/icons/terminal.svg' },
