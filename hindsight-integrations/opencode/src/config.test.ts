@@ -99,4 +99,29 @@ describe('loadConfig', () => {
         expect(config.bankId).toBeNull(); // stays default null
         expect(config.debug).toBe(false); // stays default
     });
+
+    it('invalid retainMode falls back to full-session with warning', () => {
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const config = loadConfig({ retainMode: 'full_session' });
+        expect(config.retainMode).toBe('full-session');
+        expect(spy).toHaveBeenCalledWith(expect.stringContaining('Unknown retainMode'));
+        spy.mockRestore();
+    });
+
+    it('invalid recallBudget falls back to mid with warning', () => {
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const config = loadConfig({ recallBudget: 'maximum' });
+        expect(config.recallBudget).toBe('mid');
+        expect(spy).toHaveBeenCalledWith(expect.stringContaining('Unknown recallBudget'));
+        spy.mockRestore();
+    });
+
+    it('valid retainMode and recallBudget pass without warning', () => {
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const config = loadConfig({ retainMode: 'last-turn', recallBudget: 'high' });
+        expect(config.retainMode).toBe('last-turn');
+        expect(config.recallBudget).toBe('high');
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
 });

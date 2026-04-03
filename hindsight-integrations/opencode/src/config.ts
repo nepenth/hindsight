@@ -156,7 +156,28 @@ export function loadConfig(pluginOptions?: Record<string, unknown>): HindsightCo
         }
     }
 
-    return config as unknown as HindsightConfig;
+    const result = config as unknown as HindsightConfig;
+
+    // Validate enum-like fields to catch typos early
+    const VALID_RETAIN_MODES = ['full-session', 'last-turn'];
+    if (!VALID_RETAIN_MODES.includes(result.retainMode)) {
+        console.error(
+            `[Hindsight] Unknown retainMode "${result.retainMode}" — ` +
+                `valid: ${VALID_RETAIN_MODES.join(', ')}. Falling back to "full-session".`,
+        );
+        result.retainMode = 'full-session';
+    }
+
+    const VALID_BUDGETS = ['low', 'mid', 'high'];
+    if (!VALID_BUDGETS.includes(result.recallBudget)) {
+        console.error(
+            `[Hindsight] Unknown recallBudget "${result.recallBudget}" — ` +
+                `valid: ${VALID_BUDGETS.join(', ')}. Falling back to "mid".`,
+        );
+        result.recallBudget = 'mid';
+    }
+
+    return result;
 }
 
 export function debugLog(config: HindsightConfig, ...args: unknown[]): void {

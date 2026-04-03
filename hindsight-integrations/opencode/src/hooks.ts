@@ -132,21 +132,11 @@ export function createHooks(
         }
     }
 
-    /** Auto-retain conversation transcript */
-    async function handleSessionIdle(sessionId: string): Promise<void> {
-        if (!config.autoRetain) return;
-
-        const messages = await getSessionMessages(sessionId);
-        if (!messages.length) return;
-
-        // Count user turns
-        const userTurns = messages.filter((m) => m.role === 'user').length;
-        const lastRetained = state.lastRetainedTurn.get(sessionId) || 0;
-
-        // Only retain if enough new turns since last retain
-        if (userTurns - lastRetained < config.retainEveryNTurns) return;
-
-        // Determine retention window and document ID
+    /**
+     * Retain messages for a session, respecting retainMode and documentId semantics.
+     * Used by both idle-retain and pre-compaction retain.
+     */
+    async function retainSession(sessionId: string, messages: Message[]): Promise<void> {
         const retainFullWindow = config.retainMode === 'full-session';
         let targetMessages: Message[];
         let documentId: string;
@@ -166,17 +156,34 @@ export function createHooks(
         const { transcript } = prepareRetentionTranscript(targetMessages, true);
         if (!transcript) return;
 
+        await ensureBankMission(hindsightClient, bankId, config, state.missionsSet);
+        await hindsightClient.retain(bankId, transcript, {
+            documentId,
+            context: config.retainContext,
+            tags: config.retainTags.length ? config.retainTags : undefined,
+            metadata: Object.keys(config.retainMetadata).length
+                ? { ...config.retainMetadata, session_id: sessionId }
+                : { session_id: sessionId },
+            async: true,
+        });
+    }
+
+    /** Auto-retain conversation transcript */
+    async function handleSessionIdle(sessionId: string): Promise<void> {
+        if (!config.autoRetain) return;
+
+        const messages = await getSessionMessages(sessionId);
+        if (!messages.length) return;
+
+        // Count user turns
+        const userTurns = messages.filter((m) => m.role === 'user').length;
+        const lastRetained = state.lastRetainedTurn.get(sessionId) || 0;
+
+        // Only retain if enough new turns since last retain
+        if (userTurns - lastRetained < config.retainEveryNTurns) return;
+
         try {
-            await ensureBankMission(hindsightClient, bankId, config, state.missionsSet);
-            await hindsightClient.retain(bankId, transcript, {
-                documentId,
-                context: config.retainContext,
-                tags: config.retainTags.length ? config.retainTags : undefined,
-                metadata: Object.keys(config.retainMetadata).length
-                    ? { ...config.retainMetadata, session_id: sessionId }
-                    : { session_id: sessionId },
-                async: true,
-            });
+            await retainSession(sessionId, messages);
             state.lastRetainedTurn.set(sessionId, userTurns);
             debugLog(config, `Auto-retained ${messages.length} messages for session ${sessionId}`);
         } catch (e) {
@@ -217,21 +224,14 @@ export function createHooks(
         output: CompactingOutput,
     ): Promise<void> => {
         try {
-            // First, retain what we have before compaction
+            // First, retain what we have before compaction (using shared retention logic)
             const messages = await getSessionMessages(input.sessionID);
             if (messages.length && config.autoRetain) {
-                const { transcript } = prepareRetentionTranscript(messages, true);
-                if (transcript) {
-                    try {
-                        await hindsightClient.retain(bankId, transcript, {
-                            context: config.retainContext,
-                            tags: config.retainTags.length ? config.retainTags : undefined,
-                            async: true,
-                        });
-                        debugLog(config, 'Pre-compaction retain completed');
-                    } catch (e) {
-                        debugLog(config, 'Pre-compaction retain failed:', e);
-                    }
+                try {
+                    await retainSession(input.sessionID, messages);
+                    debugLog(config, 'Pre-compaction retain completed');
+                } catch (e) {
+                    debugLog(config, 'Pre-compaction retain failed:', e);
                 }
             }
 
@@ -271,8 +271,6 @@ export function createHooks(
 
             // Only inject on first message of a session (tracked by recalledSessions)
             if (!state.recalledSessions.has(sessionId)) return;
-            // Remove so we only do this once per session
-            state.recalledSessions.delete(sessionId);
 
             await ensureBankMission(hindsightClient, bankId, config, state.missionsSet);
 
@@ -281,6 +279,8 @@ export function createHooks(
             const context = await recallForContext(query);
             if (context) {
                 output.system.push(context);
+                // Only mark as consumed after successful injection
+                state.recalledSessions.delete(sessionId);
                 debugLog(config, `Injected recall context for session ${sessionId}`);
             }
         } catch (e) {

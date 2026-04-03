@@ -227,6 +227,41 @@ describe('compacting hook', () => {
         expect(output.context[0]).toContain('Important fact');
     });
 
+    it('pre-compaction retain includes documentId and session metadata', async () => {
+        const client = makeClient();
+        client.recall.mockResolvedValue({ results: [] });
+        const messages = [
+            { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
+            { role: 'assistant', parts: [{ type: 'text', text: 'Hi' }] },
+        ];
+        const output = { context: [] as string[] };
+        const hooks = createHooks(client, 'bank', makeConfig(), makeState(), makeOpencodeClient(messages));
+
+        await hooks['experimental.session.compacting']({ sessionID: 'sess-1' }, output);
+
+        expect(client.retain).toHaveBeenCalledTimes(1);
+        const opts = client.retain.mock.calls[0][2];
+        expect(opts.documentId).toBe('sess-1');
+        expect(opts.metadata.session_id).toBe('sess-1');
+    });
+
+    it('pre-compaction retain uses chunked documentId in last-turn mode', async () => {
+        const client = makeClient();
+        client.recall.mockResolvedValue({ results: [] });
+        const messages = [
+            { role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
+            { role: 'assistant', parts: [{ type: 'text', text: 'Hi' }] },
+        ];
+        const config = makeConfig({ retainMode: 'last-turn', retainEveryNTurns: 1 });
+        const output = { context: [] as string[] };
+        const hooks = createHooks(client, 'bank', config, makeState(), makeOpencodeClient(messages));
+
+        await hooks['experimental.session.compacting']({ sessionID: 'sess-1' }, output);
+
+        const opts = client.retain.mock.calls[0][2];
+        expect(opts.documentId).toMatch(/^sess-1-\d+$/);
+    });
+
     it('does not throw on error', async () => {
         const client = makeClient();
         client.recall.mockRejectedValue(new Error('Failed'));
@@ -277,6 +312,37 @@ describe('system transform hook', () => {
 
         expect(output.system.length).toBe(0);
         expect(client.recall).not.toHaveBeenCalled();
+    });
+
+    it('retries recall on next transform if first attempt returns no results', async () => {
+        const client = makeClient();
+        // First call: no results (Hindsight temporarily empty/unavailable)
+        client.recall.mockResolvedValueOnce({ results: [] });
+        // Second call: has results
+        client.recall.mockResolvedValueOnce({
+            results: [{ text: 'Found it', type: 'world' }],
+        });
+        const state = makeState();
+        state.recalledSessions.add('sess-1');
+        const output1 = { system: [] as string[] };
+        const hooks = createHooks(client, 'bank', makeConfig(), state, makeOpencodeClient());
+
+        // First attempt — no results, session should NOT be consumed
+        await hooks['experimental.chat.system.transform'](
+            { sessionID: 'sess-1', model: {} },
+            output1,
+        );
+        expect(output1.system.length).toBe(0);
+        expect(state.recalledSessions.has('sess-1')).toBe(true);
+
+        // Second attempt — results found, session consumed
+        const output2 = { system: [] as string[] };
+        await hooks['experimental.chat.system.transform'](
+            { sessionID: 'sess-1', model: {} },
+            output2,
+        );
+        expect(output2.system.length).toBeGreaterThan(0);
+        expect(state.recalledSessions.has('sess-1')).toBe(false);
     });
 
     it('skips when autoRecall is false', async () => {
