@@ -272,7 +272,7 @@ class LinkExpansionRetriever(GraphRetriever):
         mu = fq_table("memory_units")
         ue = fq_table("unit_entities")
 
-        per_entity_limit = config.graph_per_entity_limit
+        per_entity_limit = config.link_expansion_per_entity_limit
 
         # Entity CTE with LATERAL fanout cap.
         # Every seed entity (including high-frequency ones) is kept, but each
@@ -385,11 +385,11 @@ class LinkExpansionRetriever(GraphRetriever):
         try:
             all_rows = await asyncio.wait_for(
                 conn.fetch(full_query, *params),
-                timeout=config.graph_expansion_timeout,
+                timeout=config.link_expansion_timeout,
             )
         except asyncio.TimeoutError:
             logger.warning(
-                f"[LinkExpansion] Entity expansion timed out after {config.graph_expansion_timeout}s "
+                f"[LinkExpansion] Entity expansion timed out after {config.link_expansion_timeout}s "
                 f"for fact_type={fact_type}, falling back to semantic+causal only"
             )
             fallback_query = f"""
@@ -438,17 +438,31 @@ class LinkExpansionRetriever(GraphRetriever):
                 f"{len(source_ids_found)} source_memory_ids found"
             )
 
+        config = get_config()
         ue = fq_table("unit_entities")
+        per_entity_limit = config.link_expansion_per_entity_limit
 
         connected_sources_cte = f"""
-            connected_sources AS (
-                -- Find sources sharing entities with seed observation sources
-                -- via unit_entities self-join (query-time, no precomputed links needed).
-                SELECT DISTINCT ue_target.unit_id AS source_id
+            source_entities AS (
+                SELECT DISTINCT ue_seed.entity_id
                 FROM seed_sources ss
                 JOIN {ue} ue_seed ON ue_seed.unit_id = ss.source_id
-                JOIN {ue} ue_target ON ue_seed.entity_id = ue_target.entity_id
-                WHERE ue_target.unit_id != ss.source_id
+            ),
+            connected_sources AS (
+                -- Find sources sharing entities with seed observation sources
+                -- via LATERAL-capped self-join (prevents hub entity fanout).
+                SELECT DISTINCT t.unit_id AS source_id
+                FROM source_entities se
+                CROSS JOIN LATERAL (
+                    SELECT ue_target.unit_id
+                    FROM {ue} ue_target
+                    WHERE ue_target.entity_id = se.entity_id
+                    ORDER BY ue_target.unit_id DESC
+                    LIMIT {per_entity_limit}
+                ) t
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM seed_sources ss WHERE ss.source_id = t.unit_id
+                )
             )"""
 
         entity_rows = await conn.fetch(

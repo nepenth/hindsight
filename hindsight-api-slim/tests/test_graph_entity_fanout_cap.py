@@ -113,11 +113,11 @@ async def test_entity_expansion_timeout_fallback(memory, request_context):
         from hindsight_api.engine.memory_engine import Budget
 
         config = _get_raw_config()
-        original_timeout = config.graph_expansion_timeout
+        original_timeout = config.link_expansion_timeout
 
         try:
             # Set an impossibly low timeout to force the fallback path
-            config.graph_expansion_timeout = 0.0001
+            config.link_expansion_timeout = 0.0001
 
             result = await memory.recall_async(
                 bank_id=bank_id,
@@ -138,7 +138,7 @@ async def test_entity_expansion_timeout_fallback(memory, request_context):
             alice_found = any("Alice" in t for t in result_texts)
             assert alice_found, "Should find Alice via semantic search despite graph timeout"
         finally:
-            config.graph_expansion_timeout = original_timeout
+            config.link_expansion_timeout = original_timeout
 
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
@@ -180,11 +180,11 @@ async def test_per_entity_limit_caps_expansion(memory, request_context):
         from hindsight_api.engine.memory_engine import Budget
 
         config = _get_raw_config()
-        original_limit = config.graph_per_entity_limit
+        original_limit = config.link_expansion_per_entity_limit
 
         try:
             # Set a very small per-entity limit
-            config.graph_per_entity_limit = 5
+            config.link_expansion_per_entity_limit = 5
 
             result = await memory.recall_async(
                 bank_id=bank_id,
@@ -205,7 +205,7 @@ async def test_per_entity_limit_caps_expansion(memory, request_context):
             graph_results = [r for r in retrieval_results if r.get("method_name") == "graph"]
             assert len(graph_results) > 0, "Graph retrieval should have run"
         finally:
-            config.graph_per_entity_limit = original_limit
+            config.link_expansion_per_entity_limit = original_limit
 
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
