@@ -50,6 +50,7 @@ jobs:
       integrations-cloudflare-oauth-proxy: ${{ steps.filter.outputs.integrations-cloudflare-oauth-proxy }}
       integrations-lockfiles: ${{ steps.filter.outputs.integrations-lockfiles }}
       integrations-openai-agents: ${{ steps.filter.outputs.integrations-openai-agents }}
+      integrations-roo-code: ${{ steps.filter.outputs.integrations-roo-code }}
       dev: ${{ steps.filter.outputs.dev }}
       ci: ${{ steps.filter.outputs.ci }}
       # Secrets are available for internal PRs, pull_request_review, and workflow_dispatch.
@@ -128,6 +129,7 @@ jobs:
             - 'hindsight-integrations/paperclip/**'
           integrations-opencode:
             - 'hindsight-integrations/opencode/**'
+<<<<<<< HEAD
           integrations-cloudflare-oauth-proxy:
             - 'hindsight-integrations/cloudflare-oauth-proxy/**'
           integrations-lockfiles:
@@ -136,6 +138,10 @@ jobs:
             - 'scripts/check-integration-lockfiles.sh'
           integrations-openai-agents:
             - 'hindsight-integrations/openai-agents/**'
+=======
+          integrations-roo-code:
+            - 'hindsight-integrations/roo-code/**'
+>>>>>>> d10e0744 (feat(roo-code): add Roo Code integration with MCP + rules)
           dev:
             - 'hindsight-dev/**'
           ci:
@@ -598,6 +604,32 @@ jobs:
     - name: Run tests
       working-directory: ./hindsight-integrations/paperclip
       run: npm test
+
+  test-roo-code-integration:
+    needs: [detect-changes]
+    if: >-
+      github.event_name != 'pull_request_review' &&
+      (github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.integrations-roo-code == 'true' ||
+      needs.detect-changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha || '' }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install pytest
+      run: pip install pytest
+
+    - name: Run tests
+      working-directory: ./hindsight-integrations/roo-code
+      run: python -m pytest tests/ -v
 
   build-control-plane:
     needs: [detect-changes]
@@ -2908,6 +2940,7 @@ jobs:
       - test-cloudflare-oauth-proxy-integration
       - build-chat-integration
       - test-paperclip-integration
+      - test-roo-code-integration
       - build-control-plane
       - build-docs
       - test-rust-cli
