@@ -6,6 +6,36 @@ import PageHero from '@site/src/components/PageHero';
 
 <PageHero title="Changelog" subtitle="User-facing changes only. Internal maintenance and infrastructure updates are omitted." />
 
+## [0.5.0](https://github.com/vectorize-io/hindsight/releases/tag/v0.5.0)
+
+**Breaking Changes**
+
+- Removed BFS and MPFP graph retrieval strategies. LinkExpansionRetriever is now the sole graph retrieval algorithm, offering simpler, faster, and more accurate results. ([`ea834bc7`](https://github.com/vectorize-io/hindsight/commit/ea834bc7))
+
+**Features**
+
+- Bank template import/export with Template Hub — export a bank's configuration, mental models, and directives as a reusable manifest, then import into other banks. ([`30a319a6`](https://github.com/vectorize-io/hindsight/commit/30a319a6))
+- Constellation view in the Control Plane — interactive, zoomable canvas visualization of entity relationship graphs with heat-gradient coloring and dark mode support. ([`36783df3`](https://github.com/vectorize-io/hindsight/commit/36783df3))
+- Added `detail` parameter to list/get mental model endpoints for controlling response verbosity. ([`8d1bfbbd`](https://github.com/vectorize-io/hindsight/commit/8d1bfbbd))
+- Added AutoGen integration (`hindsight-autogen`) for persistent long-term memory in AutoGen agents. ([`a757765a`](https://github.com/vectorize-io/hindsight/commit/a757765a))
+- Added Paperclip integration (`@vectorize-io/hindsight-paperclip`) with Express middleware and process adapter modes for stateless agent memory. ([`81441ee9`](https://github.com/vectorize-io/hindsight/commit/81441ee9))
+- OpenClaw JSONL-backed retain queue for external API resilience — buffers retain calls locally when the API is unreachable. ([`087545cc`](https://github.com/vectorize-io/hindsight/commit/087545cc))
+
+**Improvements**
+
+- 3-phase retain pipeline restructures memory ingestion into pre-resolve, insert, and post-link phases, dramatically improving throughput under concurrent load by removing slow reads from write transactions. ([`914ba796`](https://github.com/vectorize-io/hindsight/commit/914ba796))
+- Consolidation observation quality improved with structured processing rules. ([`6f173b10`](https://github.com/vectorize-io/hindsight/commit/6f173b10))
+
+**Bug Fixes**
+
+- Experience fact types are now preserved correctly during normalization. ([`9cfdd464`](https://github.com/vectorize-io/hindsight/commit/9cfdd464))
+- Clear memories endpoint no longer deletes the bank profile. ([`26a64cc0`](https://github.com/vectorize-io/hindsight/commit/26a64cc0))
+- Embedding daemon clears stale processes on the port before starting. ([`7d6c570a`](https://github.com/vectorize-io/hindsight/commit/7d6c570a))
+- Per-bank vector index migration now respects vector extension configuration. ([`4fd7c5d1`](https://github.com/vectorize-io/hindsight/commit/4fd7c5d1))
+- Timeline group sort uses numeric date comparison instead of locale string comparison. ([`f3f2c6b0`](https://github.com/vectorize-io/hindsight/commit/f3f2c6b0))
+- Resolved 25 test regressions from the streaming retain pipeline. ([`7415ebff`](https://github.com/vectorize-io/hindsight/commit/7415ebff))
+- Addressed critical and high severity security vulnerabilities in dependencies. ([`ee4510a7`](https://github.com/vectorize-io/hindsight/commit/ee4510a7))
+
 ## [0.4.22](https://github.com/vectorize-io/hindsight/releases/tag/v0.4.22)
 
 **Features**
