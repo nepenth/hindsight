@@ -44,6 +44,8 @@ VALID_INTEGRATIONS = [
     "codex",
     "hermes",
     "autogen",
+    "paperclip",
+    "opencode",
 ]
 
 
