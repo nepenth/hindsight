@@ -11,7 +11,6 @@ import type { HindsightClient } from '@vectorize-io/hindsight-client';
 import type { HindsightConfig } from './config.js';
 import { formatMemories, formatCurrentTime } from './content.js';
 import { ensureBankMission } from './bank.js';
-import type { PluginState } from './hooks.js';
 
 export interface HindsightTools {
     hindsight_retain: ToolDefinition;
