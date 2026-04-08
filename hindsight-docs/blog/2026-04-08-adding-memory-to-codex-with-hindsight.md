@@ -19,6 +19,7 @@ hide_table_of_contents: true
 - Auto-recall queries your memory bank before every prompt and injects relevant facts as invisible context. Codex sees them; you don't have to repeat them.
 - Auto-retain fires at the end of every session, extracts facts from the transcript, and stores them for future recall.
 - For teams, point everyone's config at a shared Hindsight server with a fixed `bankId`. See [Shared Memory for AI Coding Agents](/blog/2026/03/31/team-shared-memory-ai-coding-agents).
+- Hindsight Cloud stores your memory bank server-side — no local daemon, and memory follows you across machines. [Sign up free.](https://ui.hindsight.vectorize.io/signup)
 
 ## The Problem: Codex Has No Persistent Memory
 
@@ -61,6 +62,8 @@ curl -fsSL https://hindsight.vectorize.io/get-codex | bash
 
 The installer guides you through choosing local or cloud mode and writes the hook scripts to `~/.hindsight/codex/`. It also enables `codex_hooks = true` in your `~/.codex/config.toml` automatically.
 
+If you choose Hindsight Cloud during setup, there's nothing else to install — no local daemon, no `uvx` required.
+
 Start a new Codex session — memory is live immediately. The first few sessions build up your bank. By the third or fourth, recall starts surfacing useful context you didn't have to re-explain.
 
 To uninstall:
@@ -69,9 +72,9 @@ To uninstall:
 curl -fsSL https://hindsight.vectorize.io/get-codex | bash -s -- --uninstall
 ```
 
-## Connecting to Hindsight Cloud
+## Hindsight Cloud (Recommended)
 
-The default setup runs a local `hindsight-embed` daemon on your machine. For memory that follows you across machines, connect to Hindsight Cloud instead. Edit `~/.hindsight/codex.json`:
+For most users, Hindsight Cloud is the easier option: no daemon to manage, memory syncs across machines, and setup is two lines of JSON. The default setup runs a local `hindsight-embed` daemon, but switching to Cloud means you never have to think about it again. Edit `~/.hindsight/codex.json`:
 
 ```json
 {
@@ -118,7 +121,7 @@ By default all Codex sessions share a single bank. To give each project its own 
 }
 ```
 
-With this config, running Codex in `~/projects/api` and `~/projects/frontend` maintains separate banks. Bank IDs are derived from the working directory path — switching projects automatically switches memory context.
+With this config, running Codex in `~/projects/api` and `~/projects/frontend` maintains separate banks. Bank IDs are derived from the working directory path — switching projects automatically switches memory context. Per-project isolation works with Hindsight Cloud the same way it does locally — the bank ID is just routed to the Cloud API instead of a local daemon.
 
 ## Team Shared Memory
 
@@ -200,8 +203,8 @@ A few things worth knowing before you commit.
 
 ## Next Steps
 
+- **Hindsight Cloud**: [ui.hindsight.vectorize.io](https://ui.hindsight.vectorize.io/signup)
 - **Install**: `curl -fsSL https://hindsight.vectorize.io/get-codex | bash`
 - **Config reference**: [Codex integration docs](/sdks/integrations/codex)
 - **Team memory**: [Shared Memory for AI Coding Agents](/blog/2026/03/31/team-shared-memory-ai-coding-agents)
-- **Hindsight Cloud**: [ui.hindsight.vectorize.io](https://ui.hindsight.vectorize.io/signup)
 - **Cookbook**: [applications/codex-memory](https://github.com/vectorize-io/hindsight-cookbook/tree/main/applications/codex-memory)
