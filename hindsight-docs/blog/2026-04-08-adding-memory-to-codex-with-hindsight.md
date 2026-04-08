@@ -18,7 +18,7 @@ hide_table_of_contents: true
 - The Hindsight plugin hooks into Codex via three Python scripts with zero `pip install` required. One curl command gets you running.
 - Auto-recall queries your memory bank before every prompt and injects relevant facts as invisible context. Codex sees them; you don't have to repeat them.
 - Auto-retain fires at the end of every session, extracts facts from the transcript, and stores them for future recall.
-- For teams, point everyone's config at a shared Hindsight server with a fixed `bankId`. See [Shared Memory for AI Coding Agents](/blog/2026/03/31/team-shared-memory-ai-coding-agents).
+- For teams, point everyone's config at a shared Hindsight server with a fixed `bankId`. See [Shared Memory for AI Coding Agents](https://hindsight.vectorize.io/blog/2026/03/31/team-shared-memory-ai-coding-agents).
 - Hindsight Cloud stores your memory bank server-side — no local daemon, and memory follows you across machines. [Sign up free.](https://ui.hindsight.vectorize.io/signup)
 
 ## The Problem: Codex Has No Persistent Memory
@@ -139,7 +139,7 @@ To configure team shared memory, set a fixed `bankId` in each developer's config
 }
 ```
 
-See [Shared Memory for AI Coding Agents](/blog/2026/03/31/team-shared-memory-ai-coding-agents) for a full team setup guide including bank seeding, per-project isolation, and onboarding patterns.
+See [Shared Memory for AI Coding Agents](https://hindsight.vectorize.io/blog/2026/03/31/team-shared-memory-ai-coding-agents) for a full team setup guide including bank seeding, per-project isolation, and onboarding patterns.
 
 ## Key Configuration Options
 
@@ -206,5 +206,5 @@ A few things worth knowing before you commit.
 - **Hindsight Cloud**: [ui.hindsight.vectorize.io](https://ui.hindsight.vectorize.io/signup)
 - **Install**: `curl -fsSL https://hindsight.vectorize.io/get-codex | bash`
 - **Config reference**: [Codex integration docs](/sdks/integrations/codex)
-- **Team memory**: [Shared Memory for AI Coding Agents](/blog/2026/03/31/team-shared-memory-ai-coding-agents)
+- **Team memory**: [Shared Memory for AI Coding Agents](https://hindsight.vectorize.io/blog/2026/03/31/team-shared-memory-ai-coding-agents)
 - **Cookbook**: [applications/codex-memory](https://github.com/vectorize-io/hindsight-cookbook/tree/main/applications/codex-memory)
