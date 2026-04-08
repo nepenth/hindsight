@@ -11,9 +11,13 @@ import PageHero from '@site/src/components/PageHero';
 **Breaking Changes**
 
 - Removed BFS and MPFP graph retrieval strategies. LinkExpansionRetriever is now the sole graph retrieval algorithm, offering simpler, faster, and more accurate results. ([`ea834bc7`](https://github.com/vectorize-io/hindsight/commit/ea834bc7))
+- Dropped the `hindsight-hermes` integration package. ([`cf0537ba`](https://github.com/vectorize-io/hindsight/commit/cf0537ba))
 
 **Features**
 
+- Built-in llama.cpp LLM provider for fully local inference without external API calls. ([`f74b577e`](https://github.com/vectorize-io/hindsight/commit/f74b577e))
+- Retain `update_mode='append'` for concatenating new content onto an existing document instead of replacing it. ([`3c633e5e`](https://github.com/vectorize-io/hindsight/commit/3c633e5e))
+- OpenRouter support for LLM, embeddings, and reranking. ([`e5944b63`](https://github.com/vectorize-io/hindsight/commit/e5944b63))
 - Bank template import/export with Template Hub — export a bank's configuration, mental models, and directives as a reusable manifest, then import into other banks. ([`30a319a6`](https://github.com/vectorize-io/hindsight/commit/30a319a6))
 - Constellation view in the Control Plane — interactive, zoomable canvas visualization of entity relationship graphs with heat-gradient coloring and dark mode support. ([`36783df3`](https://github.com/vectorize-io/hindsight/commit/36783df3))
 - Added `detail` parameter to list/get mental model endpoints for controlling response verbosity. ([`8d1bfbbd`](https://github.com/vectorize-io/hindsight/commit/8d1bfbbd))
@@ -31,10 +35,13 @@ import PageHero from '@site/src/components/PageHero';
 
 - 3-phase retain pipeline restructures memory ingestion into pre-resolve, insert, and post-link phases, dramatically improving throughput under concurrent load by removing slow reads from write transactions. ([`914ba796`](https://github.com/vectorize-io/hindsight/commit/914ba796))
 - Recall entity graph expansion now caps per-entity fanout and includes a timeout fallback, preventing slow queries on banks with high-fanout entities. ([`57f15445`](https://github.com/vectorize-io/hindsight/commit/57f15445))
+- Fact serialization in think-prompt now includes `occurred_end` and `mentioned_at` for richer temporal context. ([`37348c85`](https://github.com/vectorize-io/hindsight/commit/37348c85))
 - Consolidation observation quality improved with structured processing rules. ([`6f173b10`](https://github.com/vectorize-io/hindsight/commit/6f173b10))
 
 **Bug Fixes**
 
+- LiteLLM SDK embeddings `encoding_format` is now configurable instead of hardcoded. ([`cece2c90`](https://github.com/vectorize-io/hindsight/commit/cece2c90))
+- Fixed out-of-range `content_index` crash in recall result mapping. ([`9790d904`](https://github.com/vectorize-io/hindsight/commit/9790d904))
 - Experience fact types are now preserved correctly during normalization. ([`9cfdd464`](https://github.com/vectorize-io/hindsight/commit/9cfdd464))
 - Clear memories endpoint no longer deletes the bank profile. ([`26a64cc0`](https://github.com/vectorize-io/hindsight/commit/26a64cc0))
 - Embedding daemon clears stale processes on the port before starting. ([`7d6c570a`](https://github.com/vectorize-io/hindsight/commit/7d6c570a))
