@@ -1480,6 +1480,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+local-llm = [
+    { name = "hindsight-api-slim", extra = ["local-llm"] },
+]
 test = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1488,12 +1491,13 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "hindsight-api-slim", extras = ["all"], editable = "hindsight-api-slim" },
+    { name = "hindsight-api-slim", extras = ["local-llm"], marker = "extra == 'local-llm'", editable = "hindsight-api-slim" },
     { name = "hindsight-client", editable = "hindsight-clients/python" },
     { name = "hindsight-embed", editable = "hindsight-embed" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.21.0" },
 ]
-provides-extras = ["test"]
+provides-extras = ["local-llm", "test"]
 
 [[package]]
 name = "hindsight-all-slim"
