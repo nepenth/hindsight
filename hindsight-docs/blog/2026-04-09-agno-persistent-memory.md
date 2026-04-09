@@ -285,8 +285,6 @@ Skip the memory layer for one-shot agents that never interact with the same user
 |---|---|---|---|
 | **Hindsight + Agno** | Multi-strategy retrieval (semantic + BM25 + graph + temporal), structured fact extraction, synthesis | Requires Hindsight server or cloud | Multi-session agents needing deep memory |
 | **Manual messages** | Built into Agno, no dependencies | Not persistent, grows to context window limit | Short single-session conversations |
-| **Custom vector store + RAG** | Full control over embeddings and retrieval | Build and maintain chunking, indexing, retrieval yourself | Teams with existing vector infrastructure |
-| **Mem0** | Simple API, easy to get started | Fewer retrieval strategies, no graph-based recall | Simpler memory needs without entity relationships |
 
 ## Pitfalls
 
