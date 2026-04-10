@@ -23,179 +23,149 @@ The resulting skill, once installed, will:
 
 At every decision point below, you follow this pattern:
 
-1. **Explore** — run whatever read-only checks you need (list banks, probe a single known URL, read the meta-skill's own state file)
+1. **Explore** — run whatever read-only checks you need (read the harness plugin config file, run `hindsight health`)
 2. **Propose** — show the user your proposed values in a clearly labeled block
 3. **Ask for approval** — end with a direct question like *"Proceed with this, or do you want to edit?"*
-4. **Wait for explicit confirmation** before making any API call, writing any file, or starting a daemon
+4. **Wait for explicit confirmation** before making any API call or writing any file
 
-Never chain decision points. If the user gives partial feedback ("change the bank name to X"), regenerate the affected fields and ask again.
+Never chain decision points. If the user gives partial feedback ("change the source_query"), regenerate the affected field and ask again.
 
 Decision points that require approval:
 
-- **Step 1 — Wizard choice:** which deployment mode (cloud / embedded / self-hosted API)
-- **Step 1 — Mode setup:** the URL and key for the chosen mode, and (for embedded) the LLM provider + port
+- **Step 1 — Detected harness config:** the URL, bank id, and key (status only, never the value) you read from the harness plugin's config file
 - **Step 1 — Env file write:** the final contents of `~/.hindsight/learning-skill.env`
-- **Step 2 — Combined bank + mental model proposal:** ONE approval that covers the bank decision, both missions (only if creating a new bank), and the full mental model spec. Do NOT split this into two prompts. Once approved, all CLI commands for bank + mental model run without further pauses.
+- **Step 2 — Mental model spec:** ONE approval covering the mental model id, name, and source_query. The bank id is fixed (it comes from the env file / harness plugin). After approval, the CLI create + trigger PATCH + verify run without further pauses.
 - **Step 3 — Skill file:** the final description and rendered SKILL.md content before writing
 
-The Step 2 combined approval is the most important. Resist the urge to ask separately about the bank and then about the mental model — the user approves or edits the whole block once, and then the meta-skill executes everything.
+The meta-skill is intentionally minimal: it never creates banks, never sets missions, never asks the user to design a memory pipeline. It binds new mental models to the bank the harness plugin already uses, and writes a skill file that fetches them at runtime.
 
 ---
 
-## Step 1 — Set up the Hindsight instance (wizard)
+## Step 1 — Read Hindsight connection details from an installed harness plugin
 
-Step 1 is a **wizard**, not a probe. You MUST NOT search for existing Hindsight instances, scan config files, or read user environment variables speculatively. You ask the user which of three deployment modes they want, then set up that specific mode and nothing else. This keeps the flow predictable and gives the user explicit control over which Hindsight instance their new skill will bind to.
+The architecture of this feature relies on **the user's harness plugin being the source of truth** for Hindsight connection details. The flow the user sets up is:
 
-The only auto-detection allowed is for the **meta-skill's own state file** (`~/.hindsight/learning-skill.env`, introduced later in this step) — that's memory of a previous run of *this* meta-skill, not user config.
+1. User installs a Hindsight plugin for their harness (hermes, OpenClaw, Claude Code, Codex, etc.)
+2. User configures the plugin with an API URL, optional API key, and a bank id — either via the plugin's setup wizard or by editing its config file
+3. User installs this meta-skill
+4. The meta-skill **reads the plugin config** to figure out which Hindsight instance to talk to and which bank to bind new mental models to
+5. All generated skills use the same `(url, key, bank_id)` the harness plugin uses
 
-### Check for a previous run of this meta-skill
+This matters because the harness's **auto-retain hook writes every conversation turn to the plugin's configured bank**. If the meta-skill created a different bank, no auto-retain data would ever reach it and the mental model would stay empty forever. Binding to the plugin's bank is not optional — it's the only way the learning loop works.
 
-Before starting the wizard, check whether this meta-skill has been run before by looking at one specific file:
+### Detect an installed harness plugin
+
+Check the known config locations **in this order**, stopping at the first one that exists. Do NOT probe multiple at once — take the first match and confirm it with the user.
+
+**hermes** — `~/.hermes/hindsight/config.json`
 
 ```bash
-ls ~/.hindsight/learning-skill.env 2>/dev/null
+test -f ~/.hermes/hindsight/config.json && echo found
 ```
 
-**If the file exists**, source it, print only the URL (never the key), and ask the user whether to reuse it or reconfigure from scratch:
+Keys to extract (JSON):
+- `bank_id` — the bank auto-retain writes to
+- `mode` — one of `cloud`, `local_embedded`, `local_external`
+- `api_url` — explicit URL when `mode` is `cloud` or `local_external`
+- `api_key` — optional; falls back to the `HINDSIGHT_API_KEY` env var for cloud mode
 
-> The meta-skill has been run before on this machine. The shared env file at `~/.hindsight/learning-skill.env` points at:
-> - `HINDSIGHT_API_URL=<url>`
-> - `HINDSIGHT_API_KEY=<set>` *(or `<empty>` — never print the value)*
+For `mode == "local_embedded"`: the URL is `http://localhost:<port>` where `<port>` is the hermes profile's allocated port. Read it via:
+
+```bash
+hindsight-embed -p hermes profile show --output json
+```
+
+Take the `port` field. If `hindsight-embed` is not available, fall back to `http://localhost:9177` (the hermes default profile port).
+
+**claude-code** — `~/.hindsight/claude-code.json` OR `~/.claude/hindsight.json`
+
+```bash
+test -f ~/.hindsight/claude-code.json && echo found
+```
+
+Keys (JSON, camelCase):
+- `hindsightApiUrl` — full URL (e.g. `http://localhost:4445/api/hindsight`)
+- `bankId` — bank id
+- `apiKey` — optional
+
+**codex** — `~/.hindsight/codex/settings.json`
+
+```bash
+test -f ~/.hindsight/codex/settings.json && echo found
+```
+
+Keys (JSON, camelCase):
+- `hindsightApiUrl` — full URL (may be empty; if empty, fall back to `HINDSIGHT_API_URL` env var or ask the user)
+- `bankId` — bank id
+- `apiKey` — optional
+
+**openclaw** — `~/.openclaw/extensions/hindsight-openclaw/` (schema present, secrets in the OpenClaw vault)
+
+OpenClaw stores the plugin secrets inside its encrypted vault, not as a plain JSON file. The meta-skill **cannot read them directly**. Instead, check for the plugin directory and ask the user to provide the values manually:
+
+```bash
+test -d ~/.openclaw/extensions/hindsight-openclaw && echo found
+```
+
+If the directory exists, tell the user:
+
+> I see OpenClaw's Hindsight plugin is installed, but OpenClaw keeps plugin secrets in its vault and I can't read them directly. Please paste the Hindsight API URL, bank id, and API key (if any) that you configured for this plugin. I will not print any of them back.
+
+**Unknown harness** — if none of the files above exist:
+
+> I couldn't find a Hindsight plugin configuration for hermes, claude-code, codex, or OpenClaw. This meta-skill assumes you've already installed and configured a Hindsight plugin for your agent harness. The plugin's auto-retain hook is what feeds the mental model with conversation data — without it, any skill I create would never learn from your feedback.
 >
-> Reuse this setup, or reconfigure from scratch?
-
-- If reuse → run `source ~/.hindsight/learning-skill.env && hindsight health`. If healthy, skip ahead to the CLI install check (which is a no-op if the CLI is already installed) and then go to Step 2. If not healthy, tell the user the existing config is stale and ask whether to reconfigure.
-- If reconfigure → continue to the wizard below.
-- If the file does not exist → go directly to the wizard below.
-
-### The wizard prompt
-
-Ask the user:
-
-> How would you like Hindsight to be set up for the new skill?
+> Please install a Hindsight plugin for your harness first. See:
+> - hermes: https://github.com/vectorize-io/hindsight/tree/main/skills/hindsight-local
+> - Hindsight Cloud: https://ui.hindsight.vectorize.io
 >
-> 1. **Cloud** — use the managed instance at `https://api.hindsight.vectorize.io` (requires a `hsk_...` API key from https://ui.hindsight.vectorize.io)
-> 2. **Embedded** — spin up a local Hindsight daemon on this machine (requires an LLM provider API key for fact extraction and reflection; runs entirely on your hardware after setup)
-> 3. **Self-hosted API** — connect to an existing Hindsight server you already operate (you provide the URL, and if required an API key)
+> Once the plugin is installed and configured, re-run me.
+
+Stop the flow. Do not continue without a plugin to bind to.
+
+### Propose the extracted config to the user
+
+Once you've read a plugin's config, show the user what you found and ask for confirmation. Do not print the API key value — reference it as `<set>` or `<empty>`.
+
+> I detected a **<harness>** Hindsight plugin. Here's what I read from `<config_path>`:
 >
-> Pick one (1 / 2 / 3):
-
-Wait for the user to pick. Do NOT assume or default. Do NOT pick for them based on what you think is installed locally.
-
-### Mode 1 — Cloud
-
-The URL is always `https://api.hindsight.vectorize.io`. You need the API key.
-
-**The ONE exception to the no-auto-detection rule**: check whether `HINDSIGHT_API_KEY` is already present in the environment that the meta-skill is running in. Cloud mode is the only mode where this fallback is allowed.
-
-```bash
-test -n "${HINDSIGHT_API_KEY}" && echo "env_key_present" || echo "no_env_key"
-```
-
-- If `env_key_present` → ask: *"I see `HINDSIGHT_API_KEY` is set in your current environment. Use it, or paste a different key?"*
-- Else → ask: *"Please paste your Hindsight Cloud API key (starts with `hsk_`). I will not print it back in any message."*
-
-Verify the key is valid by running `hindsight health` with the cloud URL and the chosen key exported for a single command (do not write anything to disk yet):
-
-```bash
-HINDSIGHT_API_URL="https://api.hindsight.vectorize.io" HINDSIGHT_API_KEY="<key>" hindsight health
-```
-
-If the response is not healthy, surface the error and ask the user to try a different key or switch modes. Do not proceed until the verification succeeds.
-
-Record `url = https://api.hindsight.vectorize.io` and `api_key = <key>` for the env-file write below.
-
-### Mode 2 — Embedded
-
-Spin up a local Hindsight daemon using the `hindsight-embed` tool. You need two things from the user: which LLM provider to use for fact extraction/reflection, and the corresponding API key (unless they pick a local model like `ollama` or `lmstudio`).
-
-Ask the user:
-
-> The embedded daemon needs an LLM provider for extraction and reflection. Which do you want?
+> - API URL: `<url>`
+> - Bank id: `<bank_id>`
+> - API key: `<set>` *(or `<empty>`)*
+> - Mode: `<mode>` *(if applicable)*
 >
-> - `openai` (default model: `gpt-4o-mini`)
-> - `anthropic` (default: `claude-haiku-4-5`)
-> - `gemini` (default: `gemini-2.5-flash`)
-> - `groq` (default: `openai/gpt-oss-120b`)
-> - `ollama` (local, no API key needed)
-> - `lmstudio` (local, no API key needed)
+> Any new skill I create will bind to the `<bank_id>` bank on this instance, so the skill learns from the same conversations your harness's auto-retain hook captures.
 >
-> Pick one:
+> Use this config, or tell me to re-read a different plugin config file?
 
-If the chosen provider needs a key, ask for it:
+Wait for approval. If the user wants to use a different plugin, repeat the detection with the location they specify.
 
-> Please paste your `<provider>` API key (I will not print it back):
+### Verify the config works
 
-Create (or reuse) a dedicated embedded profile named `learning-skill` and start the daemon. The profile is tied to this meta-skill's setup and isolated from any other hermes / claude-code / codex profile on the machine.
-
-```bash
-# Create a dedicated profile the first time, or skip silently if it exists
-hindsight-embed profile create learning-skill \
-  --env HINDSIGHT_API_LLM_PROVIDER=<provider> \
-  --env HINDSIGHT_API_LLM_API_KEY=<key> \
-  2>&1 || true
-
-# Start (or confirm already running) the daemon for that profile
-hindsight-embed -p learning-skill daemon start
-```
-
-Read the port the profile was allocated:
+Before touching anything, run a one-shot `hindsight health` to make sure the extracted values actually reach a live instance:
 
 ```bash
-hindsight-embed -p learning-skill profile show --output json
+HINDSIGHT_API_URL="<url>" ${api_key:+HINDSIGHT_API_KEY="<key>"} hindsight health
 ```
 
-Extract the `port` field. Set `url = http://localhost:<port>` and leave `api_key` empty — embedded mode does not use auth.
+If this fails:
+- For hermes `local_embedded`: the daemon isn't running. Tell the user to start hermes (which auto-starts the daemon) or run `hindsight-embed -p hermes daemon start` manually, then retry.
+- For cloud: the URL or key is wrong. Tell the user to verify their plugin config.
+- For self-hosted / other: surface the error and ask.
 
-Verify:
-
-```bash
-HINDSIGHT_API_URL="http://localhost:<port>" hindsight health
-```
-
-If the daemon fails to start or health fails, tail the daemon log and surface the error to the user:
-
-```bash
-tail -n 50 ~/.hindsight/profiles/learning-skill.log
-```
-
-Common failures: invalid LLM provider key, LLM provider unreachable, port conflict. Ask the user what to fix and rerun.
-
-### Mode 3 — Self-hosted API
-
-The user is running Hindsight themselves. Ask them directly for everything you need.
-
-> What's the URL of your Hindsight API? (e.g. `https://hindsight.mycompany.com`)
-
-After they respond:
-
-> Does it require an API key? (yes / no)
-
-If yes:
-
-> Please paste the API key (I will not print it back):
-
-Do **not** read `HINDSIGHT_API_URL`, `HINDSIGHT_API_KEY`, `~/.hindsight/config`, or any harness config files. Use only what the user types in this conversation.
-
-Verify with a single-command invocation:
-
-```bash
-HINDSIGHT_API_URL="<url>" ${HINDSIGHT_API_KEY:+HINDSIGHT_API_KEY="<key>"} hindsight health
-```
-
-If it fails, surface the error and ask the user to verify the URL/key. Do not proceed until it's healthy.
+Do not proceed until `hindsight health` returns healthy.
 
 ### Ensure the `hindsight` CLI is installed
 
-Both the meta-skill's own setup work and the runtime of every generated skill use the `hindsight` CLI. Check that it's on the user's PATH:
+The generated skill invokes `hindsight mental-model get` at runtime. Check for the CLI:
 
 ```bash
 command -v hindsight
 ```
 
-If the command returns a path, you're done. If it's missing, propose installing it:
+If missing, propose installing it and wait for approval:
 
-> I need the `hindsight` CLI to set up the bank and mental model. I'd like to run:
+> I need the `hindsight` CLI to create the mental model and for the new skill to fetch it at runtime. I'd like to run:
 >
 > ```bash
 > curl -fsSL https://hindsight.vectorize.io/get-cli | bash
@@ -203,27 +173,29 @@ If the command returns a path, you're done. If it's missing, propose installing 
 >
 > OK to install?
 
-Wait for approval, run the installer, then verify with `hindsight --version`. If the user declines, stop the whole flow — the rest of the meta-skill and the generated skills cannot work without it.
+If the user declines, stop the whole flow.
 
 ### Write the shared env file at `~/.hindsight/learning-skill.env`
 
-This file is the **single source of truth for Hindsight connection details** used by every skill created through this meta-skill. It holds `HINDSIGHT_API_URL` and (if auth is required) `HINDSIGHT_API_KEY`, in a format that can be `source`d into any shell. The runtime of every generated skill sources this file before calling `hindsight`.
+Write the verified `(url, key, bank_id)` triple to a sourceable file that every generated skill will read at runtime. This is how the generated SKILL.md bodies stay short — they source one file and call the CLI.
 
-By the time you reach this substep you already have a verified `(url, api_key)` pair from one of the three wizard branches. Propose the write:
+Propose the write:
 
-> I'll write `~/.hindsight/learning-skill.env` with:
+> I'll write `~/.hindsight/learning-skill.env` (chmod 600) with:
 > - `HINDSIGHT_API_URL="<url>"`
-> - `HINDSIGHT_API_KEY=<set>` *(or empty if no auth)*
+> - `HINDSIGHT_API_KEY=<set>` *(or empty)*
+> - `HINDSIGHT_BANK_ID="<bank_id>"`
 >
-> Permissions will be set to `0600` (user read/write only). The file will be plain text on disk — if that's a concern, stop here and set up your key differently. OK to write?
+> OK to write?
 
-Wait for approval, then create the file. The `chmod` MUST run immediately after the write:
+Once approved:
 
 ```bash
 mkdir -p ~/.hindsight
 cat > ~/.hindsight/learning-skill.env <<'EOF'
 export HINDSIGHT_API_URL="<url>"
 export HINDSIGHT_API_KEY="<key-or-empty>"
+export HINDSIGHT_BANK_ID="<bank_id>"
 EOF
 chmod 600 ~/.hindsight/learning-skill.env
 ```
@@ -233,131 +205,79 @@ Verify:
 ```bash
 ls -la ~/.hindsight/learning-skill.env     # must show -rw-------
 source ~/.hindsight/learning-skill.env
-hindsight health                             # must return a healthy response
+hindsight health                             # must return healthy
 ```
 
-If `hindsight health` fails, something is wrong with the URL or key — surface the error and ask the user to fix it before continuing.
+> **Do NOT print the key value at any point**, not even inside the heredoc. Substitution happens inside your own process; keep the literal value out of chat output.
 
-> **Do NOT print the key value at any point**, not even when writing it into the heredoc. The heredoc substitution happens inside your own process; keep the literal value out of your chat output. Use a placeholder like `<key>` in any text the user sees.
+### What if the user re-runs the meta-skill later
+
+If `~/.hindsight/learning-skill.env` already exists when the meta-skill starts, source it, compare what's in there to what's in the detected plugin config, and ask the user:
+
+> The shared env file already exists and points at `<old_url>` / bank `<old_bank_id>`. The detected plugin now reports `<new_url>` / bank `<new_bank_id>`.
+>
+> Keep the existing file (the plugin config must have changed; any previously-created skills still point at `<old_bank_id>`), or overwrite it with the new values (new skills bind to `<new_bank_id>`; old skills may stop learning)?
+
+Let the user decide. Never silently overwrite.
 
 ---
 
-## Step 2 — Design and create the bank + mental model (one approval)
+## Step 2 — Create the mental model on the harness's bank
 
-Bank setup and mental model creation are a **single step with a single approval**. Propose the bank name, the two missions (retain + observations), and the full mental model spec (id, source_query, trigger) in one combined block. Get ONE yes/no from the user, then execute every CLI command and the trigger PATCH without pausing in between.
+Step 2 is deliberately minimal. The meta-skill does NOT create a new bank, does NOT set retain / observations / reflect missions, and does NOT manage bank configuration at all. The bank the new skill learns from is **whatever the harness plugin is already configured to use** (captured in `HINDSIGHT_BANK_ID` from the env file written in Step 1). Every self-improving skill on this machine shares that bank and is scoped by its own mental model's `source_query`.
 
-All commands in this step use the `hindsight` CLI. Start by sourcing the env file so the CLI routes to the right instance with the right auth:
+Why this matters: the harness's auto-retain hook writes to exactly one bank per session. If the meta-skill created a dedicated bank per skill, auto-retain data would never reach it and the mental model would stay empty forever. Binding to the harness's bank is the only way the learning loop works end-to-end without modifying the harness plugin.
+
+### The single approval
+
+Source the env file so `HINDSIGHT_API_URL`, `HINDSIGHT_API_KEY`, and `HINDSIGHT_BANK_ID` are available:
 
 ```bash
 source ~/.hindsight/learning-skill.env
 ```
 
-The CLI reads `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` from the environment automatically — no per-command flags needed.
+Then propose the full mental model spec in one block and ask for ONE approval.
 
-### Choose: new bank or existing bank
-
-First, list existing banks:
-
-```bash
-hindsight bank list --output json
-```
-
-Decide with the user whether the new skill should:
-
-- **(a) Bind to an existing bank** — because the kind of feedback it will receive overlaps with what the bank already learns. Example: a `linkedin-post-writer` skill belongs in a bank that already handles marketing writing, because all the same tone/voice/audience feedback applies.
-- **(b) Create a new bank** — because the skill's domain is distinct. Example: a `customer-support-responder` skill should NOT go in a marketing bank; the feedback it will receive ("be more apologetic", "mention refund policy") is unrelated to marketing style.
-
-Your rule of thumb: **if the user's feedback for the new skill would pollute the existing bank's observations, create a new bank.** When in doubt, ask the user.
-
-### The single combined proposal
-
-Compose ONE block that includes the bank decision, the two missions (only when creating a new bank), and the mental model spec. Ask for ONE approval. Do NOT split this into two separate prompts.
-
-#### When creating a new bank
-
-Propose everything in one block:
-
-> Here's the full setup I'll create with one approval:
+> I'll create this mental model on the **`<HINDSIGHT_BANK_ID>`** bank (the one your harness plugin is already configured to use for auto-retain):
 >
-> **Bank**
-> - id: `customer-support` *(new)*
->
-> **Retain mission**
-> Extract concrete rules the human gives about how to respond to customer support messages. Capture: tone (apologetic/neutral/firm), required disclosures, escalation criteria, banned phrases, refund/credit policy, response length, signature format, and any explicit corrections to previous replies. Each fact must be a single, actionable rule. IGNORE the ticket content itself; only extract durable response-writing guidance.
->
-> **Observations mission**
-> Synthesise extracted rules into a coherent, deduplicated support response playbook. Group rules by situation (angry customer, refund request, bug report, feature request). When a new rule contradicts an older one, the newer rule wins; mark the older as stale. Output observations as actionable rules a responder can follow without ambiguity.
->
-> **Mental model**
-> - id: `customer-support-responder`
-> - name: Customer Support Reply Guidelines
-> - source_query: *"What are the current rules, tone, structure, escalation criteria, refund/credit guidance, bug acknowledgement wording, and do/don't rules I should follow when drafting customer support replies on behalf of this user?"*
-> - refresh_after_consolidation: true
-> - tags: none
->
-> Approve the whole block, or tell me what to change?
-
-#### When binding to an existing bank
-
-Propose only the mental model spec (the bank already has missions set):
-
-> I'll bind the new skill to the existing `marketing` bank (it already captures writing rules via its retain mission). Mental model to create:
->
-> **Mental model**
-> - id: `linkedin-post-writer`
-> - name: LinkedIn Post Writer Guidelines
-> - source_query: *"What are the current writing style, tone, structure, voice, and do/dont rules I should follow when drafting LinkedIn posts on behalf of this user?"*
-> - refresh_after_consolidation: true
-> - tags: none
+> - **id:** `linkedin-post-writer`
+> - **name:** LinkedIn Post Writer Guidelines
+> - **source_query:** *"What are the current writing style, tone, structure, voice, and do/dont rules I should follow when drafting LinkedIn posts on behalf of this user?"*
+> - **refresh_after_consolidation:** true
+> - **tags:** none
 >
 > Approve?
 
-### Execute after a single approval
+Wait for approval. If the user wants to tweak the id, name, or source_query, regenerate and ask again. Do not change the bank id — that comes from the env file and is tied to the harness plugin.
 
-Once the user approves, run all the commands below without stopping for additional approvals. The two missions are set with one `bank set-config` call; the mental model is created with `mental-model create`; the trigger is set with one raw curl PATCH (see CLI gap note at the end of this step).
+### Execute after approval
 
-**Do NOT set `reflect_mission`.** The mental model's `source_query` alone is enough to steer the reflect output for this pattern, and the default reflect framing works fine. Keep the bank config minimal.
-
-**When creating a new bank:**
+Once approved, run the commands below without pausing:
 
 ```bash
-# 1. Create the bank identity
-hindsight bank create <bank_id> --name "<bank_id>"
+# 1. Create the mental model on the harness's bank
+hindsight mental-model create "$HINDSIGHT_BANK_ID" "<mm_name>" "<source_query>" --id <mm_id>
 
-# 2. Set both missions in one call. Do NOT include --reflect-mission.
-hindsight bank set-config <bank_id> \
-  --retain-mission "<retain_mission>" \
-  --observations-mission "<observations_mission>"
-
-# 3. Create the mental model
-hindsight mental-model create <bank_id> "<mm_name>" "<source_query>" --id <mm_id>
-
-# 4. Set the trigger (CLI gap — see below)
+# 2. Set the refresh trigger and empty tags (CLI gap — see below)
 curl -sS -X PATCH \
   ${HINDSIGHT_API_KEY:+-H "Authorization: Bearer $HINDSIGHT_API_KEY"} \
   -H "Content-Type: application/json" \
   -d '{"trigger": {"refresh_after_consolidation": true}, "tags": []}' \
-  "$HINDSIGHT_API_URL/v1/default/banks/<bank_id>/mental-models/<mm_id>"
+  "$HINDSIGHT_API_URL/v1/default/banks/$HINDSIGHT_BANK_ID/mental-models/<mm_id>"
 
-# 5. Verify everything
-hindsight bank config <bank_id> --output json
-hindsight mental-model get <bank_id> <mm_id> --output json
+# 3. Verify
+hindsight mental-model get "$HINDSIGHT_BANK_ID" <mm_id> --output json
 ```
 
-**When binding to an existing bank**, skip the `bank create` and `bank set-config` calls — the bank and its missions already exist. Run only commands 3, 4, and 5.
-
-### Design guidance for the two missions (when creating a new bank)
-
-- **`retain_mission`** — what single, actionable facts to extract from every conversation turn. Must be specific about categories (list them). Must include a negative constraint ("IGNORE X", e.g. the task content itself).
-- **`observations_mission`** — how to synthesize extracted facts into deduplicated, coherent observations. Must specify grouping axes (by theme / by situation / by channel). Must handle conflicts (newer rule wins on contradiction, older marked stale).
+The initial `content` field will be a "no information" response. That's correct — the skill's fallback at runtime asks the user for guidance on first use and the mental model populates after the first consolidation cycle.
 
 ### Design guidance for the mental model
 
 - **`id`** — matches the skill name so the CLI invocation is predictable (e.g., `linkedin-post-writer`)
 - **`name`** — human-readable (e.g., "LinkedIn Post Writer Guidelines")
-- **`source_query`** — the most important field. It is the **question the mental model answers whenever the skill fetches it**. A good `source_query`:
+- **`source_query`** — the most important field. It is the **question the mental model answers whenever the skill fetches it**, and it is the ONLY thing scoping this skill's output to its domain since the bank is shared. A good `source_query`:
   - Mirrors the skill's purpose: *"What are the current X rules I should follow when Y?"*
-  - Is specific enough that reflect pulls the right slice of observations
+  - Is specific enough that reflect pulls only observations relevant to this skill's domain, even though the bank contains feedback from all skills
   - Is stable — it does not need to be rewritten as the skill learns
   - Asks for guidance the user *would* give you, not facts about the user
 - **`refresh_after_consolidation`** — always `true` for self-improving skills
@@ -365,11 +285,15 @@ hindsight mental-model get <bank_id> <mm_id> --output json
 
 ### CLI gap: `refresh_after_consolidation` is set via a fallback PATCH
 
-The `hindsight mental-model create` command does not currently accept a `--trigger` or `--refresh-after-consolidation` flag, and neither does `hindsight mental-model update`. This will be fixed upstream in a future CLI release. Until then, set the trigger via the raw `curl` PATCH in command 4 above — immediately after `mental-model create`, before verification.
+The `hindsight mental-model create` command does not currently accept a `--trigger` or `--refresh-after-consolidation` flag, and neither does `hindsight mental-model update`. Until the CLI is fixed upstream, set the trigger via the raw `curl` PATCH in command 2 above — immediately after `mental-model create`, before verification. This is the ONLY raw curl call in the whole meta-skill. When the CLI gap is fixed, replace command 2 with the equivalent CLI flag.
 
-This is the ONLY raw curl call in the whole meta-skill — everything else goes through the CLI. When the CLI gap is fixed, remove command 4 from the sequence.
+### Why the meta-skill doesn't create or tune banks anymore
 
-The initial `content` field of the mental model will be a "no information" response — that is correct and expected. The skill's fallback at runtime handles it.
+A previous version of this meta-skill created a dedicated bank per skill with hand-designed `retain_mission` and `observations_mission` values. That version was wrong: harness auto-retain only writes to ONE bank per session (read from the plugin's config), so any dedicated bank the meta-skill created would never receive user feedback.
+
+The current version accepts a constraint: **one bank per harness, many skills, many mental models, all scoped by source_query**. The bank's retain and observations missions are whatever the harness plugin set up (often empty, sometimes default). Mental model `source_query` does all the per-skill filtering at reflect time.
+
+Downside: observations in a shared bank are noisier because the retain mission isn't domain-specific. Upside: the learning loop actually closes, and multiple skills can learn from the same conversation when it touches multiple domains. We could revisit per-skill bank tuning later via multi-bank harness plugin support, but that's a v2 story.
 
 ---
 
@@ -433,10 +357,10 @@ Use this skill whenever the user asks for <domain work>. Before doing anything, 
 
    If this file does not exist, STOP and tell the user: *"The shared Hindsight env file is missing. Ask the agent to run the `hindsight-skill-builder` skill to set it up, or create it manually."* Do not try to reach Hindsight without it.
 
-2. **Fetch live guidance** from the bound mental model:
+2. **Fetch live guidance** from the bound mental model. The bank id comes from the sourced env file; the mental model id is fixed to this skill:
 
    ```bash
-   hindsight mental-model get <bank_id> <mm_id> --output json
+   hindsight mental-model get "$HINDSIGHT_BANK_ID" <mm_id> --output json
    ```
 
    If the command exits non-zero, STOP and report the error verbatim to the user. A CLI failure is NOT the same as empty guidance — do not fall through to step 4. Typical failures: unreachable instance (daemon down / wrong URL), authentication error (wrong or missing `HINDSIGHT_API_KEY`), mental model deleted (ask the user whether to recreate it).
@@ -460,35 +384,33 @@ Write the file, create parent directories if needed, then `ls` or `cat` to confi
 
 ## Final confirmation
 
-After all four steps are done, show the user a summary:
+After all three steps are done, show the user a summary:
 
 > ✓ **Skill installed: `<name>`**
 >
-> - Hindsight: `<url>` *(mode: embedded / self-hosted / cloud)*
-> - Env file: `~/.hindsight/learning-skill.env` *(chmod 600; contains `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` if auth is required)*
-> - Bank: `<bank>` (new / existing)
+> - Harness plugin: `<harness>` *(hermes / claude-code / codex / openclaw)*
+> - Hindsight: `<url>`
+> - Env file: `~/.hindsight/learning-skill.env` *(chmod 600; holds `HINDSIGHT_API_URL`, `HINDSIGHT_API_KEY`, `HINDSIGHT_BANK_ID`)*
+> - Bank: `<HINDSIGHT_BANK_ID>` *(shared with your harness's auto-retain stream)*
 > - Mental model: `<mm_id>` — empty, will populate after first feedback
 > - Skill file: `<path>`
 >
-> The skill uses the `hindsight` CLI at runtime — it sources the env file and calls `hindsight mental-model get` each time the skill fires. No direct HTTP calls, no inline auth.
+> The skill is live. Give your agent work and feedback as usual. Your harness's auto-retain writes every conversation turn to `<bank_id>`; consolidation produces observations; this mental model refreshes automatically and the skill's next call picks up the updated guidance.
 >
-> The skill is live. Ask your agent to do `<some domain task>` and start giving feedback — the mental model will evolve automatically after the first consolidation cycle.
+> Because this skill shares a bank with everything else on `<bank_id>`, the mental model's `source_query` is the only thing filtering its output. If you ever notice guidance drift — e.g. it starts picking up rules meant for a different domain — that's a signal to narrow the source_query.
 
 ---
 
 ## Worked example — `marketing-writer`
 
-This is a known-good configuration. Use it as a shape reference when designing a new skill, not as a template to copy blindly.
+This is a known-good shape. The bank is whatever the harness plugin is configured to use (e.g. `hermes`, `claude-code`, `codex`) — this meta-skill never creates banks.
 
-**Bank:** `marketing`
-
-- **retain_mission:** *"Extract concrete writing rules expressed by the human about how marketing posts should be written. Capture: tone (formal/casual/energetic/dry), structure (length, format, bullets vs paragraphs, use of emojis/hashtags), voice (we/you/I/brand name), forbidden words or cliches, target audience, calls to action, headline patterns, do/dont constraints, and any explicit corrections to previous drafts. Each fact must be a single, actionable writing rule a writer could follow next time. IGNORE the post content itself; only extract durable style guidance."*
-- **observations_mission:** *"Synthesise extracted writing rules into a coherent, deduplicated marketing style guide. Group rules by theme (tone, structure, voice, taboo, audience, CTA, formatting). When the human gives a NEW rule that contradicts an older one, the newer rule wins and the older one should be marked stale. Output observations as actionable rules a writer can follow without ambiguity."*
-- (no `reflect_mission` — the mental model's `source_query` handles the framing)
+**Bank:** read from `HINDSIGHT_BANK_ID` (the harness plugin's bank)
 
 **Mental model:**
 
-- **id:** `marketing-writing-guidelines`
+- **id:** `marketing-writer`
+- **name:** Marketing Writing Guidelines
 - **source_query:** *"What are the current writing style, tone, structure, voice, and do/dont rules I should follow when drafting marketing posts on behalf of this human?"*
 - **refresh_after_consolidation:** true, no tags
 
@@ -496,22 +418,16 @@ This is a known-good configuration. Use it as a shape reference when designing a
 
 > *"Use this skill whenever the user asks for any marketing copy, LinkedIn post, X post, blog teaser, newsletter blurb, announcement, launch copy, or promotional caption. Fetches the latest writing guidelines from Hindsight before drafting and asks the user for tone/audience/length/constraints when no guidance exists yet."*
 
-In a real run of this skill, that configuration started empty and evolved into a ~5000-character structured style guide after four rounds of user feedback — all without changing the skill file.
+In an earlier prototype that pre-tuned the bank with a domain-specific retain mission, this configuration started empty and evolved into a ~5000-character structured style guide after four rounds of user feedback. The current version gives up the per-skill retain mission in exchange for the bank actually being the one auto-retain writes to, so the loop closes without manual config edits.
 
 ---
 
 ## Counter-examples — what NOT to write
 
-Bad configs produce skills that sort-of-work but never auto-activate well and extract noisy observations. Avoid these:
-
-**Bad retain_mission:** *"Extract important things the user says."*
-Too vague. No categories, no negative constraints. The LLM will extract greetings, transient opinions, and irrelevant trivia. Good retain missions enumerate concrete categories and say what to ignore.
-
-**Bad observations_mission:** *"Combine related facts."*
-Tells the consolidator nothing about how to group, deduplicate, or handle contradictions. Good observations missions specify grouping axes and conflict-resolution behavior.
+Bad configs produce skills that sort-of-work but never auto-activate well and never close the learning loop. Avoid these:
 
 **Bad source_query:** *"What do I need to know?"*
-Too broad — reflect will pull everything in the bank. Good source_queries are scoped to the skill's purpose and phrased as the question whose answer *is* the skill's runtime instructions.
+Too broad — reflect will pull everything in the bank, which includes feedback meant for OTHER skills (since we share one bank across all skills). Good source_queries are scoped to the skill's domain and phrased as the question whose answer *is* the skill's runtime instructions: *"What are the current rules I should follow when drafting marketing posts?"*. The source_query is your only domain filter; make it count.
 
 **Bad description:** *"Marketing helper."*
 Ten characters, zero keywords. The harness will never match user requests to it. Good descriptions enumerate every phrase the user might say ("LinkedIn post, X post, blog teaser, newsletter, announcement, launch copy, promotional caption").
@@ -519,6 +435,8 @@ Ten characters, zero keywords. The harness will never match user requests to it.
 **Bad skill body:** Anything that tries to hardcode rules inline (tone, length, format). The whole point is that the rules live in the mental model and evolve. The skill body should contain ONLY the source + `hindsight mental-model get` workflow, nothing else.
 
 **Bad auth handling:** Embedding the API key directly in the skill file or in any generated command. The key lives in `~/.hindsight/learning-skill.env` with `chmod 600`, and the skill sources that file to pick it up. Never substitute a literal `hsk_...` value into any file the meta-skill writes, and never echo the key in chat output even during setup.
+
+**Bad bank creation:** Creating a NEW bank for each skill. This was the original (broken) design — the harness's auto-retain hook only writes to ONE bank per session, so any dedicated bank the meta-skill creates would never receive user feedback. The current architecture binds every new skill to the harness plugin's existing bank, which is the only bank auto-retain actually writes to.
 
 **Bad fallback to curl:** Reverting to raw `curl` in the generated skill body because "it's simpler". The CLI exists specifically so skills don't have to manage URLs, auth, tenant paths, and HTTP error parsing themselves. The ONE place raw curl is allowed is the `refresh_after_consolidation` fallback PATCH in Step 2, which exists only because the CLI doesn't yet support setting triggers — remove that call once the CLI is updated.
 
@@ -528,11 +446,12 @@ Ten characters, zero keywords. The harness will never match user requests to it.
 
 - **`hindsight` CLI is required.** Both the meta-skill setup and every generated skill assume the CLI is installed and on PATH. Step 1 verifies this and offers to install it if missing. If the user declines, abort the setup — there's no fallback to raw curl in the happy path.
 - **CLI gap: mental-model trigger is not exposed.** `hindsight mental-model create` and `hindsight mental-model update` do not currently support `refresh_after_consolidation` or tags. Step 2 uses a one-shot `curl PATCH` immediately after the CLI create to set the trigger and empty tags. This is the ONLY raw curl call in the whole flow. When the CLI adds `--refresh-after-consolidation` and `--tags` flags, delete the fallback block.
+- **Harness plugin must be installed FIRST.** The meta-skill cannot work in isolation — it reads the URL, key, and bank id from an installed harness Hindsight plugin (hermes / claude-code / codex / openclaw). If no plugin is detected, Step 1 stops and tells the user to install one. The plugin's auto-retain hook is the only source of conversation data; without it, the mental model never learns anything.
+- **One bank per harness, shared across skills.** Every skill the meta-skill creates binds to the same bank — the one the harness plugin is configured to write to. Multiple skills can coexist on that bank, each scoped by its own mental model `source_query`. There is no per-skill bank, no per-skill retain mission, no per-skill consolidation tuning. If the user wants per-skill tuning, that requires multi-bank harness support, which is a v2 story.
 - **Tagged mental models skip auto-refresh.** The `refresh_after_consolidation` trigger only fires when the mental model's tags overlap with the consolidated memories' tags (or when both are untagged). The fallback PATCH always sets `"tags": []` for this reason — do NOT change that to add tags unless you're also tagging every memory the auto-retain hook writes.
-- **Auto-retain must be on.** This skill only works if the harness's Hindsight plugin has auto-retain enabled (the default). The generated skill cannot verify this itself — the user is responsible for ensuring it.
-- **The first turn after install will hit an empty mental model.** That is correct. The skill's fallback will ask the user for guidance, and the first batch of feedback will seed the mental model after one consolidation cycle.
-- **No auto-discovery.** Step 1 is a wizard. The meta-skill asks the user which mode (cloud / embedded / self-hosted) they want and only sets up that one. Do NOT probe `~/.hindsight/config`, `~/.hermes/hindsight/config.json`, `~/.claude/*`, `~/.codex/*`, well-known local ports, or any other source. The only auto-detection allowed is (a) the meta-skill's own state file at `~/.hindsight/learning-skill.env`, and (b) `HINDSIGHT_API_KEY` in the env *only* for Cloud mode.
-- **Env file is the single source of truth.** Do not write the URL or key to any other file (not `~/.hindsight/config`, not the harness config, not the shell rc). Every generated skill sources `~/.hindsight/learning-skill.env` directly. If the user needs a different Hindsight instance per skill (e.g. dev embedded + prod cloud), that's a v2 concern — for v1, one file, one instance, all skills on it.
-- **Env file permissions.** Always `chmod 600`. The file contains the API key in plaintext. If the user is concerned, that's a valid concern — note that this is the v1 storage strategy and OS keychain integration is a future enhancement.
-- **Embedded profile is dedicated.** Mode 2 always uses a profile named `learning-skill`, not the default profile or any existing harness profile. This keeps the meta-skill's daemon isolated from whatever the user's harness (hermes, claude-code, codex) has set up, so reruns don't collide and uninstalls are clean.
-- **Cloud tenant path.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted it's always `default`. On cloud, the API key scopes the tenant automatically and `default` usually works — but if the user tells you their account uses a custom tenant, ask them to confirm before continuing. (The CLI's `<bank_id>` argument uses the same tenant the CLI was configured with.)
+- **Auto-retain must be on.** This pattern only works if the harness's Hindsight plugin has auto-retain enabled (the default for hermes / claude-code / codex). The generated skill cannot verify this itself — the user is responsible.
+- **The first turn after install will hit an empty mental model.** That is correct. The skill's fallback asks the user for guidance, and the first batch of feedback seeds the mental model after one consolidation cycle.
+- **OpenClaw secrets are vault-encrypted.** OpenClaw stores plugin secrets inside its own vault, not as plain JSON. The meta-skill cannot read them — for OpenClaw users, fall back to asking them to paste the URL / key / bank id manually after detecting the plugin directory exists.
+- **Env file is the single source of truth.** Do not write the URL, key, or bank id to any other file (not `~/.hindsight/config`, not the harness config, not the shell rc). Every generated skill sources `~/.hindsight/learning-skill.env` directly. If the harness plugin's config later changes (URL, key, or bank), the meta-skill must be re-run so the env file resyncs.
+- **Env file permissions.** Always `chmod 600`. The file contains the API key in plaintext. OS keychain integration is a future enhancement.
+- **Cloud tenant path.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted it's always `default`. On cloud, the API key scopes the tenant automatically and `default` usually works — but if the user tells you their account uses a custom tenant, ask them to confirm before continuing.
