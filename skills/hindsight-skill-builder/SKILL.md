@@ -94,7 +94,7 @@ Show the user every candidate you probed and recommend one. Example:
 >
 > I'd recommend the **embedded** instance for local development. Use the embedded one, or switch to cloud?
 
-If the user picks cloud or self-hosted, **remember that auth is required**. Every subsequent API call in Steps 2–4 must include the `Authorization: Bearer <api_key>` header, and the generated SKILL.md must include it too (Step 4 covers this).
+If the user picks cloud or self-hosted, **remember that auth is required**. You'll need the API key in the next substep to write the shared env file.
 
 **Never print the API key value** in your responses. Reference it as `$HINDSIGHT_API_KEY` or "the configured key" instead.
 
@@ -106,31 +106,103 @@ If no candidates respond or the user declines all of them, ask directly:
 
 Once you have a confirmed `(url, mode, auth)` triple, store it for the rest of the flow. Do not re-probe in later steps.
 
+### Ensure the `hindsight` CLI is installed
+
+Every Hindsight-backed skill in this family — both the meta-skill's own setup work and the runtime of every skill it creates — uses the `hindsight` CLI, not raw `curl`. Check that it's on the user's PATH:
+
+```bash
+command -v hindsight
+```
+
+If the command returns a path, you're done — skip ahead. If it's missing, propose installing it:
+
+> I need the `hindsight` CLI to set up the bank and mental model. I'd like to run:
+>
+> ```bash
+> curl -fsSL https://hindsight.vectorize.io/get-cli | bash
+> ```
+>
+> OK to install?
+
+Wait for approval, run the installer, then verify with `hindsight --version`. If the user declines the install, stop the whole flow and tell them they need to install the CLI before continuing — the rest of the meta-skill and the generated skills cannot work without it.
+
+### Write the shared env file at `~/.hindsight/learning-skill.env`
+
+This file is the **single source of truth for Hindsight connection details** used by every skill created through this meta-skill. It holds `HINDSIGHT_API_URL` and (if auth is required) `HINDSIGHT_API_KEY`, in a format that can be `source`d into any shell. The runtime of every generated skill sources this file before calling `hindsight`.
+
+Check whether the file already exists:
+
+```bash
+ls -la ~/.hindsight/learning-skill.env 2>/dev/null
+```
+
+**If the file exists**, source it and show the user what's there (URL only, never print the key), then ask whether to reuse it or overwrite with the URL you just confirmed in the previous substep:
+
+> The shared env file already exists at `~/.hindsight/learning-skill.env`:
+> - `HINDSIGHT_API_URL=http://localhost:9177`
+> - `HINDSIGHT_API_KEY=<set>` (or `<empty>`)
+>
+> Reuse this, or overwrite with `<new_url>` (and re-ask for the key if needed)?
+
+**If the file does not exist, or the user chose to overwrite**, gather the values:
+
+1. URL: use the URL confirmed in the previous substep.
+2. Key (only if auth is required): check `HINDSIGHT_API_KEY` in the current environment. If it's set, offer to use it. Otherwise prompt the user directly: *"Please paste your Hindsight API key (I will not print it back)."* Never read it from any other file — the env file is the only persistent store managed by this meta-skill.
+
+Propose the write:
+
+> I'll write `~/.hindsight/learning-skill.env` with:
+> - `HINDSIGHT_API_URL="<url>"`
+> - `HINDSIGHT_API_KEY=<set>` *(or empty if no auth)*
+>
+> Permissions will be set to `0600` (user read/write only). The file will be plain text on disk — if that's a concern, stop here and set up your key differently. OK to write?
+
+Wait for approval, then create the file with the exact commands below. The `chmod` MUST run.
+
+```bash
+mkdir -p ~/.hindsight
+cat > ~/.hindsight/learning-skill.env <<'EOF'
+export HINDSIGHT_API_URL="<url>"
+export HINDSIGHT_API_KEY="<key-or-empty>"
+EOF
+chmod 600 ~/.hindsight/learning-skill.env
+```
+
+Verify the file was written, permissions are correct, and that sourcing it populates the env vars:
+
+```bash
+ls -la ~/.hindsight/learning-skill.env     # must show -rw-------
+source ~/.hindsight/learning-skill.env
+hindsight health                             # must return a healthy response
+```
+
+If `hindsight health` fails, something is wrong with the URL or key — surface the error to the user and ask them to fix it before continuing.
+
+> **Do NOT print the key value at any point**, not even when writing it into the heredoc. The heredoc substitution happens inside your own process; keep the literal value out of your chat output. Use a placeholder like `<key>` in any text the user sees.
+
 ---
 
 ## Step 2 — Select or create a bank
 
-All API calls in this step must include the `Authorization` header if Step 1 classified the instance as `cloud` or `self-hosted` with auth. Use this helper form throughout:
+All commands in this step (and Step 3) use the `hindsight` CLI. Start by sourcing the env file so the CLI routes to the right instance with the right auth:
 
 ```bash
-# Define once at the top of the step
-AUTH=""   # for embedded mode, leave empty
-# AUTH="-H 'Authorization: Bearer $HINDSIGHT_API_KEY'"   # for cloud / self-hosted with key
+source ~/.hindsight/learning-skill.env
 ```
+
+Do this once at the top of the step. The CLI reads `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` from the environment automatically — no per-command flags needed.
 
 List existing banks:
 
 ```bash
-curl -s $AUTH <url>/v1/default/banks
+hindsight bank list --output json
 ```
 
-Inspect their names and missions. For each, optionally fetch the config:
+Inspect their names and missions. For each candidate bank, fetch the config:
 
 ```bash
-curl -s $AUTH <url>/v1/default/banks/<bank_id>/config
+hindsight bank config <bank_id> --output json
 ```
-
-> **Note on the tenant path segment.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted deployments it's always `default`. On cloud, the API key typically scopes the tenant automatically and `/v1/default/` still works — but if the user's cloud account uses a custom tenant, ask them to confirm the tenant id before proceeding and substitute it throughout.
 
 Now **decide with the user** whether the new skill should:
 
@@ -187,28 +259,30 @@ Propose all three in one block with the bank name, like this:
 
 Wait for approval. If the user asks for edits, regenerate and ask again.
 
-Create the bank with (add `-H "Authorization: Bearer $HINDSIGHT_API_KEY"` if the instance requires auth):
+Create the bank with two CLI calls — `bank create` for the identity, then `bank set-config` to set the three missions in one shot:
 
 ```bash
-curl -X PUT $AUTH <url>/v1/default/banks/<bank_id> \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "<bank_id>",
-    "retain_mission": "...",
-    "observations_mission": "...",
-    "reflect_mission": "..."
-  }'
+hindsight bank create <bank_id> --name "<bank_id>"
+
+hindsight bank set-config <bank_id> \
+  --retain-mission "<retain_mission>" \
+  --observations-mission "<observations_mission>" \
+  --reflect-mission "<reflect_mission>"
 ```
 
-Verify by re-fetching `/config` and confirm all three overrides are set.
+Verify by re-fetching the config and confirm all three overrides are set:
+
+```bash
+hindsight bank config <bank_id> --output json
+```
 
 ---
 
 ## Step 3 — Create the binding mental model
 
-The mental model is what the new skill will `curl` at runtime. It has:
+The mental model is what the new skill will fetch via the CLI at runtime. It has:
 
-- **`id`** — matches the skill name so the `curl` URL is predictable (e.g., `linkedin-post-writer`)
+- **`id`** — matches the skill name so the CLI invocation is predictable (e.g., `linkedin-post-writer`)
 - **`name`** — human-readable (e.g., "LinkedIn Post Writer Guidelines")
 - **`source_query`** — the reflect question whose answer becomes the live instructions
 
@@ -231,23 +305,35 @@ Propose the mental model spec:
 >
 > Create this mental model in bank `<bank>`?
 
-**Note on tags:** do NOT set tags on the mental model unless you are also going to tag the memories the auto-retain hook stores. The `refresh_after_consolidation` trigger is tag-gated — if the mental model has tags but the retained memories don't, the trigger silently does nothing and the mental model never refreshes. When in doubt, leave tags empty.
+**Note on tags:** do NOT set tags on the mental model. The `refresh_after_consolidation` trigger is tag-gated — if the mental model has tags but the retained memories don't, the trigger silently does nothing and the mental model never refreshes. When in doubt, leave tags empty.
 
-Wait for approval, then create (add auth header if required):
+Wait for approval, then create the mental model with the CLI:
 
 ```bash
-curl -X POST $AUTH <url>/v1/default/banks/<bank>/mental-models \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "<mm_id>",
-    "name": "<mm_name>",
-    "source_query": "<source_query>",
-    "max_tokens": 2048,
-    "trigger": {"refresh_after_consolidation": true}
-  }'
+hindsight mental-model create <bank_id> "<mm_name>" "<source_query>" --id <mm_id>
 ```
 
-Verify by fetching the mental model. The initial `content` will be a "no information" response — that is correct and expected. The skill's fallback handles it.
+### CLI gap: set `refresh_after_consolidation` via a fallback PATCH
+
+The `hindsight mental-model create` command does not currently accept a `--trigger` or `--refresh-after-consolidation` flag, and neither does `hindsight mental-model update`. This will be fixed upstream in a future CLI release. Until then, set the trigger via one raw `curl` PATCH immediately after the CLI create. The env file is already sourced, so `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` are available:
+
+```bash
+curl -sS -X PATCH \
+  ${HINDSIGHT_API_KEY:+-H "Authorization: Bearer $HINDSIGHT_API_KEY"} \
+  -H "Content-Type: application/json" \
+  -d '{"trigger": {"refresh_after_consolidation": true}, "tags": []}' \
+  "$HINDSIGHT_API_URL/v1/default/banks/<bank_id>/mental-models/<mm_id>"
+```
+
+This is the ONLY raw curl call in the whole meta-skill — everything else goes through the CLI. When the CLI gap is fixed, remove this block.
+
+Verify the mental model exists and has the trigger set:
+
+```bash
+hindsight mental-model get <bank_id> <mm_id> --output json
+```
+
+The initial `content` field will be a "no information" response — that is correct and expected. The skill's fallback handles it.
 
 ---
 
@@ -289,7 +375,7 @@ Propose the description separately and get approval:
 
 ### The SKILL.md template
 
-Render this template, substituting `<placeholders>`. **One template works for every deployment mode** — the curl line uses bash parameter expansion (`${HINDSIGHT_API_KEY:+...}`) to auto-include an `Authorization` header only when the env var is set, so the same line works on embedded (no key), self-hosted (optional key), and cloud (required key). Do not add extra sections beyond what is here unless the user asks.
+Render this template, substituting `<placeholders>`. The same template works for every deployment mode — the runtime skill sources the shared env file and lets the `hindsight` CLI handle URL and auth. There is no branching. Do not add extra sections beyond what is here unless the user asks.
 
 ````markdown
 ---
@@ -303,34 +389,36 @@ Use this skill whenever the user asks for <domain work>. Before doing anything, 
 
 ## Workflow
 
-1. **Fetch live guidance** from the bound mental model. The curl below auto-includes an `Authorization: Bearer $HINDSIGHT_API_KEY` header when the env var is set and works unauthenticated otherwise — the same line is correct for embedded, self-hosted, and cloud instances:
+1. **Load the Hindsight connection** (once per session is enough):
 
    ```bash
-   curl -sS -w '\n%{http_code}' \
-     ${HINDSIGHT_API_KEY:+-H "Authorization: Bearer $HINDSIGHT_API_KEY"} \
-     <url>/v1/default/banks/<bank>/mental-models/<mm_id>
+   source ~/.hindsight/learning-skill.env
    ```
 
-2. **Check the HTTP status code** (last line of the response). Any non-2xx is a hard failure — STOP, report it to the user, and do NOT fall through to "empty guidance" handling:
-   - `401` / `403` → the Hindsight instance requires authentication. Tell the user to export `HINDSIGHT_API_KEY` (or check that their existing key is valid) and retry.
-   - `404` → the mental model was deleted. Tell the user and ask whether to recreate it.
-   - `5xx` or connection refused → the Hindsight daemon is down or unreachable. Tell the user to verify the daemon.
-   - Do not guess or substitute defaults on any error.
+   If this file does not exist, STOP and tell the user: *"The shared Hindsight env file is missing. Ask the agent to run the `hindsight-skill-builder` skill to set it up, or create it manually."* Do not try to reach Hindsight without it.
 
-3. **Parse the JSON body** (everything before the status-code line) and read the `content` field. That field is your style guide for this request.
+2. **Fetch live guidance** from the bound mental model:
+
+   ```bash
+   hindsight mental-model get <bank_id> <mm_id> --output json
+   ```
+
+   If the command exits non-zero, STOP and report the error verbatim to the user. A CLI failure is NOT the same as empty guidance — do not fall through to step 4. Typical failures: unreachable instance (daemon down / wrong URL), authentication error (wrong or missing `HINDSIGHT_API_KEY`), mental model deleted (ask the user whether to recreate it).
+
+3. **Parse the JSON output** from the CLI and read the `content` field. That field is your style guide for this request.
 
 4. **Handle empty guidance.** If `content` is empty, missing, null, or contains a no-information message ("I do not have any information", "no relevant memories", etc.), you MUST stop and ask the user for direction before producing any output. Ask for the specific fields the domain needs (tone, audience, length, constraints, whatever is relevant). Do not guess from your defaults.
 
 5. **Follow the guidance strictly.** When the guidance is populated, apply every rule. If a rule is non-obvious but important, briefly note which rule you are applying in your reasoning.
 
-6. **Re-fetch on revision.** If the user asks for an edit or redo, re-run the curl first — the guidelines may have been updated since your last turn.
+6. **Re-fetch on revision.** If the user asks for an edit or redo, re-run `hindsight mental-model get ...` first — the guidelines may have been updated since your last turn.
 
 ## Learning loop
 
-Your feedback teaches this skill. You do not need to do anything special with user feedback — Hindsight's auto-retain hook captures every conversation turn, extracts rules via the bank's retain mission, consolidates them into observations, and refreshes this mental model automatically. The next curl will return updated guidelines.
+Your feedback teaches this skill. You do not need to do anything special with user feedback — Hindsight's auto-retain hook captures every conversation turn, extracts rules via the bank's retain mission, consolidates them into observations, and refreshes this mental model automatically. The next CLI call will return updated guidelines.
 ````
 
-Write the file, create parent directories if needed, then `ls` or `cat` to confirm. **Double-check that the rendered file contains `$HINDSIGHT_API_KEY` as a shell variable reference inside the `${HINDSIGHT_API_KEY:+...}` expansion — never substitute the literal key value.**
+Write the file, create parent directories if needed, then `ls` or `cat` to confirm.
 
 ---
 
@@ -341,16 +429,14 @@ After all four steps are done, show the user a summary:
 > ✓ **Skill installed: `<name>`**
 >
 > - Hindsight: `<url>` *(mode: embedded / self-hosted / cloud)*
-> - Auth: *none* — OR — *via `$HINDSIGHT_API_KEY` (must be set in the environment when the skill runs)*
+> - Env file: `~/.hindsight/learning-skill.env` *(chmod 600; contains `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` if auth is required)*
 > - Bank: `<bank>` (new / existing)
 > - Mental model: `<mm_id>` — empty, will populate after first feedback
 > - Skill file: `<path>`
 >
+> The skill uses the `hindsight` CLI at runtime — it sources the env file and calls `hindsight mental-model get` each time the skill fires. No direct HTTP calls, no inline auth.
+>
 > The skill is live. Ask your agent to do `<some domain task>` and start giving feedback — the mental model will evolve automatically after the first consolidation cycle.
-
-If the instance requires auth, add a second line to the summary reminding the user to export the key in whatever process the agent runs under (their shell, their harness's env file, their CI config):
-
-> **Note:** This skill reads `HINDSIGHT_API_KEY` at runtime. Make sure it's available in the environment your agent runs under. On hermes, put it in `~/.hermes/.env`; on claude code, put it in your shell profile or the `.env` file the CLI sources.
 
 ---
 
@@ -394,18 +480,23 @@ Too broad — reflect will pull everything in the bank. Good source_queries are 
 **Bad description:** *"Marketing helper."*
 Ten characters, zero keywords. The harness will never match user requests to it. Good descriptions enumerate every phrase the user might say ("LinkedIn post, X post, blog teaser, newsletter, announcement, launch copy, promotional caption").
 
-**Bad skill body:** Anything that tries to hardcode rules inline (tone, length, format). The whole point is that the rules live in the mental model and evolve. The skill body should contain ONLY the curl-parse-follow-or-ask workflow, nothing else.
+**Bad skill body:** Anything that tries to hardcode rules inline (tone, length, format). The whole point is that the rules live in the mental model and evolve. The skill body should contain ONLY the source + `hindsight mental-model get` workflow, nothing else.
 
-**Bad auth handling:** Hardcoding the API key in the skill file (e.g. `curl -H "Authorization: Bearer hsk_abc123..."`). This commits credentials to the skills directory (and often to git if the user's harness config is in a repo). Always use `$HINDSIGHT_API_KEY` as a shell variable reference in the skill body; never substitute the literal value.
+**Bad auth handling:** Embedding the API key directly in the skill file or in any generated command. The key lives in `~/.hindsight/learning-skill.env` with `chmod 600`, and the skill sources that file to pick it up. Never substitute a literal `hsk_...` value into any file the meta-skill writes, and never echo the key in chat output even during setup.
+
+**Bad fallback to curl:** Reverting to raw `curl` in the generated skill body because "it's simpler". The CLI exists specifically so skills don't have to manage URLs, auth, tenant paths, and HTTP error parsing themselves. The ONE place raw curl is allowed is the `refresh_after_consolidation` fallback PATCH in Step 3, which exists only because the CLI doesn't yet support setting triggers — remove that call once the CLI is updated.
 
 ---
 
 ## Things to watch for (known gotchas)
 
-- **Tagged mental models skip auto-refresh.** The `refresh_after_consolidation` trigger only fires when the mental model's tags overlap with the consolidated memories' tags (or when both are untagged). If the user asks for tags on the mental model, warn them and confirm they also plan to tag the retained memories, otherwise the skill will never refresh.
-- **Auto-retain must be on.** This skill only works if the harness's Hindsight plugin has auto-retain enabled (the default). Verify during Step 1 if you can.
+- **`hindsight` CLI is required.** Both the meta-skill setup and every generated skill assume the CLI is installed and on PATH. Step 1 verifies this and offers to install it if missing. If the user declines, abort the setup — there's no fallback to raw curl in the happy path.
+- **CLI gap: mental-model trigger is not exposed.** `hindsight mental-model create` and `hindsight mental-model update` do not currently support `refresh_after_consolidation` or tags. Step 3 uses a one-shot `curl PATCH` immediately after the CLI create to set the trigger and empty tags. This is the ONLY raw curl call in the whole flow. When the CLI adds `--refresh-after-consolidation` and `--tags` flags, delete the fallback block.
+- **Tagged mental models skip auto-refresh.** The `refresh_after_consolidation` trigger only fires when the mental model's tags overlap with the consolidated memories' tags (or when both are untagged). The fallback PATCH always sets `"tags": []` for this reason — do NOT change that to add tags unless you're also tagging every memory the auto-retain hook writes.
+- **Auto-retain must be on.** This skill only works if the harness's Hindsight plugin has auto-retain enabled (the default). The generated skill cannot verify this itself — the user is responsible for ensuring it.
 - **The first turn after install will hit an empty mental model.** That is correct. The skill's fallback will ask the user for guidance, and the first batch of feedback will seed the mental model after one consolidation cycle.
-- **Hindsight URLs are not always `localhost:8888`.** The actual default for the Hermes embedded daemon is `9177`. Always verify with `/health` before committing to a URL.
-- **Auth secrets must not be hardcoded.** When writing the SKILL.md for a cloud or self-hosted instance, the Authorization header must reference `$HINDSIGHT_API_KEY` as an environment variable, never the literal key value. The env var must be available at runtime in whatever process the agent runs under (shell profile, harness env file, CI config). If the skill file fetches guidance but the env var is missing, the skill should fail loudly (tell the user to set the key) — not silently treat the 401/403 response as an empty mental model.
-- **Cloud tenant path.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted it's always `default`. On cloud, the API key scopes the tenant automatically and `/v1/default/` usually works — but if the user tells you their account uses a custom tenant, substitute it throughout every curl (both in the setup API calls and in the generated SKILL.md).
-- **Mixed-mode deployments.** A user may have multiple Hindsight instances (e.g. a local embedded daemon for dev and a cloud instance for production). If Step 1 finds more than one healthy candidate, always ask the user which to target — do not silently prefer one. The generated SKILL.md will be locked to whichever instance you chose, so this is a meaningful decision.
+- **Hindsight URLs are not always `localhost:8888`.** The actual default for the Hermes embedded daemon is `9177`; Hindsight Cloud is `https://api.hindsight.vectorize.io`; self-hosted is whatever the user configured. Always verify with `hindsight health` after writing the env file.
+- **Env file is the single source of truth.** Do not write the URL or key to any other file (not `~/.hindsight/config`, not the harness config, not the shell rc). Every generated skill sources `~/.hindsight/learning-skill.env` directly. If the user needs a different Hindsight instance per skill (e.g. dev embedded + prod cloud), that's a v2 concern — for v1, one file, one instance, all skills on it.
+- **Env file permissions.** Always `chmod 600`. The file contains the API key in plaintext. If the user is concerned, that's a valid concern — note that this is the v1 storage strategy and OS keychain integration is a future enhancement.
+- **Cloud tenant path.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted it's always `default`. On cloud, the API key scopes the tenant automatically and `default` usually works — but if the user tells you their account uses a custom tenant, ask them to confirm before continuing. (The CLI's `<bank_id>` argument uses the same tenant the CLI was configured with.)
+- **Mixed-mode deployments.** A user may have multiple Hindsight instances (e.g. a local embedded daemon for dev and a cloud instance for production). If Step 1 finds more than one healthy candidate, always ask the user which to target — do not silently prefer one. The env file is locked to whichever instance you chose.
