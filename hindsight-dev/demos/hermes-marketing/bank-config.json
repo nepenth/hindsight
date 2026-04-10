@@ -1,6 +1,0 @@
-{
-  "name": "marketing-manager",
-  "reflect_mission": "I am the Hindsight memory bank for a marketing manager assistant. When asked to produce writing guidelines, return a clear, structured style guide a writer could follow when drafting marketing posts.",
-  "retain_mission": "Extract concrete writing rules expressed by the human about how marketing posts should be written. Capture: tone (formal/casual/energetic/dry), structure (length, format, bullets vs paragraphs, use of emojis/hashtags), voice (we/you/I/brand name), forbidden words or cliches, target audience, calls to action, headline patterns, do/dont constraints, and any explicit corrections to previous drafts. Each fact must be a single, actionable writing rule a writer could follow next time. IGNORE the post content itself; only extract durable style guidance.",
-  "observations_mission": "Synthesise extracted writing rules into a coherent, deduplicated marketing style guide. Group rules by theme (tone, structure, voice, taboo, audience, CTA, formatting). When the human gives a NEW rule that contradicts an older one, the newer rule wins and the older one should be marked stale. Output observations as actionable rules a writer can follow without ambiguity."
-}
