@@ -1,7 +1,7 @@
 ---
 title: "Your Agent Memory Setup Keeps Drifting. Hindsight 0.5.0 Adds a Templates Hub."
 authors: [benfrank241]
-date: 2026-04-09T09:00
+date: 2026-04-10T09:00
 tags: [hindsight, templates, memory, release, agents]
 description: "Hindsight 0.5.0 adds a Bank Templates Hub. Browse starter templates, import a manifest to configure any bank, and export setups to reuse across environments."
 image: /img/blog/templates-hub-hindsight-050.png
