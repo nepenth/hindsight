@@ -21,22 +21,24 @@ The resulting skill, once installed, will:
 
 ## Human-in-the-loop protocol (MANDATORY)
 
-At every step below, you follow this pattern:
+At every decision point below, you follow this pattern:
 
-1. **Explore** — run whatever checks you need (list banks, probe URLs, read existing config, etc)
-2. **Propose** — show the user your proposed value for this step in a clearly labeled block
+1. **Explore** — run whatever read-only checks you need (list banks, probe a single known URL, read the meta-skill's own state file)
+2. **Propose** — show the user your proposed values in a clearly labeled block
 3. **Ask for approval** — end with a direct question like *"Proceed with this, or do you want to edit?"*
-4. **Wait for explicit confirmation** before making any API call, writing any file, or moving to the next step
+4. **Wait for explicit confirmation** before making any API call, writing any file, or starting a daemon
 
-Never chain steps. Never auto-advance. If the user gives partial feedback ("make the description shorter"), regenerate that single field and ask again.
+Never chain decision points. If the user gives partial feedback ("change the bank name to X"), regenerate the affected fields and ask again.
 
-Decisions that require approval:
-- The Hindsight instance URL you will talk to
-- The bank name (whether existing or new)
-- The three bank missions (retain, observations, reflect) — only when creating a new bank
-- The mental model id, name, and source_query
-- The final skill name and description
-- The target directory where the new SKILL.md will be written
+Decision points that require approval:
+
+- **Step 1 — Wizard choice:** which deployment mode (cloud / embedded / self-hosted API)
+- **Step 1 — Mode setup:** the URL and key for the chosen mode, and (for embedded) the LLM provider + port
+- **Step 1 — Env file write:** the final contents of `~/.hindsight/learning-skill.env`
+- **Step 2 — Combined bank + mental model proposal:** ONE approval that covers the bank decision, both missions (only if creating a new bank), and the full mental model spec. Do NOT split this into two prompts. Once approved, all CLI commands for bank + mental model run without further pauses.
+- **Step 3 — Skill file:** the final description and rendered SKILL.md content before writing
+
+The Step 2 combined approval is the most important. Resist the urge to ask separately about the bank and then about the mental model — the user approves or edits the whole block once, and then the meta-skill executes everything.
 
 ---
 
@@ -240,162 +242,138 @@ If `hindsight health` fails, something is wrong with the URL or key — surface 
 
 ---
 
-## Step 2 — Select or create a bank
+## Step 2 — Design and create the bank + mental model (one approval)
 
-All commands in this step (and Step 3) use the `hindsight` CLI. Start by sourcing the env file so the CLI routes to the right instance with the right auth:
+Bank setup and mental model creation are a **single step with a single approval**. Propose the bank name, the two missions (retain + observations), and the full mental model spec (id, source_query, trigger) in one combined block. Get ONE yes/no from the user, then execute every CLI command and the trigger PATCH without pausing in between.
+
+All commands in this step use the `hindsight` CLI. Start by sourcing the env file so the CLI routes to the right instance with the right auth:
 
 ```bash
 source ~/.hindsight/learning-skill.env
 ```
 
-Do this once at the top of the step. The CLI reads `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` from the environment automatically — no per-command flags needed.
+The CLI reads `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` from the environment automatically — no per-command flags needed.
 
-List existing banks:
+### Choose: new bank or existing bank
+
+First, list existing banks:
 
 ```bash
 hindsight bank list --output json
 ```
 
-Inspect their names and missions. For each candidate bank, fetch the config:
-
-```bash
-hindsight bank config <bank_id> --output json
-```
-
-Now **decide with the user** whether the new skill should:
+Decide with the user whether the new skill should:
 
 - **(a) Bind to an existing bank** — because the kind of feedback it will receive overlaps with what the bank already learns. Example: a `linkedin-post-writer` skill belongs in a bank that already handles marketing writing, because all the same tone/voice/audience feedback applies.
 - **(b) Create a new bank** — because the skill's domain is distinct. Example: a `customer-support-responder` skill should NOT go in a marketing bank; the feedback it will receive ("be more apologetic", "mention refund policy") is unrelated to marketing style.
 
 Your rule of thumb: **if the user's feedback for the new skill would pollute the existing bank's observations, create a new bank.** When in doubt, ask the user.
 
-### (a) Binding to an existing bank
+### The single combined proposal
 
-If binding, confirm the target bank with the user:
+Compose ONE block that includes the bank decision, the two missions (only when creating a new bank), and the mental model spec. Ask for ONE approval. Do NOT split this into two separate prompts.
 
-> I'll bind the new skill to the existing `marketing` bank. Its retain mission
-> already captures writing rules, so feedback on your new skill will flow into
-> the same style guide. OK?
+#### When creating a new bank
 
-Skip to Step 3.
+Propose everything in one block:
 
-### (b) Creating a new bank with tuned missions
-
-If creating a new bank, you must **design three missions** (and get the user's approval on each):
-
-- **`retain_mission`** — what single, actionable facts to extract from every conversation turn. Must be specific about categories. Must include negative constraints ("ignore X").
-- **`observations_mission`** — how to synthesize extracted facts into deduplicated, coherent observations. Must handle conflicts (newer rule wins on contradiction).
-- **`reflect_mission`** — how to format the response when the skill queries the mental model. The shape the user will see.
-
-Propose all three in one block with the bank name, like this:
-
-> Here's the proposed bank configuration:
+> Here's the full setup I'll create with one approval:
 >
-> **Bank id:** `customer-support`
+> **Bank**
+> - id: `customer-support` *(new)*
 >
-> **Retain mission:**
-> Extract concrete rules the human gives about how to respond to customer
-> support messages. Capture: tone (apologetic/neutral/firm), required disclosures,
-> escalation criteria, banned phrases, refund/credit policy, response length,
-> signature format, and any explicit corrections to previous replies. Each fact
-> must be a single, actionable rule. IGNORE the ticket content itself; only
-> extract durable response-writing guidance.
+> **Retain mission**
+> Extract concrete rules the human gives about how to respond to customer support messages. Capture: tone (apologetic/neutral/firm), required disclosures, escalation criteria, banned phrases, refund/credit policy, response length, signature format, and any explicit corrections to previous replies. Each fact must be a single, actionable rule. IGNORE the ticket content itself; only extract durable response-writing guidance.
 >
-> **Observations mission:**
-> Synthesise extracted rules into a coherent, deduplicated support response
-> playbook. Group rules by situation (angry customer, refund request, bug
-> report, feature request). When a new rule contradicts an older one, the
-> newer rule wins; mark the older as stale. Output observations as actionable
-> rules a responder can follow without ambiguity.
+> **Observations mission**
+> Synthesise extracted rules into a coherent, deduplicated support response playbook. Group rules by situation (angry customer, refund request, bug report, feature request). When a new rule contradicts an older one, the newer rule wins; mark the older as stale. Output observations as actionable rules a responder can follow without ambiguity.
 >
-> **Reflect mission:**
-> When asked for the current support response guidelines, return a clear,
-> structured playbook organized by situation with clear do's and don'ts that
-> a support agent can follow when drafting a reply.
+> **Mental model**
+> - id: `customer-support-responder`
+> - name: Customer Support Reply Guidelines
+> - source_query: *"What are the current rules, tone, structure, escalation criteria, refund/credit guidance, bug acknowledgement wording, and do/don't rules I should follow when drafting customer support replies on behalf of this user?"*
+> - refresh_after_consolidation: true
+> - tags: none
 >
-> Create this bank?
+> Approve the whole block, or tell me what to change?
 
-Wait for approval. If the user asks for edits, regenerate and ask again.
+#### When binding to an existing bank
 
-Create the bank with two CLI calls — `bank create` for the identity, then `bank set-config` to set the three missions in one shot:
+Propose only the mental model spec (the bank already has missions set):
+
+> I'll bind the new skill to the existing `marketing` bank (it already captures writing rules via its retain mission). Mental model to create:
+>
+> **Mental model**
+> - id: `linkedin-post-writer`
+> - name: LinkedIn Post Writer Guidelines
+> - source_query: *"What are the current writing style, tone, structure, voice, and do/dont rules I should follow when drafting LinkedIn posts on behalf of this user?"*
+> - refresh_after_consolidation: true
+> - tags: none
+>
+> Approve?
+
+### Execute after a single approval
+
+Once the user approves, run all the commands below without stopping for additional approvals. The two missions are set with one `bank set-config` call; the mental model is created with `mental-model create`; the trigger is set with one raw curl PATCH (see CLI gap note at the end of this step).
+
+**Do NOT set `reflect_mission`.** The mental model's `source_query` alone is enough to steer the reflect output for this pattern, and the default reflect framing works fine. Keep the bank config minimal.
+
+**When creating a new bank:**
 
 ```bash
+# 1. Create the bank identity
 hindsight bank create <bank_id> --name "<bank_id>"
 
+# 2. Set both missions in one call. Do NOT include --reflect-mission.
 hindsight bank set-config <bank_id> \
   --retain-mission "<retain_mission>" \
-  --observations-mission "<observations_mission>" \
-  --reflect-mission "<reflect_mission>"
-```
+  --observations-mission "<observations_mission>"
 
-Verify by re-fetching the config and confirm all three overrides are set:
-
-```bash
-hindsight bank config <bank_id> --output json
-```
-
----
-
-## Step 3 — Create the binding mental model
-
-The mental model is what the new skill will fetch via the CLI at runtime. It has:
-
-- **`id`** — matches the skill name so the CLI invocation is predictable (e.g., `linkedin-post-writer`)
-- **`name`** — human-readable (e.g., "LinkedIn Post Writer Guidelines")
-- **`source_query`** — the reflect question whose answer becomes the live instructions
-
-The `source_query` is the most important field. It is the **question the mental model answers whenever the skill fetches it**. A good `source_query`:
-
-- Mirrors the skill's purpose: *"What are the current X rules I should follow when Y?"*
-- Is specific enough that reflect pulls the right slice of observations
-- Is stable — it does not need to be rewritten as the skill learns
-- Asks for guidance the user *would* give you, not facts about the user
-
-Propose the mental model spec:
-
-> Here's the proposed mental model:
->
-> **id:** `linkedin-post-writer`
-> **name:** LinkedIn Post Writer Guidelines
-> **source_query:** *"What are the current writing style, tone, structure, voice, and do/dont rules I should follow when drafting LinkedIn posts on behalf of this user?"*
-> **refresh_after_consolidation:** true
-> **tags:** (none — this is important, see note)
->
-> Create this mental model in bank `<bank>`?
-
-**Note on tags:** do NOT set tags on the mental model. The `refresh_after_consolidation` trigger is tag-gated — if the mental model has tags but the retained memories don't, the trigger silently does nothing and the mental model never refreshes. When in doubt, leave tags empty.
-
-Wait for approval, then create the mental model with the CLI:
-
-```bash
+# 3. Create the mental model
 hindsight mental-model create <bank_id> "<mm_name>" "<source_query>" --id <mm_id>
-```
 
-### CLI gap: set `refresh_after_consolidation` via a fallback PATCH
-
-The `hindsight mental-model create` command does not currently accept a `--trigger` or `--refresh-after-consolidation` flag, and neither does `hindsight mental-model update`. This will be fixed upstream in a future CLI release. Until then, set the trigger via one raw `curl` PATCH immediately after the CLI create. The env file is already sourced, so `HINDSIGHT_API_URL` and `HINDSIGHT_API_KEY` are available:
-
-```bash
+# 4. Set the trigger (CLI gap — see below)
 curl -sS -X PATCH \
   ${HINDSIGHT_API_KEY:+-H "Authorization: Bearer $HINDSIGHT_API_KEY"} \
   -H "Content-Type: application/json" \
   -d '{"trigger": {"refresh_after_consolidation": true}, "tags": []}' \
   "$HINDSIGHT_API_URL/v1/default/banks/<bank_id>/mental-models/<mm_id>"
-```
 
-This is the ONLY raw curl call in the whole meta-skill — everything else goes through the CLI. When the CLI gap is fixed, remove this block.
-
-Verify the mental model exists and has the trigger set:
-
-```bash
+# 5. Verify everything
+hindsight bank config <bank_id> --output json
 hindsight mental-model get <bank_id> <mm_id> --output json
 ```
 
-The initial `content` field will be a "no information" response — that is correct and expected. The skill's fallback handles it.
+**When binding to an existing bank**, skip the `bank create` and `bank set-config` calls — the bank and its missions already exist. Run only commands 3, 4, and 5.
+
+### Design guidance for the two missions (when creating a new bank)
+
+- **`retain_mission`** — what single, actionable facts to extract from every conversation turn. Must be specific about categories (list them). Must include a negative constraint ("IGNORE X", e.g. the task content itself).
+- **`observations_mission`** — how to synthesize extracted facts into deduplicated, coherent observations. Must specify grouping axes (by theme / by situation / by channel). Must handle conflicts (newer rule wins on contradiction, older marked stale).
+
+### Design guidance for the mental model
+
+- **`id`** — matches the skill name so the CLI invocation is predictable (e.g., `linkedin-post-writer`)
+- **`name`** — human-readable (e.g., "LinkedIn Post Writer Guidelines")
+- **`source_query`** — the most important field. It is the **question the mental model answers whenever the skill fetches it**. A good `source_query`:
+  - Mirrors the skill's purpose: *"What are the current X rules I should follow when Y?"*
+  - Is specific enough that reflect pulls the right slice of observations
+  - Is stable — it does not need to be rewritten as the skill learns
+  - Asks for guidance the user *would* give you, not facts about the user
+- **`refresh_after_consolidation`** — always `true` for self-improving skills
+- **`tags`** — leave empty. Do NOT set tags on the mental model. The trigger is tag-gated — if the mental model has tags but the retained memories don't, the trigger silently does nothing and the mental model never refreshes.
+
+### CLI gap: `refresh_after_consolidation` is set via a fallback PATCH
+
+The `hindsight mental-model create` command does not currently accept a `--trigger` or `--refresh-after-consolidation` flag, and neither does `hindsight mental-model update`. This will be fixed upstream in a future CLI release. Until then, set the trigger via the raw `curl` PATCH in command 4 above — immediately after `mental-model create`, before verification.
+
+This is the ONLY raw curl call in the whole meta-skill — everything else goes through the CLI. When the CLI gap is fixed, remove command 4 from the sequence.
+
+The initial `content` field of the mental model will be a "no information" response — that is correct and expected. The skill's fallback at runtime handles it.
 
 ---
 
-## Step 4 — Write the SKILL.md file
+## Step 3 — Write the SKILL.md file
 
 ### Where to write it
 
@@ -506,7 +484,7 @@ This is a known-good configuration. Use it as a shape reference when designing a
 
 - **retain_mission:** *"Extract concrete writing rules expressed by the human about how marketing posts should be written. Capture: tone (formal/casual/energetic/dry), structure (length, format, bullets vs paragraphs, use of emojis/hashtags), voice (we/you/I/brand name), forbidden words or cliches, target audience, calls to action, headline patterns, do/dont constraints, and any explicit corrections to previous drafts. Each fact must be a single, actionable writing rule a writer could follow next time. IGNORE the post content itself; only extract durable style guidance."*
 - **observations_mission:** *"Synthesise extracted writing rules into a coherent, deduplicated marketing style guide. Group rules by theme (tone, structure, voice, taboo, audience, CTA, formatting). When the human gives a NEW rule that contradicts an older one, the newer rule wins and the older one should be marked stale. Output observations as actionable rules a writer can follow without ambiguity."*
-- **reflect_mission:** *"When asked to produce writing guidelines, return a clear, structured style guide a writer could follow when drafting marketing posts."*
+- (no `reflect_mission` — the mental model's `source_query` handles the framing)
 
 **Mental model:**
 
@@ -542,14 +520,14 @@ Ten characters, zero keywords. The harness will never match user requests to it.
 
 **Bad auth handling:** Embedding the API key directly in the skill file or in any generated command. The key lives in `~/.hindsight/learning-skill.env` with `chmod 600`, and the skill sources that file to pick it up. Never substitute a literal `hsk_...` value into any file the meta-skill writes, and never echo the key in chat output even during setup.
 
-**Bad fallback to curl:** Reverting to raw `curl` in the generated skill body because "it's simpler". The CLI exists specifically so skills don't have to manage URLs, auth, tenant paths, and HTTP error parsing themselves. The ONE place raw curl is allowed is the `refresh_after_consolidation` fallback PATCH in Step 3, which exists only because the CLI doesn't yet support setting triggers — remove that call once the CLI is updated.
+**Bad fallback to curl:** Reverting to raw `curl` in the generated skill body because "it's simpler". The CLI exists specifically so skills don't have to manage URLs, auth, tenant paths, and HTTP error parsing themselves. The ONE place raw curl is allowed is the `refresh_after_consolidation` fallback PATCH in Step 2, which exists only because the CLI doesn't yet support setting triggers — remove that call once the CLI is updated.
 
 ---
 
 ## Things to watch for (known gotchas)
 
 - **`hindsight` CLI is required.** Both the meta-skill setup and every generated skill assume the CLI is installed and on PATH. Step 1 verifies this and offers to install it if missing. If the user declines, abort the setup — there's no fallback to raw curl in the happy path.
-- **CLI gap: mental-model trigger is not exposed.** `hindsight mental-model create` and `hindsight mental-model update` do not currently support `refresh_after_consolidation` or tags. Step 3 uses a one-shot `curl PATCH` immediately after the CLI create to set the trigger and empty tags. This is the ONLY raw curl call in the whole flow. When the CLI adds `--refresh-after-consolidation` and `--tags` flags, delete the fallback block.
+- **CLI gap: mental-model trigger is not exposed.** `hindsight mental-model create` and `hindsight mental-model update` do not currently support `refresh_after_consolidation` or tags. Step 2 uses a one-shot `curl PATCH` immediately after the CLI create to set the trigger and empty tags. This is the ONLY raw curl call in the whole flow. When the CLI adds `--refresh-after-consolidation` and `--tags` flags, delete the fallback block.
 - **Tagged mental models skip auto-refresh.** The `refresh_after_consolidation` trigger only fires when the mental model's tags overlap with the consolidated memories' tags (or when both are untagged). The fallback PATCH always sets `"tags": []` for this reason — do NOT change that to add tags unless you're also tagging every memory the auto-retain hook writes.
 - **Auto-retain must be on.** This skill only works if the harness's Hindsight plugin has auto-retain enabled (the default). The generated skill cannot verify this itself — the user is responsible for ensuring it.
 - **The first turn after install will hit an empty mental model.** That is correct. The skill's fallback will ask the user for guidance, and the first batch of feedback will seed the mental model after one consolidation cycle.
