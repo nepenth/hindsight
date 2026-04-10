@@ -40,81 +40,158 @@ Decisions that require approval:
 
 ---
 
-## Step 1 — Locate the Hindsight instance
+## Step 1 — Set up the Hindsight instance (wizard)
 
-Hindsight can be deployed in three ways. The meta-skill and the skill it creates must work with all of them:
+Step 1 is a **wizard**, not a probe. You MUST NOT search for existing Hindsight instances, scan config files, or read user environment variables speculatively. You ask the user which of three deployment modes they want, then set up that specific mode and nothing else. This keeps the flow predictable and gives the user explicit control over which Hindsight instance their new skill will bind to.
 
-| Mode | URL pattern | Auth | Typical config location |
-|---|---|---|---|
-| **Embedded** (local daemon) | `http://localhost:<port>` | none | `hindsight-embed -p <profile> daemon status`, ports `9177` / `9077` / `8888` |
-| **Self-hosted** | user-configured HTTP(S) URL | optional API key | `HINDSIGHT_API_URL` env var, `~/.hindsight/config` |
-| **Cloud** | `https://api.hindsight.vectorize.io` | required API key (`hsk_...`) | `HINDSIGHT_API_KEY` env var, `~/.hindsight/config`, `~/.hermes/hindsight/config.json` |
+The only auto-detection allowed is for the **meta-skill's own state file** (`~/.hindsight/learning-skill.env`, introduced later in this step) — that's memory of a previous run of *this* meta-skill, not user config.
 
-### Probe candidates
+### Check for a previous run of this meta-skill
 
-Try these sources in order and collect every candidate `(url, api_key)` pair. Do NOT stop at the first one — probe all of them, then propose the best match to the user.
-
-1. **Environment variables** — `HINDSIGHT_API_URL` (url), `HINDSIGHT_API_KEY` (key). If both are set, that's the preferred candidate.
-2. **`~/.hindsight/config`** — TOML file with `api_url = "..."` and optionally `api_key = "..."`.
-3. **`~/.hermes/hindsight/config.json`** — JSON with `api_url`, `api_key`, and `mode` fields. If `mode` is `local_embedded`, derive the URL from the hermes profile (default port is `9177` for the `hermes` profile).
-4. **`~/.claude/hindsight.json`, `~/.hindsight/claude-code.json`, `~/.hindsight/codex.json`** — any JSON with `api_url` / `api_key` / `hindsightApiUrl`.
-5. **Well-known local ports** — `http://localhost:9177`, `http://localhost:9077`, `http://localhost:8888` (no auth; embedded mode).
-6. **Cloud default** — `https://api.hindsight.vectorize.io` (only include this candidate if `HINDSIGHT_API_KEY` is set somewhere; otherwise the user has no way to authenticate).
-
-### Verify with an authenticated health check
-
-For each candidate, run:
+Before starting the wizard, check whether this meta-skill has been run before by looking at one specific file:
 
 ```bash
-# Without auth (embedded / self-hosted without key)
-curl -sf <url>/health
-
-# With auth (cloud / self-hosted with key)
-curl -sf -H "Authorization: Bearer <api_key>" <url>/health
+ls ~/.hindsight/learning-skill.env 2>/dev/null
 ```
 
-A healthy response looks like `{"status":"healthy","database":"connected"}`. Treat a `401` or `403` as "auth wrong or missing" — do NOT treat it as unhealthy. Retry the same URL without auth; if that also fails, the instance requires a key you don't have.
+**If the file exists**, source it, print only the URL (never the key), and ask the user whether to reuse it or reconfigure from scratch:
 
-### Classify the mode
-
-From the URL and auth result, classify the instance:
-
-- Hostname matches `api.hindsight.vectorize.io` → **cloud**
-- Hostname is `localhost` / `127.0.0.1` / private IP → **embedded** (if no key) or **self-hosted** (if key)
-- Any other hostname → **self-hosted**
-
-### Propose to the user
-
-Show the user every candidate you probed and recommend one. Example:
-
-> I probed for a Hindsight instance and found these options:
+> The meta-skill has been run before on this machine. The shared env file at `~/.hindsight/learning-skill.env` points at:
+> - `HINDSIGHT_API_URL=<url>`
+> - `HINDSIGHT_API_KEY=<set>` *(or `<empty>` — never print the value)*
 >
-> 1. **Embedded** — `http://localhost:9177` (healthy, no auth) ← from `~/.hermes/hindsight/config.json`
-> 2. **Cloud** — `https://api.hindsight.vectorize.io` (healthy, auth via `HINDSIGHT_API_KEY`) ← key found in `~/.hermes/.env`
+> Reuse this setup, or reconfigure from scratch?
+
+- If reuse → run `source ~/.hindsight/learning-skill.env && hindsight health`. If healthy, skip ahead to the CLI install check (which is a no-op if the CLI is already installed) and then go to Step 2. If not healthy, tell the user the existing config is stale and ask whether to reconfigure.
+- If reconfigure → continue to the wizard below.
+- If the file does not exist → go directly to the wizard below.
+
+### The wizard prompt
+
+Ask the user:
+
+> How would you like Hindsight to be set up for the new skill?
 >
-> I'd recommend the **embedded** instance for local development. Use the embedded one, or switch to cloud?
+> 1. **Cloud** — use the managed instance at `https://api.hindsight.vectorize.io` (requires a `hsk_...` API key from https://ui.hindsight.vectorize.io)
+> 2. **Embedded** — spin up a local Hindsight daemon on this machine (requires an LLM provider API key for fact extraction and reflection; runs entirely on your hardware after setup)
+> 3. **Self-hosted API** — connect to an existing Hindsight server you already operate (you provide the URL, and if required an API key)
+>
+> Pick one (1 / 2 / 3):
 
-If the user picks cloud or self-hosted, **remember that auth is required**. You'll need the API key in the next substep to write the shared env file.
+Wait for the user to pick. Do NOT assume or default. Do NOT pick for them based on what you think is installed locally.
 
-**Never print the API key value** in your responses. Reference it as `$HINDSIGHT_API_KEY` or "the configured key" instead.
+### Mode 1 — Cloud
 
-If no candidates respond or the user declines all of them, ask directly:
+The URL is always `https://api.hindsight.vectorize.io`. You need the API key.
 
-> I couldn't find a running Hindsight instance. Please tell me:
-> - The API URL (e.g., `https://hindsight.mycompany.com` or `http://localhost:9177`)
-> - Whether it requires an API key, and if so where it's stored (env var name or config file path)
+**The ONE exception to the no-auto-detection rule**: check whether `HINDSIGHT_API_KEY` is already present in the environment that the meta-skill is running in. Cloud mode is the only mode where this fallback is allowed.
 
-Once you have a confirmed `(url, mode, auth)` triple, store it for the rest of the flow. Do not re-probe in later steps.
+```bash
+test -n "${HINDSIGHT_API_KEY}" && echo "env_key_present" || echo "no_env_key"
+```
+
+- If `env_key_present` → ask: *"I see `HINDSIGHT_API_KEY` is set in your current environment. Use it, or paste a different key?"*
+- Else → ask: *"Please paste your Hindsight Cloud API key (starts with `hsk_`). I will not print it back in any message."*
+
+Verify the key is valid by running `hindsight health` with the cloud URL and the chosen key exported for a single command (do not write anything to disk yet):
+
+```bash
+HINDSIGHT_API_URL="https://api.hindsight.vectorize.io" HINDSIGHT_API_KEY="<key>" hindsight health
+```
+
+If the response is not healthy, surface the error and ask the user to try a different key or switch modes. Do not proceed until the verification succeeds.
+
+Record `url = https://api.hindsight.vectorize.io` and `api_key = <key>` for the env-file write below.
+
+### Mode 2 — Embedded
+
+Spin up a local Hindsight daemon using the `hindsight-embed` tool. You need two things from the user: which LLM provider to use for fact extraction/reflection, and the corresponding API key (unless they pick a local model like `ollama` or `lmstudio`).
+
+Ask the user:
+
+> The embedded daemon needs an LLM provider for extraction and reflection. Which do you want?
+>
+> - `openai` (default model: `gpt-4o-mini`)
+> - `anthropic` (default: `claude-haiku-4-5`)
+> - `gemini` (default: `gemini-2.5-flash`)
+> - `groq` (default: `openai/gpt-oss-120b`)
+> - `ollama` (local, no API key needed)
+> - `lmstudio` (local, no API key needed)
+>
+> Pick one:
+
+If the chosen provider needs a key, ask for it:
+
+> Please paste your `<provider>` API key (I will not print it back):
+
+Create (or reuse) a dedicated embedded profile named `learning-skill` and start the daemon. The profile is tied to this meta-skill's setup and isolated from any other hermes / claude-code / codex profile on the machine.
+
+```bash
+# Create a dedicated profile the first time, or skip silently if it exists
+hindsight-embed profile create learning-skill \
+  --env HINDSIGHT_API_LLM_PROVIDER=<provider> \
+  --env HINDSIGHT_API_LLM_API_KEY=<key> \
+  2>&1 || true
+
+# Start (or confirm already running) the daemon for that profile
+hindsight-embed -p learning-skill daemon start
+```
+
+Read the port the profile was allocated:
+
+```bash
+hindsight-embed -p learning-skill profile show --output json
+```
+
+Extract the `port` field. Set `url = http://localhost:<port>` and leave `api_key` empty — embedded mode does not use auth.
+
+Verify:
+
+```bash
+HINDSIGHT_API_URL="http://localhost:<port>" hindsight health
+```
+
+If the daemon fails to start or health fails, tail the daemon log and surface the error to the user:
+
+```bash
+tail -n 50 ~/.hindsight/profiles/learning-skill.log
+```
+
+Common failures: invalid LLM provider key, LLM provider unreachable, port conflict. Ask the user what to fix and rerun.
+
+### Mode 3 — Self-hosted API
+
+The user is running Hindsight themselves. Ask them directly for everything you need.
+
+> What's the URL of your Hindsight API? (e.g. `https://hindsight.mycompany.com`)
+
+After they respond:
+
+> Does it require an API key? (yes / no)
+
+If yes:
+
+> Please paste the API key (I will not print it back):
+
+Do **not** read `HINDSIGHT_API_URL`, `HINDSIGHT_API_KEY`, `~/.hindsight/config`, or any harness config files. Use only what the user types in this conversation.
+
+Verify with a single-command invocation:
+
+```bash
+HINDSIGHT_API_URL="<url>" ${HINDSIGHT_API_KEY:+HINDSIGHT_API_KEY="<key>"} hindsight health
+```
+
+If it fails, surface the error and ask the user to verify the URL/key. Do not proceed until it's healthy.
 
 ### Ensure the `hindsight` CLI is installed
 
-Every Hindsight-backed skill in this family — both the meta-skill's own setup work and the runtime of every skill it creates — uses the `hindsight` CLI, not raw `curl`. Check that it's on the user's PATH:
+Both the meta-skill's own setup work and the runtime of every generated skill use the `hindsight` CLI. Check that it's on the user's PATH:
 
 ```bash
 command -v hindsight
 ```
 
-If the command returns a path, you're done — skip ahead. If it's missing, propose installing it:
+If the command returns a path, you're done. If it's missing, propose installing it:
 
 > I need the `hindsight` CLI to set up the bank and mental model. I'd like to run:
 >
@@ -124,32 +201,13 @@ If the command returns a path, you're done — skip ahead. If it's missing, prop
 >
 > OK to install?
 
-Wait for approval, run the installer, then verify with `hindsight --version`. If the user declines the install, stop the whole flow and tell them they need to install the CLI before continuing — the rest of the meta-skill and the generated skills cannot work without it.
+Wait for approval, run the installer, then verify with `hindsight --version`. If the user declines, stop the whole flow — the rest of the meta-skill and the generated skills cannot work without it.
 
 ### Write the shared env file at `~/.hindsight/learning-skill.env`
 
 This file is the **single source of truth for Hindsight connection details** used by every skill created through this meta-skill. It holds `HINDSIGHT_API_URL` and (if auth is required) `HINDSIGHT_API_KEY`, in a format that can be `source`d into any shell. The runtime of every generated skill sources this file before calling `hindsight`.
 
-Check whether the file already exists:
-
-```bash
-ls -la ~/.hindsight/learning-skill.env 2>/dev/null
-```
-
-**If the file exists**, source it and show the user what's there (URL only, never print the key), then ask whether to reuse it or overwrite with the URL you just confirmed in the previous substep:
-
-> The shared env file already exists at `~/.hindsight/learning-skill.env`:
-> - `HINDSIGHT_API_URL=http://localhost:9177`
-> - `HINDSIGHT_API_KEY=<set>` (or `<empty>`)
->
-> Reuse this, or overwrite with `<new_url>` (and re-ask for the key if needed)?
-
-**If the file does not exist, or the user chose to overwrite**, gather the values:
-
-1. URL: use the URL confirmed in the previous substep.
-2. Key (only if auth is required): check `HINDSIGHT_API_KEY` in the current environment. If it's set, offer to use it. Otherwise prompt the user directly: *"Please paste your Hindsight API key (I will not print it back)."* Never read it from any other file — the env file is the only persistent store managed by this meta-skill.
-
-Propose the write:
+By the time you reach this substep you already have a verified `(url, api_key)` pair from one of the three wizard branches. Propose the write:
 
 > I'll write `~/.hindsight/learning-skill.env` with:
 > - `HINDSIGHT_API_URL="<url>"`
@@ -157,7 +215,7 @@ Propose the write:
 >
 > Permissions will be set to `0600` (user read/write only). The file will be plain text on disk — if that's a concern, stop here and set up your key differently. OK to write?
 
-Wait for approval, then create the file with the exact commands below. The `chmod` MUST run.
+Wait for approval, then create the file. The `chmod` MUST run immediately after the write:
 
 ```bash
 mkdir -p ~/.hindsight
@@ -168,7 +226,7 @@ EOF
 chmod 600 ~/.hindsight/learning-skill.env
 ```
 
-Verify the file was written, permissions are correct, and that sourcing it populates the env vars:
+Verify:
 
 ```bash
 ls -la ~/.hindsight/learning-skill.env     # must show -rw-------
@@ -176,7 +234,7 @@ source ~/.hindsight/learning-skill.env
 hindsight health                             # must return a healthy response
 ```
 
-If `hindsight health` fails, something is wrong with the URL or key — surface the error to the user and ask them to fix it before continuing.
+If `hindsight health` fails, something is wrong with the URL or key — surface the error and ask the user to fix it before continuing.
 
 > **Do NOT print the key value at any point**, not even when writing it into the heredoc. The heredoc substitution happens inside your own process; keep the literal value out of your chat output. Use a placeholder like `<key>` in any text the user sees.
 
@@ -495,8 +553,8 @@ Ten characters, zero keywords. The harness will never match user requests to it.
 - **Tagged mental models skip auto-refresh.** The `refresh_after_consolidation` trigger only fires when the mental model's tags overlap with the consolidated memories' tags (or when both are untagged). The fallback PATCH always sets `"tags": []` for this reason — do NOT change that to add tags unless you're also tagging every memory the auto-retain hook writes.
 - **Auto-retain must be on.** This skill only works if the harness's Hindsight plugin has auto-retain enabled (the default). The generated skill cannot verify this itself — the user is responsible for ensuring it.
 - **The first turn after install will hit an empty mental model.** That is correct. The skill's fallback will ask the user for guidance, and the first batch of feedback will seed the mental model after one consolidation cycle.
-- **Hindsight URLs are not always `localhost:8888`.** The actual default for the Hermes embedded daemon is `9177`; Hindsight Cloud is `https://api.hindsight.vectorize.io`; self-hosted is whatever the user configured. Always verify with `hindsight health` after writing the env file.
+- **No auto-discovery.** Step 1 is a wizard. The meta-skill asks the user which mode (cloud / embedded / self-hosted) they want and only sets up that one. Do NOT probe `~/.hindsight/config`, `~/.hermes/hindsight/config.json`, `~/.claude/*`, `~/.codex/*`, well-known local ports, or any other source. The only auto-detection allowed is (a) the meta-skill's own state file at `~/.hindsight/learning-skill.env`, and (b) `HINDSIGHT_API_KEY` in the env *only* for Cloud mode.
 - **Env file is the single source of truth.** Do not write the URL or key to any other file (not `~/.hindsight/config`, not the harness config, not the shell rc). Every generated skill sources `~/.hindsight/learning-skill.env` directly. If the user needs a different Hindsight instance per skill (e.g. dev embedded + prod cloud), that's a v2 concern — for v1, one file, one instance, all skills on it.
 - **Env file permissions.** Always `chmod 600`. The file contains the API key in plaintext. If the user is concerned, that's a valid concern — note that this is the v1 storage strategy and OS keychain integration is a future enhancement.
+- **Embedded profile is dedicated.** Mode 2 always uses a profile named `learning-skill`, not the default profile or any existing harness profile. This keeps the meta-skill's daemon isolated from whatever the user's harness (hermes, claude-code, codex) has set up, so reruns don't collide and uninstalls are clean.
 - **Cloud tenant path.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted it's always `default`. On cloud, the API key scopes the tenant automatically and `default` usually works — but if the user tells you their account uses a custom tenant, ask them to confirm before continuing. (The CLI's `<bank_id>` argument uses the same tenant the CLI was configured with.)
-- **Mixed-mode deployments.** A user may have multiple Hindsight instances (e.g. a local embedded daemon for dev and a cloud instance for production). If Step 1 finds more than one healthy candidate, always ask the user which to target — do not silently prefer one. The env file is locked to whichever instance you chose.
