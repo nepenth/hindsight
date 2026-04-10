@@ -42,46 +42,95 @@ Decisions that require approval:
 
 ## Step 1 — Locate the Hindsight instance
 
-Find the running Hindsight API. Try these in order and stop at the first one that responds to `GET /health`:
+Hindsight can be deployed in three ways. The meta-skill and the skill it creates must work with all of them:
 
-1. `HINDSIGHT_API_URL` environment variable
-2. `~/.hindsight/config` — toml file with an `api_url` key
-3. `~/.hermes/hindsight/config.json` — `api_url` field, or derive from `bank_id` + default local port
-4. `~/.claude/hindsight.json` or `~/.hindsight/claude-code.json`
-5. `~/.hindsight/codex.json`
-6. Well-known local ports: `9177`, `9077`, `8888`
-7. Hindsight Cloud default: `https://api.hindsight.vectorize.io` (needs `HINDSIGHT_API_KEY`)
+| Mode | URL pattern | Auth | Typical config location |
+|---|---|---|---|
+| **Embedded** (local daemon) | `http://localhost:<port>` | none | `hindsight-embed -p <profile> daemon status`, ports `9177` / `9077` / `8888` |
+| **Self-hosted** | user-configured HTTP(S) URL | optional API key | `HINDSIGHT_API_URL` env var, `~/.hindsight/config` |
+| **Cloud** | `https://api.hindsight.vectorize.io` | required API key (`hsk_...`) | `HINDSIGHT_API_KEY` env var, `~/.hindsight/config`, `~/.hermes/hindsight/config.json` |
 
-Verify with:
+### Probe candidates
+
+Try these sources in order and collect every candidate `(url, api_key)` pair. Do NOT stop at the first one — probe all of them, then propose the best match to the user.
+
+1. **Environment variables** — `HINDSIGHT_API_URL` (url), `HINDSIGHT_API_KEY` (key). If both are set, that's the preferred candidate.
+2. **`~/.hindsight/config`** — TOML file with `api_url = "..."` and optionally `api_key = "..."`.
+3. **`~/.hermes/hindsight/config.json`** — JSON with `api_url`, `api_key`, and `mode` fields. If `mode` is `local_embedded`, derive the URL from the hermes profile (default port is `9177` for the `hermes` profile).
+4. **`~/.claude/hindsight.json`, `~/.hindsight/claude-code.json`, `~/.hindsight/codex.json`** — any JSON with `api_url` / `api_key` / `hindsightApiUrl`.
+5. **Well-known local ports** — `http://localhost:9177`, `http://localhost:9077`, `http://localhost:8888` (no auth; embedded mode).
+6. **Cloud default** — `https://api.hindsight.vectorize.io` (only include this candidate if `HINDSIGHT_API_KEY` is set somewhere; otherwise the user has no way to authenticate).
+
+### Verify with an authenticated health check
+
+For each candidate, run:
 
 ```bash
+# Without auth (embedded / self-hosted without key)
 curl -sf <url>/health
+
+# With auth (cloud / self-hosted with key)
+curl -sf -H "Authorization: Bearer <api_key>" <url>/health
 ```
 
-A healthy response looks like `{"status":"healthy","database":"connected"}`.
+A healthy response looks like `{"status":"healthy","database":"connected"}`. Treat a `401` or `403` as "auth wrong or missing" — do NOT treat it as unhealthy. Retry the same URL without auth; if that also fails, the instance requires a key you don't have.
 
-**Propose to the user** which URL you found and got a healthy response from. Example:
+### Classify the mode
 
-> I found a running Hindsight instance at `http://localhost:9177` (healthy).
-> Is this the instance you want to use?
+From the URL and auth result, classify the instance:
 
-If the user declines or none of the candidates respond, ask for the URL directly. If you had to use `HINDSIGHT_API_KEY` for cloud, confirm the key is available (do not print it).
+- Hostname matches `api.hindsight.vectorize.io` → **cloud**
+- Hostname is `localhost` / `127.0.0.1` / private IP → **embedded** (if no key) or **self-hosted** (if key)
+- Any other hostname → **self-hosted**
+
+### Propose to the user
+
+Show the user every candidate you probed and recommend one. Example:
+
+> I probed for a Hindsight instance and found these options:
+>
+> 1. **Embedded** — `http://localhost:9177` (healthy, no auth) ← from `~/.hermes/hindsight/config.json`
+> 2. **Cloud** — `https://api.hindsight.vectorize.io` (healthy, auth via `HINDSIGHT_API_KEY`) ← key found in `~/.hermes/.env`
+>
+> I'd recommend the **embedded** instance for local development. Use the embedded one, or switch to cloud?
+
+If the user picks cloud or self-hosted, **remember that auth is required**. Every subsequent API call in Steps 2–4 must include the `Authorization: Bearer <api_key>` header, and the generated SKILL.md must include it too (Step 4 covers this).
+
+**Never print the API key value** in your responses. Reference it as `$HINDSIGHT_API_KEY` or "the configured key" instead.
+
+If no candidates respond or the user declines all of them, ask directly:
+
+> I couldn't find a running Hindsight instance. Please tell me:
+> - The API URL (e.g., `https://hindsight.mycompany.com` or `http://localhost:9177`)
+> - Whether it requires an API key, and if so where it's stored (env var name or config file path)
+
+Once you have a confirmed `(url, mode, auth)` triple, store it for the rest of the flow. Do not re-probe in later steps.
 
 ---
 
 ## Step 2 — Select or create a bank
 
+All API calls in this step must include the `Authorization` header if Step 1 classified the instance as `cloud` or `self-hosted` with auth. Use this helper form throughout:
+
+```bash
+# Define once at the top of the step
+AUTH=""   # for embedded mode, leave empty
+# AUTH="-H 'Authorization: Bearer $HINDSIGHT_API_KEY'"   # for cloud / self-hosted with key
+```
+
 List existing banks:
 
 ```bash
-curl -s <url>/v1/default/banks
+curl -s $AUTH <url>/v1/default/banks
 ```
 
 Inspect their names and missions. For each, optionally fetch the config:
 
 ```bash
-curl -s <url>/v1/default/banks/<bank_id>/config
+curl -s $AUTH <url>/v1/default/banks/<bank_id>/config
 ```
+
+> **Note on the tenant path segment.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted deployments it's always `default`. On cloud, the API key typically scopes the tenant automatically and `/v1/default/` still works — but if the user's cloud account uses a custom tenant, ask them to confirm the tenant id before proceeding and substitute it throughout.
 
 Now **decide with the user** whether the new skill should:
 
@@ -138,10 +187,10 @@ Propose all three in one block with the bank name, like this:
 
 Wait for approval. If the user asks for edits, regenerate and ask again.
 
-Create the bank with:
+Create the bank with (add `-H "Authorization: Bearer $HINDSIGHT_API_KEY"` if the instance requires auth):
 
 ```bash
-curl -X PUT <url>/v1/default/banks/<bank_id> \
+curl -X PUT $AUTH <url>/v1/default/banks/<bank_id> \
   -H "Content-Type: application/json" \
   -d '{
     "name": "<bank_id>",
@@ -184,10 +233,10 @@ Propose the mental model spec:
 
 **Note on tags:** do NOT set tags on the mental model unless you are also going to tag the memories the auto-retain hook stores. The `refresh_after_consolidation` trigger is tag-gated — if the mental model has tags but the retained memories don't, the trigger silently does nothing and the mental model never refreshes. When in doubt, leave tags empty.
 
-Wait for approval, then create:
+Wait for approval, then create (add auth header if required):
 
 ```bash
-curl -X POST <url>/v1/default/banks/<bank>/mental-models \
+curl -X POST $AUTH <url>/v1/default/banks/<bank>/mental-models \
   -H "Content-Type: application/json" \
   -d '{
     "id": "<mm_id>",
@@ -240,9 +289,13 @@ Propose the description separately and get approval:
 
 ### The SKILL.md template
 
-Render this template, substituting `<placeholders>`. Do not add extra sections beyond what is here unless the user asks.
+Render **one of two templates** depending on whether the instance requires auth (decided in Step 1). Do not add extra sections beyond what is here unless the user asks.
 
-```markdown
+#### Template A — embedded / no-auth instances
+
+Use this when Step 1 classified the instance as `embedded` with no API key.
+
+````markdown
 ---
 name: <skill-name>
 description: <description>
@@ -271,9 +324,50 @@ Use this skill whenever the user asks for <domain work>. Before doing anything, 
 ## Learning loop
 
 Your feedback teaches this skill. You do not need to do anything special with user feedback — Hindsight's auto-retain hook captures every conversation turn, extracts rules via the bank's retain mission, consolidates them into observations, and refreshes this mental model automatically. The next curl will return updated guidelines.
-```
+````
 
-Write the file, create parent directories if needed, then `ls` or `cat` to confirm.
+#### Template B — cloud / self-hosted with API key
+
+Use this when Step 1 classified the instance as `cloud` or `self-hosted` with a key. The `curl` includes an `Authorization` header that reads the key from the environment at runtime. **Never hardcode the key in the skill file.**
+
+````markdown
+---
+name: <skill-name>
+description: <description>
+---
+
+# <Skill Title>
+
+Use this skill whenever the user asks for <domain work>. Before doing anything, you MUST fetch the latest guidelines from Hindsight.
+
+## Workflow
+
+1. **Fetch live guidance** from the bound mental model. This instance requires an API key, read from the `HINDSIGHT_API_KEY` environment variable:
+
+   ```bash
+   curl -s \
+     -H "Authorization: Bearer $HINDSIGHT_API_KEY" \
+     <url>/v1/default/banks/<bank>/mental-models/<mm_id>
+   ```
+
+   If the environment variable is not set, stop and tell the user: *"I can't reach the Hindsight instance because `HINDSIGHT_API_KEY` is not set. Please export it or add it to your shell config before I can fetch the writing guidelines."* Do not guess or proceed without the key.
+
+2. **Handle HTTP errors explicitly.** If the response is `401` or `403`, stop and tell the user the API key is wrong or expired — do NOT treat it as empty guidance. If the response is `404`, tell the user the mental model was deleted and ask whether to recreate it. Only proceed if you got a `200`.
+
+3. **Parse the JSON response** and read the `content` field. That field is your style guide for this request.
+
+4. **Handle empty guidance.** If `content` is empty, missing, null, or contains a no-information message ("I do not have any information", "no relevant memories", etc.), you MUST stop and ask the user for direction before producing any output. Ask for the specific fields the domain needs (tone, audience, length, constraints, whatever is relevant). Do not guess from your defaults.
+
+5. **Follow the guidance strictly.** When the guidance is populated, apply every rule. If a rule is non-obvious but important, briefly note which rule you are applying in your reasoning.
+
+6. **Re-fetch on revision.** If the user asks for an edit or redo, re-run the curl first — the guidelines may have been updated since your last turn.
+
+## Learning loop
+
+Your feedback teaches this skill. You do not need to do anything special with user feedback — Hindsight's auto-retain hook captures every conversation turn, extracts rules via the bank's retain mission, consolidates them into observations, and refreshes this mental model automatically. The next curl will return updated guidelines.
+````
+
+Write the file, create parent directories if needed, then `ls` or `cat` to confirm. **Double-check that the rendered file contains `$HINDSIGHT_API_KEY` as a shell variable reference, not the literal key value.**
 
 ---
 
@@ -283,12 +377,17 @@ After all four steps are done, show the user a summary:
 
 > ✓ **Skill installed: `<name>`**
 >
-> - Hindsight: `<url>`
+> - Hindsight: `<url>` *(mode: embedded / self-hosted / cloud)*
+> - Auth: *none* — OR — *via `$HINDSIGHT_API_KEY` (must be set in the environment when the skill runs)*
 > - Bank: `<bank>` (new / existing)
 > - Mental model: `<mm_id>` — empty, will populate after first feedback
 > - Skill file: `<path>`
 >
 > The skill is live. Ask your agent to do `<some domain task>` and start giving feedback — the mental model will evolve automatically after the first consolidation cycle.
+
+If the instance requires auth, add a second line to the summary reminding the user to export the key in whatever process the agent runs under (their shell, their harness's env file, their CI config):
+
+> **Note:** This skill reads `HINDSIGHT_API_KEY` at runtime. Make sure it's available in the environment your agent runs under. On hermes, put it in `~/.hermes/.env`; on claude code, put it in your shell profile or the `.env` file the CLI sources.
 
 ---
 
@@ -334,6 +433,8 @@ Ten characters, zero keywords. The harness will never match user requests to it.
 
 **Bad skill body:** Anything that tries to hardcode rules inline (tone, length, format). The whole point is that the rules live in the mental model and evolve. The skill body should contain ONLY the curl-parse-follow-or-ask workflow, nothing else.
 
+**Bad auth handling:** Hardcoding the API key in the skill file (e.g. `curl -H "Authorization: Bearer hsk_abc123..."`). This commits credentials to the skills directory (and often to git if the user's harness config is in a repo). Always use `$HINDSIGHT_API_KEY` as a shell variable reference in the skill body; never substitute the literal value.
+
 ---
 
 ## Things to watch for (known gotchas)
@@ -342,3 +443,6 @@ Ten characters, zero keywords. The harness will never match user requests to it.
 - **Auto-retain must be on.** This skill only works if the harness's Hindsight plugin has auto-retain enabled (the default). Verify during Step 1 if you can.
 - **The first turn after install will hit an empty mental model.** That is correct. The skill's fallback will ask the user for guidance, and the first batch of feedback will seed the mental model after one consolidation cycle.
 - **Hindsight URLs are not always `localhost:8888`.** The actual default for the Hermes embedded daemon is `9177`. Always verify with `/health` before committing to a URL.
+- **Auth secrets must not be hardcoded.** When writing the SKILL.md for a cloud or self-hosted instance, the Authorization header must reference `$HINDSIGHT_API_KEY` as an environment variable, never the literal key value. The env var must be available at runtime in whatever process the agent runs under (shell profile, harness env file, CI config). If the skill file fetches guidance but the env var is missing, the skill should fail loudly (tell the user to set the key) — not silently treat the 401/403 response as an empty mental model.
+- **Cloud tenant path.** The `default` in `/v1/default/banks` is the tenant ID. On embedded and standard self-hosted it's always `default`. On cloud, the API key scopes the tenant automatically and `/v1/default/` usually works — but if the user tells you their account uses a custom tenant, substitute it throughout every curl (both in the setup API calls and in the generated SKILL.md).
+- **Mixed-mode deployments.** A user may have multiple Hindsight instances (e.g. a local embedded daemon for dev and a cloud instance for production). If Step 1 finds more than one healthy candidate, always ask the user which to target — do not silently prefer one. The generated SKILL.md will be locked to whichever instance you chose, so this is a meaningful decision.
