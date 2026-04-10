@@ -289,11 +289,7 @@ Propose the description separately and get approval:
 
 ### The SKILL.md template
 
-Render **one of two templates** depending on whether the instance requires auth (decided in Step 1). Do not add extra sections beyond what is here unless the user asks.
-
-#### Template A — embedded / no-auth instances
-
-Use this when Step 1 classified the instance as `embedded` with no API key.
+Render this template, substituting `<placeholders>`. **One template works for every deployment mode** — the curl line uses bash parameter expansion (`${HINDSIGHT_API_KEY:+...}`) to auto-include an `Authorization` header only when the env var is set, so the same line works on embedded (no key), self-hosted (optional key), and cloud (required key). Do not add extra sections beyond what is here unless the user asks.
 
 ````markdown
 ---
@@ -307,54 +303,21 @@ Use this skill whenever the user asks for <domain work>. Before doing anything, 
 
 ## Workflow
 
-1. **Fetch live guidance** from the bound mental model:
+1. **Fetch live guidance** from the bound mental model. The curl below auto-includes an `Authorization: Bearer $HINDSIGHT_API_KEY` header when the env var is set and works unauthenticated otherwise — the same line is correct for embedded, self-hosted, and cloud instances:
 
    ```bash
-   curl -s <url>/v1/default/banks/<bank>/mental-models/<mm_id>
-   ```
-
-2. **Parse the JSON response** and read the `content` field. That field is your style guide for this request.
-
-3. **Handle empty guidance.** If `content` is empty, missing, null, or contains a no-information message ("I do not have any information", "no relevant memories", etc.), you MUST stop and ask the user for direction before producing any output. Ask for the specific fields the domain needs (tone, audience, length, constraints, whatever is relevant). Do not guess from your defaults.
-
-4. **Follow the guidance strictly.** When the guidance is populated, apply every rule. If a rule is non-obvious but important, briefly note which rule you are applying in your reasoning.
-
-5. **Re-fetch on revision.** If the user asks for an edit or redo, re-run the curl first — the guidelines may have been updated since your last turn.
-
-## Learning loop
-
-Your feedback teaches this skill. You do not need to do anything special with user feedback — Hindsight's auto-retain hook captures every conversation turn, extracts rules via the bank's retain mission, consolidates them into observations, and refreshes this mental model automatically. The next curl will return updated guidelines.
-````
-
-#### Template B — cloud / self-hosted with API key
-
-Use this when Step 1 classified the instance as `cloud` or `self-hosted` with a key. The `curl` includes an `Authorization` header that reads the key from the environment at runtime. **Never hardcode the key in the skill file.**
-
-````markdown
----
-name: <skill-name>
-description: <description>
----
-
-# <Skill Title>
-
-Use this skill whenever the user asks for <domain work>. Before doing anything, you MUST fetch the latest guidelines from Hindsight.
-
-## Workflow
-
-1. **Fetch live guidance** from the bound mental model. This instance requires an API key, read from the `HINDSIGHT_API_KEY` environment variable:
-
-   ```bash
-   curl -s \
-     -H "Authorization: Bearer $HINDSIGHT_API_KEY" \
+   curl -sS -w '\n%{http_code}' \
+     ${HINDSIGHT_API_KEY:+-H "Authorization: Bearer $HINDSIGHT_API_KEY"} \
      <url>/v1/default/banks/<bank>/mental-models/<mm_id>
    ```
 
-   If the environment variable is not set, stop and tell the user: *"I can't reach the Hindsight instance because `HINDSIGHT_API_KEY` is not set. Please export it or add it to your shell config before I can fetch the writing guidelines."* Do not guess or proceed without the key.
+2. **Check the HTTP status code** (last line of the response). Any non-2xx is a hard failure — STOP, report it to the user, and do NOT fall through to "empty guidance" handling:
+   - `401` / `403` → the Hindsight instance requires authentication. Tell the user to export `HINDSIGHT_API_KEY` (or check that their existing key is valid) and retry.
+   - `404` → the mental model was deleted. Tell the user and ask whether to recreate it.
+   - `5xx` or connection refused → the Hindsight daemon is down or unreachable. Tell the user to verify the daemon.
+   - Do not guess or substitute defaults on any error.
 
-2. **Handle HTTP errors explicitly.** If the response is `401` or `403`, stop and tell the user the API key is wrong or expired — do NOT treat it as empty guidance. If the response is `404`, tell the user the mental model was deleted and ask whether to recreate it. Only proceed if you got a `200`.
-
-3. **Parse the JSON response** and read the `content` field. That field is your style guide for this request.
+3. **Parse the JSON body** (everything before the status-code line) and read the `content` field. That field is your style guide for this request.
 
 4. **Handle empty guidance.** If `content` is empty, missing, null, or contains a no-information message ("I do not have any information", "no relevant memories", etc.), you MUST stop and ask the user for direction before producing any output. Ask for the specific fields the domain needs (tone, audience, length, constraints, whatever is relevant). Do not guess from your defaults.
 
@@ -367,7 +330,7 @@ Use this skill whenever the user asks for <domain work>. Before doing anything, 
 Your feedback teaches this skill. You do not need to do anything special with user feedback — Hindsight's auto-retain hook captures every conversation turn, extracts rules via the bank's retain mission, consolidates them into observations, and refreshes this mental model automatically. The next curl will return updated guidelines.
 ````
 
-Write the file, create parent directories if needed, then `ls` or `cat` to confirm. **Double-check that the rendered file contains `$HINDSIGHT_API_KEY` as a shell variable reference, not the literal key value.**
+Write the file, create parent directories if needed, then `ls` or `cat` to confirm. **Double-check that the rendered file contains `$HINDSIGHT_API_KEY` as a shell variable reference inside the `${HINDSIGHT_API_KEY:+...}` expansion — never substitute the literal key value.**
 
 ---
 
