@@ -1,0 +1,405 @@
+#!/usr/bin/env python3
+"""hindsight-agent — provision a hermes profile as a self-learning agent.
+
+Usage:
+    hindsight-agent install <template> [--name <profile_name>]
+    hindsight-agent list
+
+<template> is a directory name under `agents/` in this repo (e.g. `marketing`).
+The command runs an interactive wizard for Hindsight connection details,
+creates a new hermes profile, installs the Hindsight plugin config + the
+hindsight-skill-builder meta-skill + the template's seed skill + any static
+skills, then drives hermes through the seed skill to finish setup.
+
+PoC quality. Not idempotent if interrupted mid-flow. Not packaged; run
+directly from the repo.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TEMPLATES_DIR = REPO_ROOT / "agents"
+META_SKILL_DIR = REPO_ROOT / "skills" / "hindsight-skill-builder"
+HERMES_PROFILES_DIR = Path.home() / ".hermes" / "profiles"
+
+
+# ---------- small helpers ----------
+
+def err(msg: str) -> None:
+    print(f"error: {msg}", file=sys.stderr)
+
+
+def info(msg: str) -> None:
+    print(msg, file=sys.stderr)
+
+
+def run(cmd: list[str], *, check: bool = True, env: dict | None = None, capture: bool = False) -> subprocess.CompletedProcess:
+    info(f"  $ {' '.join(cmd)}")
+    return subprocess.run(cmd, check=check, env=env or os.environ.copy(), capture_output=capture, text=True)
+
+
+def prompt(label: str, default: str | None = None, *, secret: bool = False) -> str:
+    if secret:
+        import getpass
+        return getpass.getpass(f"{label}: ")
+    hint = f" [{default}]" if default else ""
+    value = input(f"{label}{hint}: ").strip()
+    return value or (default or "")
+
+
+def prompt_choice(label: str, choices: list[tuple[str, str]], default: int = 0) -> int:
+    print(label)
+    for i, (short, desc) in enumerate(choices, 1):
+        marker = "*" if i == default + 1 else " "
+        print(f"  {marker} {i}) {short} — {desc}")
+    while True:
+        raw = input(f"Pick (1-{len(choices)}) [{default + 1}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(choices):
+            return int(raw) - 1
+        print("  invalid choice")
+
+
+def read_yaml(path: Path) -> dict:
+    # Minimal YAML reader — avoids a PyYAML dependency for the PoC.
+    # Supports: top-level scalars, lists of mappings, block scalars with |/>.
+    try:
+        import yaml  # type: ignore
+        with path.open() as f:
+            return yaml.safe_load(f) or {}
+    except ImportError:
+        err(
+            "PyYAML is not installed. Install it with `pip install pyyaml` and "
+            "re-run, or run this via `uv run --with pyyaml scripts/hindsight-agent ...`."
+        )
+        sys.exit(2)
+
+
+# ---------- wizard ----------
+
+def wizard_hindsight_mode() -> dict:
+    """Ask the user how Hindsight should be reached and return a dict with
+    fields ready to drop into hermes's hindsight config.json."""
+    print()
+    print("=== Hindsight connection ===")
+    idx = prompt_choice(
+        "How should this agent reach Hindsight?",
+        [
+            ("cloud", "managed instance at api.hindsight.vectorize.io (requires an API key)"),
+            ("embedded", "spin up a local daemon on this machine (requires an LLM provider key)"),
+            ("self-hosted", "connect to a Hindsight server you already run (URL + optional key)"),
+        ],
+        default=1,
+    )
+    if idx == 0:
+        return wizard_cloud()
+    if idx == 1:
+        return wizard_embedded()
+    return wizard_self_hosted()
+
+
+def wizard_cloud() -> dict:
+    print()
+    print("=== Cloud mode ===")
+    api_url = prompt("API URL", "https://api.hindsight.vectorize.io")
+    env_key = os.environ.get("HINDSIGHT_API_KEY", "")
+    if env_key:
+        use_env = prompt("HINDSIGHT_API_KEY is set in your environment. Use it? (y/n)", "y").lower().startswith("y")
+        api_key = env_key if use_env else prompt("Paste your Hindsight API key", secret=True)
+    else:
+        api_key = prompt("Paste your Hindsight API key", secret=True)
+    if not api_key:
+        err("Cloud mode requires an API key. Aborting.")
+        sys.exit(1)
+    return {
+        "mode": "cloud",
+        "api_url": api_url,
+        "api_key": api_key,
+    }
+
+
+def wizard_embedded() -> dict:
+    print()
+    print("=== Embedded mode ===")
+    print("Pick an LLM provider for fact extraction and reflection.")
+    providers = [
+        ("openai", "default model gpt-4o-mini"),
+        ("anthropic", "default model claude-haiku-4-5"),
+        ("gemini", "default model gemini-2.5-flash"),
+        ("groq", "default model openai/gpt-oss-120b"),
+        ("ollama", "local, no key needed"),
+        ("lmstudio", "local, no key needed"),
+    ]
+    idx = prompt_choice("LLM provider", providers, default=2)
+    provider = providers[idx][0]
+    needs_key = provider not in ("ollama", "lmstudio")
+    llm_key = ""
+    if needs_key:
+        env_var = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "gemini": "HINDSIGHT_LLM_API_KEY",  # commonly used by hermes users
+            "groq": "GROQ_API_KEY",
+        }.get(provider)
+        env_val = os.environ.get(env_var, "") if env_var else ""
+        if env_val:
+            use_env = prompt(f"${env_var} is set in your environment. Use it? (y/n)", "y").lower().startswith("y")
+            llm_key = env_val if use_env else prompt(f"Paste your {provider} API key", secret=True)
+        else:
+            llm_key = prompt(f"Paste your {provider} API key", secret=True)
+    return {
+        "mode": "local_embedded",
+        "llm_provider": provider,
+        "llm_api_key": llm_key,
+    }
+
+
+def wizard_self_hosted() -> dict:
+    print()
+    print("=== Self-hosted mode ===")
+    api_url = prompt("Hindsight API URL", "http://localhost:8888")
+    wants_key = prompt("Does it require an API key? (y/n)", "n").lower().startswith("y")
+    api_key = prompt("Paste the API key", secret=True) if wants_key else ""
+    return {
+        "mode": "local_external",
+        "api_url": api_url,
+        "api_key": api_key,
+    }
+
+
+# ---------- profile setup ----------
+
+def create_hermes_profile(profile_name: str) -> Path:
+    info(f"Creating hermes profile '{profile_name}'...")
+    # Use --clone to inherit config.yaml, .env, and SOUL.md from the user's
+    # current active hermes profile. Without this the new profile has a bare
+    # default model/provider config (often openrouter without a key) and the
+    # first hermes chat call fails with HTTP 401.
+    result = run(
+        ["hermes", "profile", "create", profile_name, "--clone", "--no-alias"],
+        check=False,
+        capture=True,
+    )
+    if result.returncode != 0 and "already exists" not in (result.stderr or ""):
+        err(f"hermes profile create failed: {result.stderr or result.stdout}")
+        sys.exit(1)
+    profile_path = HERMES_PROFILES_DIR / profile_name
+    if not profile_path.exists():
+        err(f"expected profile dir {profile_path} does not exist after create")
+        sys.exit(1)
+    return profile_path
+
+
+def write_hindsight_config(profile_path: Path, hindsight_cfg: dict, bank_id: str) -> Path:
+    cfg_dir = profile_path / "hindsight"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    cfg = {
+        "mode": hindsight_cfg["mode"],
+        "bank_id": bank_id,
+        "recall_budget": "mid",
+        "retain_async": False,
+        "memory_mode": "hybrid",
+    }
+    if hindsight_cfg["mode"] == "cloud":
+        cfg["api_url"] = hindsight_cfg["api_url"]
+        cfg["api_key"] = hindsight_cfg["api_key"]
+    elif hindsight_cfg["mode"] == "local_embedded":
+        cfg["llm_provider"] = hindsight_cfg["llm_provider"]
+        if hindsight_cfg.get("llm_api_key"):
+            cfg["llm_api_key"] = hindsight_cfg["llm_api_key"]
+    elif hindsight_cfg["mode"] == "local_external":
+        cfg["api_url"] = hindsight_cfg["api_url"]
+        if hindsight_cfg.get("api_key"):
+            cfg["api_key"] = hindsight_cfg["api_key"]
+    cfg_path = cfg_dir / "config.json"
+    cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
+    os.chmod(cfg_path, 0o600)
+    info(f"  wrote {cfg_path}")
+    return cfg_path
+
+
+def copy_skill(source_dir: Path, dest_skills_dir: Path, name: str) -> None:
+    dest = dest_skills_dir / name
+    dest.mkdir(parents=True, exist_ok=True)
+    for item in source_dir.iterdir():
+        if item.is_file():
+            shutil.copy(item, dest / item.name)
+    info(f"  installed skill: {dest}")
+
+
+def copy_skill_file(source_file: Path, dest_skills_dir: Path, name: str) -> None:
+    dest = dest_skills_dir / name
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy(source_file, dest / "SKILL.md")
+    info(f"  installed skill: {dest}")
+
+
+def install_skills(profile_path: Path, template_dir: Path) -> None:
+    skills_dir = profile_path / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    # hindsight-skill-builder — the meta-skill
+    if not META_SKILL_DIR.exists():
+        err(f"meta-skill not found at {META_SKILL_DIR}")
+        sys.exit(1)
+    copy_skill(META_SKILL_DIR, skills_dir, "hindsight-skill-builder")
+
+    # seed skill for this template (seed.md becomes the SKILL.md of a new skill)
+    seed_file = template_dir / "seed.md"
+    if seed_file.exists():
+        # Use the template directory name as the seed skill folder name.
+        seed_skill_name = f"{template_dir.name}-agent-seed"
+        copy_skill_file(seed_file, skills_dir, seed_skill_name)
+
+    # Optional pre-made static skills under template/skills/.
+    static_src = template_dir / "skills"
+    if static_src.exists() and static_src.is_dir():
+        for item in static_src.iterdir():
+            if item.is_dir() and (item / "SKILL.md").exists():
+                copy_skill(item, skills_dir, item.name)
+
+
+def drive_seed_setup(profile_name: str, template_dir: Path) -> None:
+    """Ask hermes to read the seed skill and finish the agent setup."""
+    seed_skill_name = f"{template_dir.name}-agent-seed"
+    info("")
+    info(f"Running hermes in profile '{profile_name}' with the seed skill preloaded.")
+    info("This will drive the hindsight-skill-builder to install the self-learning skills declared in the seed.")
+    info("")
+    prompt_text = (
+        "Set up this agent now. Follow the instructions in the "
+        f"`{seed_skill_name}` skill exactly, including the required parameters. "
+        "Use the `hindsight-skill-builder` skill to create every self-learning "
+        "skill listed in the seed. Approve the skill-builder's gates with the "
+        "values the seed specifies. At the end, verify every mental model and "
+        "SKILL.md file exists, then confirm you are ready."
+    )
+    cmd = [
+        "hermes",
+        "--profile",
+        profile_name,
+        "chat",
+        "-Q",
+        "--yolo",
+        "--skills",
+        f"{seed_skill_name},hindsight-skill-builder",
+        "-q",
+        prompt_text,
+    ]
+    # Run hermes from /tmp to avoid parent .env contamination of the embedded daemon.
+    cwd = "/tmp"
+    info(f"  $ (cwd={cwd}) {' '.join(cmd[:4])} ... (full prompt piped in)")
+    result = subprocess.run(cmd, cwd=cwd)
+    if result.returncode != 0:
+        err(f"hermes seed-setup run exited {result.returncode}; inspect manually")
+        sys.exit(result.returncode)
+
+
+# ---------- subcommands ----------
+
+def cmd_list(_args: argparse.Namespace) -> None:
+    if not TEMPLATES_DIR.exists():
+        print("(no templates found)")
+        return
+    print("Available agent templates:")
+    for item in sorted(TEMPLATES_DIR.iterdir()):
+        if item.is_dir() and (item / "agent.yaml").exists():
+            cfg = read_yaml(item / "agent.yaml")
+            desc = (cfg.get("description") or "").strip().splitlines()[0] if cfg.get("description") else ""
+            print(f"  - {item.name}: {desc}")
+
+
+def cmd_install(args: argparse.Namespace) -> None:
+    template_dir = TEMPLATES_DIR / args.template
+    if not template_dir.exists():
+        err(f"template '{args.template}' not found under {TEMPLATES_DIR}")
+        sys.exit(1)
+    cfg_path = template_dir / "agent.yaml"
+    if not cfg_path.exists():
+        err(f"template is missing agent.yaml: {cfg_path}")
+        sys.exit(1)
+
+    agent_cfg = read_yaml(cfg_path)
+    default_name = args.name or agent_cfg.get("name") or args.template
+    profile_name = prompt("Profile name for this agent", default_name)
+    if not profile_name.replace("-", "").replace("_", "").isalnum():
+        err(f"profile name must be alphanumeric (with - or _), got {profile_name!r}")
+        sys.exit(1)
+
+    hindsight_cfg = wizard_hindsight_mode()
+    # Bank id = profile name. All self-learning skills on this agent share it.
+    bank_id = profile_name
+
+    print()
+    print("=== Summary ===")
+    print(f"  template:       {args.template}")
+    print(f"  profile name:   {profile_name}")
+    print(f"  hindsight mode: {hindsight_cfg['mode']}")
+    if hindsight_cfg["mode"] == "cloud":
+        print(f"  api_url:        {hindsight_cfg['api_url']}")
+        print(f"  api_key:        <redacted>")
+    elif hindsight_cfg["mode"] == "local_embedded":
+        print(f"  llm_provider:   {hindsight_cfg['llm_provider']}")
+        print(f"  llm_api_key:    <redacted>" if hindsight_cfg.get("llm_api_key") else "  llm_api_key:    (none)")
+    elif hindsight_cfg["mode"] == "local_external":
+        print(f"  api_url:        {hindsight_cfg['api_url']}")
+        print(f"  api_key:        {'<redacted>' if hindsight_cfg.get('api_key') else '(none)'}")
+    print(f"  bank_id:        {bank_id}")
+    skills = agent_cfg.get("self_learning_skills") or []
+    print(f"  skills:         {len(skills)} self-learning")
+    for s in skills:
+        print(f"                  - {s.get('id', '?')}: {s.get('name', '')}")
+    print()
+    confirm = prompt("Proceed? (y/n)", "y").lower()
+    if not confirm.startswith("y"):
+        info("aborted by user")
+        sys.exit(0)
+
+    # 1. Create hermes profile
+    profile_path = create_hermes_profile(profile_name)
+
+    # 2. Write hindsight plugin config inside the profile
+    write_hindsight_config(profile_path, hindsight_cfg, bank_id)
+
+    # 3. Copy meta-skill, seed, and any static skills
+    install_skills(profile_path, template_dir)
+
+    # 4. Drive hermes through the seed skill to finish setup
+    if not args.skip_seed:
+        drive_seed_setup(profile_name, template_dir)
+
+    print()
+    print(f"✓ Agent '{profile_name}' is ready.")
+    print(f"  Start using it with:  hermes --profile {profile_name} chat")
+    print()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="hindsight-agent", description="Provision hermes profiles as self-learning agents.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_list = sub.add_parser("list", help="List available agent templates.")
+    p_list.set_defaults(func=cmd_list)
+
+    p_install = sub.add_parser("install", help="Install an agent template as a hermes profile.")
+    p_install.add_argument("template", help="Template name (e.g. 'marketing')")
+    p_install.add_argument("--name", help="Profile name (default: template name)")
+    p_install.add_argument("--skip-seed", action="store_true", help="Skip the hermes-driven seed setup (useful for debugging)")
+    p_install.set_defaults(func=cmd_install)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

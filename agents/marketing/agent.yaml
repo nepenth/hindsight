@@ -1,0 +1,33 @@
+# Marketing agent template.
+#
+# Defines a hermes profile preloaded with the Hindsight plugin, the
+# hindsight-skill-builder meta-skill, and one self-learning skill that
+# writes marketing posts and evolves from user feedback.
+
+name: marketing-agent
+description: |
+  A marketing writing assistant that learns your voice, tone, and rules from
+  feedback. Ships with one self-learning skill for drafting marketing posts
+  across LinkedIn, X, blog teasers, newsletters, and announcements.
+
+# Self-learning skills to create after the profile is up. The meta-skill
+# (hindsight-skill-builder) will create one Hindsight mental model per entry
+# on the harness plugin's bank.
+self_learning_skills:
+  - id: marketing-post-writer
+    name: Marketing Post Writer
+    description: >
+      Use this skill whenever the user asks for any marketing copy — LinkedIn
+      post, X post, thread, blog teaser, newsletter blurb, announcement, launch
+      copy, or promotional caption. Fetches the latest writing guidelines from
+      Hindsight before drafting and asks the user for tone / audience / length /
+      constraints when no guidance exists yet.
+    source_query: >
+      What are the current writing style, tone, structure, voice, and do/don't
+      rules I should follow when drafting marketing posts on behalf of this
+      user? Include channel-specific rules for LinkedIn, X, blog teasers,
+      newsletters, and announcements when they exist.
+
+# Optional: pre-made non-self-learning SKILL.md files to drop into the
+# profile's skills dir. None for v1.
+static_skills: []

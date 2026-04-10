@@ -57,10 +57,13 @@ This matters because the harness's **auto-retain hook writes every conversation 
 
 Check the known config locations **in this order**, stopping at the first one that exists. Do NOT probe multiple at once — take the first match and confirm it with the user.
 
-**hermes** — `~/.hermes/hindsight/config.json`
+**hermes** — `$HERMES_HOME/hindsight/config.json` (falls back to `~/.hermes/hindsight/config.json` when no profile is active)
+
+Hermes sets `HERMES_HOME` to the active profile's root when you're running under `hermes --profile <name>`. Resolve the config path **from that env var**, not from a hardcoded `~/.hermes/` path, otherwise a named profile's config is missed and the meta-skill binds skills to the wrong bank.
 
 ```bash
-test -f ~/.hermes/hindsight/config.json && echo found
+HERMES_CFG="${HERMES_HOME:-$HOME/.hermes}/hindsight/config.json"
+test -f "$HERMES_CFG" && echo "found: $HERMES_CFG"
 ```
 
 Keys to extract (JSON):
@@ -255,19 +258,29 @@ Wait for approval. If the user wants to tweak the id, name, or source_query, reg
 Once approved, run the commands below without pausing:
 
 ```bash
-# 1. Create the mental model on the harness's bank
+# 1. Ensure the bank identity exists. The bank name comes from the harness
+#    plugin's config, but the bank itself may not have been created on the
+#    daemon yet (e.g. brand-new profile where no retain has happened). Always
+#    run `bank create` first — it is a no-op if the bank already exists.
+#    Do NOT bind the skill to a different bank if the target is missing;
+#    create the missing bank and proceed.
+hindsight bank create "$HINDSIGHT_BANK_ID" --name "$HINDSIGHT_BANK_ID" 2>/dev/null || true
+
+# 2. Create the mental model on that bank
 hindsight mental-model create "$HINDSIGHT_BANK_ID" "<mm_name>" "<source_query>" --id <mm_id>
 
-# 2. Set the refresh trigger and empty tags (CLI gap — see below)
+# 3. Set the refresh trigger and empty tags (CLI gap — see below)
 curl -sS -X PATCH \
   ${HINDSIGHT_API_KEY:+-H "Authorization: Bearer $HINDSIGHT_API_KEY"} \
   -H "Content-Type: application/json" \
   -d '{"trigger": {"refresh_after_consolidation": true}, "tags": []}' \
   "$HINDSIGHT_API_URL/v1/default/banks/$HINDSIGHT_BANK_ID/mental-models/<mm_id>"
 
-# 3. Verify
+# 4. Verify
 hindsight mental-model get "$HINDSIGHT_BANK_ID" <mm_id> --output json
 ```
+
+**Hard rule:** if `hindsight mental-model create` fails because the bank does not exist, create the bank (identity only, no missions — the harness plugin will own whatever extraction behavior it wants) and retry. Never silently fall back to a different bank id. The bank id in the env file is authoritative because it's the bank the harness plugin's auto-retain hook writes to. Binding a skill to a different bank would break the learning loop.
 
 The initial `content` field will be a "no information" response. That's correct — the skill's fallback at runtime asks the user for guidance on first use and the mental model populates after the first consolidation cycle.
 
@@ -301,15 +314,19 @@ Downside: observations in a shared bank are noisier because the retain mission i
 
 ### Where to write it
 
-Figure out where to put the new SKILL.md. Your preferred strategy:
+Figure out the skills directory for the CURRENT harness session. This is **profile-aware** — named profiles have their own skills directories and you must NOT write to the default profile's directory when running under a named profile.
 
-1. **Use your own location** — if you (this skill-builder skill) were loaded from `~/.hermes/skills/hindsight-skill-builder/SKILL.md`, then the new skill goes into a sibling directory: `~/.hermes/skills/<new-skill-name>/SKILL.md`. Ask the agent-runtime environment or introspect available paths to find this.
-2. If you cannot determine your own location, check for known harness skill directories and propose the first one that exists:
-   - `~/.hermes/skills/` (Hermes)
-   - `~/.claude/skills/` (Claude Code)
-   - `~/.codex/skills/` (Codex)
-   - `~/.cursor/skills/` (Cursor)
-3. If none are found, ask the user where the harness loads skills from.
+Preferred resolution order:
+
+1. **`$HERMES_HOME/skills/`** — hermes sets `HERMES_HOME` to the active profile's root (e.g. `~/.hermes/profiles/smoke-marketing/` for a named profile, `~/.hermes/` for the default profile). Use this whenever the env var is set. Example:
+   ```bash
+   SKILLS_DIR="${HERMES_HOME:-$HOME/.hermes}/skills"
+   ```
+2. If `HERMES_HOME` is not set, check for Claude Code: `~/.claude/skills/`.
+3. If neither, check Codex: `~/.codex/skills/`.
+4. If none are found, ask the user where the harness loads skills from.
+
+**Never** default to `~/.hermes/skills/` when `HERMES_HOME` is set to a different path — that's the default profile's directory and writing there pollutes it. If `HERMES_HOME=/Users/foo/.hermes/profiles/marketing-agent`, the new skill MUST go to `/Users/foo/.hermes/profiles/marketing-agent/skills/<skill-name>/SKILL.md`.
 
 **Propose the target path to the user before writing** and wait for approval:
 
