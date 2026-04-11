@@ -325,6 +325,16 @@ ENV_FILE_CONVERSION_MAX_BATCH_SIZE = "HINDSIGHT_API_FILE_CONVERSION_MAX_BATCH_SI
 ENV_ENABLE_FILE_UPLOAD_API = "HINDSIGHT_API_ENABLE_FILE_UPLOAD_API"
 ENV_FILE_DELETE_AFTER_RETAIN = "HINDSIGHT_API_FILE_DELETE_AFTER_RETAIN"
 
+# Temporal extraction — dateparser-based query analysis for date-aware recall.
+# Adds ~120ms per recall. Disable to reduce recall latency when temporal
+# filtering is not needed.
+ENV_ENABLE_TEMPORAL_EXTRACTION = "HINDSIGHT_API_ENABLE_TEMPORAL_EXTRACTION"
+
+# Graph retrieval — entity/link-based graph traversal during recall.
+# Disable to reduce recall latency when only semantic + BM25 retrieval is needed
+# (e.g. pure RAG / chunks mode).
+ENV_ENABLE_GRAPH_RETRIEVAL = "HINDSIGHT_API_ENABLE_GRAPH_RETRIEVAL"
+
 # Observations settings (consolidated knowledge from facts)
 ENV_ENABLE_OBSERVATIONS = "HINDSIGHT_API_ENABLE_OBSERVATIONS"
 ENV_CONSOLIDATION_BATCH_SIZE = "HINDSIGHT_API_CONSOLIDATION_BATCH_SIZE"
@@ -540,6 +550,9 @@ DEFAULT_ENABLE_FILE_UPLOAD_API = True  # Enable file upload endpoint
 DEFAULT_FILE_DELETE_AFTER_RETAIN = True  # Delete file bytes after retain (saves storage)
 
 # Observations defaults (consolidated knowledge from facts)
+DEFAULT_ENABLE_TEMPORAL_EXTRACTION = True  # Temporal extraction enabled by default
+DEFAULT_ENABLE_GRAPH_RETRIEVAL = True  # Graph retrieval enabled by default
+
 DEFAULT_ENABLE_OBSERVATIONS = True  # Observations enabled by default
 DEFAULT_ENABLE_OBSERVATION_HISTORY = True  # Observation history tracking enabled by default
 DEFAULT_ENABLE_MENTAL_MODEL_HISTORY = True  # Mental model history tracking enabled by default
@@ -892,6 +905,8 @@ class HindsightConfig:
     file_delete_after_retain: bool
 
     # Observations settings (consolidated knowledge from facts)
+    enable_temporal_extraction: bool
+    enable_graph_retrieval: bool
     enable_observations: bool
     enable_observation_history: bool
     enable_mental_model_history: bool
@@ -1443,6 +1458,10 @@ class HindsightConfig:
                 ENV_FILE_DELETE_AFTER_RETAIN, str(DEFAULT_FILE_DELETE_AFTER_RETAIN)
             ).lower()
             == "true",
+            # Temporal extraction (dateparser query analysis for date-aware recall)
+            enable_temporal_extraction=os.getenv(ENV_ENABLE_TEMPORAL_EXTRACTION, str(DEFAULT_ENABLE_TEMPORAL_EXTRACTION)).lower() == "true",
+            # Graph retrieval (entity/link traversal during recall)
+            enable_graph_retrieval=os.getenv(ENV_ENABLE_GRAPH_RETRIEVAL, str(DEFAULT_ENABLE_GRAPH_RETRIEVAL)).lower() == "true",
             # Observations settings (consolidated knowledge from facts)
             enable_observations=os.getenv(ENV_ENABLE_OBSERVATIONS, str(DEFAULT_ENABLE_OBSERVATIONS)).lower() == "true",
             enable_observation_history=os.getenv(

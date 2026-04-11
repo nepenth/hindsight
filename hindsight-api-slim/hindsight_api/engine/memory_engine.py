@@ -1691,8 +1691,14 @@ class MemoryEngine(MemoryEngineInterface):
         init_tasks = [
             start_pg0(),
             init_embeddings(),
-            init_query_analyzer(),
         ]
+
+        # Only load dateparser if temporal extraction is enabled (saves ~120ms per recall)
+        config = get_config()
+        if config.enable_temporal_extraction:
+            init_tasks.append(init_query_analyzer())
+        else:
+            logger.info("Temporal extraction disabled (HINDSIGHT_API_ENABLE_TEMPORAL_EXTRACTION=false)")
 
         # Only init cross-encoder eagerly if not using lazy initialization
         if not self._lazy_reranker:
@@ -2807,6 +2813,12 @@ class MemoryEngine(MemoryEngineInterface):
                 ) as op:
                     budgeted_pool = op.wrap_pool(pool)
                     parallel_start = time.time()
+                    # Pass False to skip temporal extraction entirely when
+                    # disabled via config. This avoids the ~120ms dateparser
+                    # overhead per recall.
+                    analyzer = self.query_analyzer if config.enable_temporal_extraction else False
+                    # Pass False to skip graph retrieval when disabled via config.
+                    graph = None if config.enable_graph_retrieval else False
                     multi_result = await retrieve_all_fact_types_parallel(
                         budgeted_pool,
                         query,
@@ -2815,7 +2827,8 @@ class MemoryEngine(MemoryEngineInterface):
                         fact_type,  # Pass all fact types at once
                         thinking_budget,
                         question_date,
-                        self.query_analyzer,
+                        analyzer,
+                        graph_retriever=graph,
                         tags=tags,
                         tags_match=tags_match,
                         tag_groups=tag_groups,

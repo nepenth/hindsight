@@ -561,16 +561,23 @@ async def retrieve_all_fact_types_parallel(
     """
     import time
 
-    retriever = graph_retriever or get_default_graph_retriever()
+    skip_graph = graph_retriever is False
+    retriever = None if skip_graph else (graph_retriever or get_default_graph_retriever())
     start_time = time.time()
     timings: dict[str, float] = {}
 
     # Step 1: Extract temporal constraint first (CPU work, no DB)
-    # Do this before DB queries so we know if we need temporal retrieval
+    # Do this before DB queries so we know if we need temporal retrieval.
+    # Skip entirely when query_analyzer is False (temporal extraction disabled
+    # via HINDSIGHT_API_ENABLE_TEMPORAL_EXTRACTION=false). This saves ~120ms
+    # per recall by avoiding the dateparser library.
     temporal_extraction_start = time.time()
-    from .temporal_extraction import extract_temporal_constraint
+    if query_analyzer is not False:
+        from .temporal_extraction import extract_temporal_constraint
 
-    temporal_constraint = extract_temporal_constraint(query_text, reference_date=question_date, analyzer=query_analyzer)
+        temporal_constraint = extract_temporal_constraint(query_text, reference_date=question_date, analyzer=query_analyzer)
+    else:
+        temporal_constraint = None
     temporal_extraction_time = time.time() - temporal_extraction_start
     timings["temporal_extraction"] = temporal_extraction_time
 
@@ -639,9 +646,12 @@ async def retrieve_all_fact_types_parallel(
         )
         return ft, results, time.time() - graph_start, graph_timing
 
-    # Run graph for all fact types in parallel
-    graph_tasks = [run_graph_for_fact_type(ft) for ft in fact_types]
-    graph_results_list = await asyncio.gather(*graph_tasks)
+    # Run graph for all fact types in parallel (skip when disabled)
+    if skip_graph:
+        graph_results_list = []
+    else:
+        graph_tasks = [run_graph_for_fact_type(ft) for ft in fact_types]
+        graph_results_list = await asyncio.gather(*graph_tasks)
 
     # Organize results by fact type
     results_by_fact_type: dict[str, ParallelRetrievalResult] = {}
