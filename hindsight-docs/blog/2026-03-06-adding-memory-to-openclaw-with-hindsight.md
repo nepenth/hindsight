@@ -47,7 +47,7 @@ There's also a data question that matters for OpenClaw users specifically. OpenC
 
 **Feedback loop prevention.** When memories are injected into context before a response, they become part of the conversation. Without care, those injected memories would get re-stored and re-extracted as new facts, causing exponential growth and duplicates. The plugin automatically strips its own `<hindsight_memories>` tags before retention, preventing this loop.
 
-**Local-first, open source.** Hindsight runs through `hindsight-embed`, a daemon that bundles the memory API and a PostgreSQL instance into a single process on your machine. No data leaves your environment. The entire codebase is open source.
+**Local-first, open source.** Hindsight runs through `hindsight-embed`, a daemon that bundles the memory API and a PostgreSQL instance into a single process on your machine. No data leaves your environment. The entire codebase is open source. See the [developer quickstart](/developer/api/quickstart) to run Hindsight on your own infrastructure.
 
 ```
 ┌─────────────────┐ ┌────────────────────────────────┐
@@ -295,6 +295,8 @@ USER myuser
 - You need shared memory across multiple OpenClaw instances or team members.
 - You want fine-grained control over what gets retained, what gets recalled, and how memory is isolated across agents and channels.
 
+If you use Claude Code alongside OpenClaw, Hindsight has a [dedicated Claude Code integration](/sdks/integrations/claude-code) with the same auto-recall behavior, letting both tools share the same memory bank.
+
 **Local daemon vs. Cloud vs. External API:**
 
 The local embedded daemon keeps everything on one machine, the right default for personal use. Cloud is the easiest path for shared memory or multi-device setups, with no infrastructure to manage. External API mode gives you the same shared-memory benefits with a self-hosted server. Since Hindsight is open source, you can self-host on your own infrastructure and keep the same data ownership guarantees.
@@ -316,4 +318,5 @@ And because Hindsight is open source and local-first (or Cloud, if you prefer), 
 - Adjust `dynamicBankGranularity` if you want memories shared across channels or isolated per provider.
 - Browse the [Hindsight source on GitHub](https://github.com/vectorize-io/hindsight) to understand the extraction pipeline.
 - Read the [full integration docs](/sdks/integrations/openclaw) for the complete configuration reference.
+- Check the [OpenClaw plugin changelog](/changelog/integrations/openclaw) for the full release history and recent updates.
 - If you're running multiple OpenClaw instances, try Cloud or External API mode for shared memory.
