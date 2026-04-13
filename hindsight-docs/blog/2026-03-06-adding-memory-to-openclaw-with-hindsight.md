@@ -100,9 +100,9 @@ npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
 npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
     --mode embedded --provider openai --api-key sk-...
 
-# Embedded with Claude Code (no API key needed)
+# Embedded with Claude Code
 npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
-    --mode embedded --provider claude-code
+    --mode embedded --provider claude-code --api-key sk-ant-...
 ```
 
 The LLM you configure here is **only for memory extraction** (background processing). Your main OpenClaw agent uses whatever model you configure separately.
