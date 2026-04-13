@@ -828,6 +828,7 @@ function getPluginConfig(api: MoltbotPluginAPI): PluginConfig {
     autoRetain: config.autoRetain !== false, // Default: true
     retainRoles: Array.isArray(config.retainRoles) ? config.retainRoles : undefined,
     retainFormat: config.retainFormat === 'text' ? 'text' : 'json',
+    retainToolCalls: config.retainToolCalls !== false,
     recallBudget: config.recallBudget || 'mid',
     recallMaxTokens: config.recallMaxTokens || 1024,
     recallTypes: Array.isArray(config.recallTypes) ? config.recallTypes : ['world', 'experience'],
@@ -1643,7 +1644,18 @@ export function prepareRetentionTranscript(
     targetMessages = messages.slice(lastUserIdx);
   }
 
-  // Role filtering
+  const format = pluginConfig.retainFormat ?? 'json';
+  const includeToolCalls = format === 'json' && pluginConfig.retainToolCalls !== false;
+
+  if (includeToolCalls) {
+    const structured = buildAnthropicStructuredMessages(targetMessages, pluginConfig);
+    if (structured.length === 0) return null;
+    const transcript = JSON.stringify(structured);
+    if (!transcript.trim() || transcript.length < 10) return null;
+    return { transcript, messageCount: structured.length };
+  }
+
+  // Role filtering (text-only path)
   const allowedRoles = new Set(pluginConfig.retainRoles || ['user', 'assistant']);
   const filteredMessages = targetMessages.filter((m: any) => allowedRoles.has(m.role));
 
@@ -1651,8 +1663,6 @@ export function prepareRetentionTranscript(
     return null; // No messages to retain
   }
 
-  // Normalize each message to { role, content: <cleaned string> }, dropping
-  // anything that's empty after stripping memory/metadata markers.
   const normalized: Array<{ role: string; content: string }> = [];
   for (const msg of filteredMessages) {
     const role = msg.role || 'unknown';
@@ -1667,7 +1677,6 @@ export function prepareRetentionTranscript(
         .join('\n');
     }
 
-    // Strip plugin-injected memory tags and metadata envelopes to prevent feedback loop
     content = stripMemoryTags(content);
     content = stripMetadataEnvelopes(content);
 
@@ -1676,21 +1685,121 @@ export function prepareRetentionTranscript(
     }
   }
 
-  if (normalized.length === 0) {
-    return null;
-  }
+  if (normalized.length === 0) return null;
 
-  const format = pluginConfig.retainFormat ?? 'json';
   const transcript =
     format === 'text'
       ? normalized.map(({ role, content }) => `[role: ${role}]\n${content}\n[${role}:end]`).join('\n\n')
       : JSON.stringify(normalized);
 
-  if (!transcript.trim() || transcript.length < 10) {
-    return null; // Transcript too short
-  }
+  if (!transcript.trim() || transcript.length < 10) return null;
 
   return { transcript, messageCount: normalized.length };
+}
+
+// MCP tool name suffixes that are operational (recall/retain/search/CRUD) and
+// shouldn't be retained — preserves agent reasoning without creating feedback
+// loops on Hindsight's own MCP surface. Mirrors the claude-code integration.
+const OPERATIONAL_TOOL_PATTERN = /(?:recall|retain|reflect|search|extract|create_|delete_|update_|get_|list_)/i;
+const TOOL_RESULT_MAX_CHARS = 2000;
+
+/**
+ * Build an Anthropic-shaped message array from OpenClaw's session messages.
+ *
+ * OpenClaw stores assistant content as a block array that may contain
+ * `text`, `thinking`, and `toolCall` entries, and emits tool results as
+ * separate messages with `role: "toolResult"`. The Anthropic wire format
+ * expected by Hindsight's Claude Code integration (and downstream consumers)
+ * is: assistant messages carry `text` and `tool_use` blocks, and tool
+ * results live in a following `user` message as `tool_result` blocks.
+ * We translate to that shape here so stored documents are consistent
+ * across integrations.
+ */
+function buildAnthropicStructuredMessages(
+  messages: any[],
+  pluginConfig: PluginConfig,
+): Array<{ role: string; content: any[] }> {
+  const allowedRoles = new Set(pluginConfig.retainRoles || ['user', 'assistant']);
+  const out: Array<{ role: string; content: any[] }> = [];
+
+  for (const msg of messages) {
+    const rawRole = msg?.role;
+    if (rawRole === 'toolResult') {
+      const toolResultBlock = buildToolResultBlock(msg);
+      if (!toolResultBlock) continue;
+      // Fold tool_result into a synthetic user message (Anthropic convention),
+      // merging with an immediately-preceding synthetic user if one exists so
+      // consecutive tool results stay together.
+      const last = out[out.length - 1];
+      if (last && last.role === 'user' && last.content.every((b: any) => b.type === 'tool_result')) {
+        last.content.push(toolResultBlock);
+      } else {
+        out.push({ role: 'user', content: [toolResultBlock] });
+      }
+      continue;
+    }
+
+    if (!allowedRoles.has(rawRole)) continue;
+
+    const blocks = extractStructuredBlocks(msg.content, rawRole);
+    if (blocks.length > 0) {
+      out.push({ role: rawRole, content: blocks });
+    }
+  }
+
+  return out;
+}
+
+function extractStructuredBlocks(content: any, role: string): any[] {
+  if (typeof content === 'string') {
+    const cleaned = stripMetadataEnvelopes(stripMemoryTags(content)).trim();
+    return cleaned ? [{ type: 'text', text: cleaned }] : [];
+  }
+  if (!Array.isArray(content)) return [];
+
+  const blocks: any[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue;
+    const blockType = block.type;
+
+    if (blockType === 'text') {
+      const cleaned = stripMetadataEnvelopes(stripMemoryTags(block.text ?? '')).trim();
+      if (cleaned) blocks.push({ type: 'text', text: cleaned });
+    } else if (blockType === 'toolCall' && role === 'assistant') {
+      const name = typeof block.name === 'string' ? block.name : 'unknown';
+      // Skip Hindsight's own MCP operational tools to avoid feedback loops.
+      if (name.startsWith('mcp__') && OPERATIONAL_TOOL_PATTERN.test(name.split('__').pop() ?? '')) continue;
+      const input = block.arguments && typeof block.arguments === 'object' ? block.arguments : {};
+      const id = typeof block.id === 'string' ? block.id : undefined;
+      const toolUse: any = { type: 'tool_use', name, input };
+      if (id) toolUse.id = id;
+      blocks.push(toolUse);
+    }
+    // thinking / unknown types are dropped
+  }
+  return blocks;
+}
+
+function buildToolResultBlock(msg: any): any | null {
+  const toolUseId = typeof msg.toolCallId === 'string' ? msg.toolCallId : '';
+  const raw = msg.content;
+  let text = '';
+  if (typeof raw === 'string') {
+    text = raw;
+  } else if (Array.isArray(raw)) {
+    text = raw
+      .filter((b: any) => b && b.type === 'text' && typeof b.text === 'string')
+      .map((b: any) => b.text)
+      .join('\n');
+  }
+  text = text.trim();
+  if (!text) return null;
+  if (text.length > TOOL_RESULT_MAX_CHARS) {
+    text = text.slice(0, TOOL_RESULT_MAX_CHARS) + '... (truncated)';
+  }
+  const block: any = { type: 'tool_result', content: text };
+  if (toolUseId) block.tool_use_id = toolUseId;
+  return block;
 }
 
 export function sliceLastTurnsByUserBoundary(messages: any[], turns: number): any[] {
