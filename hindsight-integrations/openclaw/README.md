@@ -9,7 +9,7 @@ Biomimetic long-term memory for [OpenClaw](https://openclaw.ai) using [Hindsight
 openclaw plugins install @vectorize-io/hindsight-openclaw
 
 # 2. Run the interactive setup wizard
-npx @vectorize-io/hindsight-openclaw hindsight-openclaw-setup
+npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup
 
 # 3. Start OpenClaw
 openclaw gateway

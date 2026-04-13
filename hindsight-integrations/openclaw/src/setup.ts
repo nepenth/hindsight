@@ -16,6 +16,8 @@
  */
 
 import * as p from '@clack/prompts';
+import { realpathSync } from 'fs';
+import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import {
   DEFAULT_OPENCLAW_CONFIG_PATH,
@@ -473,12 +475,27 @@ async function main(): Promise<void> {
 /**
  * Only run `main()` when this file is the Node entry point. Importing it from
  * a test (or any other module) should not trigger the interactive wizard.
+ *
+ * When invoked through `node_modules/.bin/hindsight-openclaw-setup` (npm-created
+ * symlink), `process.argv[1]` points at the symlink while `import.meta.url`
+ * resolves to the real file. Canonicalize both via `realpath` so the check
+ * still matches — otherwise `main()` never runs on bin invocations and the
+ * command silently exits with no output.
  */
+function canonicalize(path: string): string {
+  const resolved = resolve(path);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 function isDirectRun(): boolean {
   const entry = process.argv[1];
   if (!entry) return false;
   try {
-    return fileURLToPath(import.meta.url) === entry;
+    return canonicalize(entry) === canonicalize(fileURLToPath(import.meta.url));
   } catch {
     return false;
   }

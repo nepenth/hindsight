@@ -22,8 +22,12 @@ openclaw plugins install @vectorize-io/hindsight-openclaw
 
 **Step 2: Run the setup wizard**
 
+`openclaw plugins install` unpacks the plugin into `~/.openclaw/extensions/`
+but does not put its bins on `PATH`. Run the wizard through `npx` instead —
+it resolves the bin out of the published package:
+
 ```bash
-hindsight-openclaw-setup
+npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup
 ```
 
 The wizard walks you through picking one of three install modes:
@@ -38,19 +42,23 @@ For CI and scripted setups the wizard also runs non-interactively:
 
 ```bash
 # Cloud
-hindsight-openclaw-setup --mode cloud --token-env HINDSIGHT_CLOUD_TOKEN
+npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
+    --mode cloud --token-env HINDSIGHT_CLOUD_TOKEN
 
 # External API
-hindsight-openclaw-setup --mode api --api-url https://mcp.hindsight.example.com --no-token
+npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
+    --mode api --api-url https://mcp.hindsight.example.com --no-token
 
 # Embedded daemon with OpenAI
-hindsight-openclaw-setup --mode embedded --provider openai --api-key-env OPENAI_API_KEY
+npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
+    --mode embedded --provider openai --api-key-env OPENAI_API_KEY
 
 # Embedded daemon with Claude Code (no API key needed)
-hindsight-openclaw-setup --mode embedded --provider claude-code
+npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
+    --mode embedded --provider claude-code
 ```
 
-Run `hindsight-openclaw-setup --help` for the full flag list.
+Run `npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup --help` for the full flag list.
 
 **Step 3: Start OpenClaw**
 
