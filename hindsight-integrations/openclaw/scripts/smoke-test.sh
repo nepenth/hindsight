@@ -99,9 +99,18 @@ run_setup_mode() {
     openclaw config validate >&2 || true
     fail "openclaw config validate failed after: $label"
   fi
-  if ! openclaw plugins doctor 2>&1 | grep -q "No plugin issues detected"; then
-    openclaw plugins doctor >&2 || true
-    fail "plugins doctor reported issues after: $label"
+  # `openclaw plugins doctor` can print diagnostics for UNRELATED bundled
+  # plugins (e.g. ollama double-registration in clean CI envs). Only fail if
+  # doctor surfaces something that specifically names hindsight, or if the
+  # command itself exits non-zero.
+  local doctor_out
+  if ! doctor_out="$(openclaw plugins doctor 2>&1)"; then
+    printf '%s\n' "$doctor_out" >&2
+    fail "openclaw plugins doctor exited non-zero after: $label"
+  fi
+  if printf '%s' "$doctor_out" | grep -iE 'hindsight.*(fail|error|not loaded)|(fail|error).*hindsight' >/dev/null; then
+    printf '%s\n' "$doctor_out" >&2
+    fail "plugins doctor reported hindsight-specific issues after: $label"
   fi
   log "  ✓ $label → config valid + doctor clean"
 }
