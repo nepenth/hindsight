@@ -153,6 +153,12 @@
           "assistant"
         ]
       },
+      "retainFormat": {
+        "type": "string",
+        "description": "Serialization format for retained conversation content. 'json' (default) emits a structured array of {role, content} messages, matching the Claude Code integration. 'text' emits the legacy '[role: x] ... [x:end]' markers.",
+        "enum": ["json", "text"],
+        "default": "json"
+      },
       "retainEveryNTurns": {
         "type": "integer",
         "description": "Retain every Nth turn instead of every turn. 1 = every turn (default). Values > 1 enable chunked retention with a sliding window.",
@@ -367,6 +373,10 @@
     "retainRoles": {
       "label": "Retain Roles",
       "placeholder": "e.g. ['user', 'assistant']"
+    },
+    "retainFormat": {
+      "label": "Retain Format",
+      "placeholder": "json (default) or text (legacy markers)"
     },
     "retainEveryNTurns": {
       "label": "Retain Every N Turns",

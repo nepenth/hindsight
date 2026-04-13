@@ -72,6 +72,7 @@ export interface PluginConfig {
   dynamicBankGranularity?: Array<'agent' | 'provider' | 'channel' | 'user'>; // Fields for bank ID derivation. Default: ['agent', 'channel', 'user']
   autoRetain?: boolean; // Default: true
   retainRoles?: Array<'user' | 'assistant' | 'system' | 'tool'>; // Roles to include in retained transcript. Default: ['user', 'assistant']
+  retainFormat?: 'json' | 'text'; // Serialization format for retained conversation content. Default: 'json' (structured array of {role, content}); 'text' emits legacy '[role: x] ... [x:end]' markers.
   recallBudget?: 'low' | 'mid' | 'high'; // Recall effort. Default: 'mid'
   recallMaxTokens?: number; // Max tokens for recall response. Default: 1024
   recallTypes?: Array<'world' | 'experience' | 'observation'>; // Memory types to recall. Default: ['world', 'experience']

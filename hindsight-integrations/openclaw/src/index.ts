@@ -827,6 +827,7 @@ function getPluginConfig(api: MoltbotPluginAPI): PluginConfig {
     dynamicBankGranularity: Array.isArray(config.dynamicBankGranularity) ? config.dynamicBankGranularity : undefined,
     autoRetain: config.autoRetain !== false, // Default: true
     retainRoles: Array.isArray(config.retainRoles) ? config.retainRoles : undefined,
+    retainFormat: config.retainFormat === 'text' ? 'text' : 'json',
     recallBudget: config.recallBudget || 'mid',
     recallMaxTokens: config.recallMaxTokens || 1024,
     recallTypes: Array.isArray(config.recallTypes) ? config.recallTypes : ['world', 'experience'],
@@ -1650,37 +1651,46 @@ export function prepareRetentionTranscript(
     return null; // No messages to retain
   }
 
-  // Format messages into a transcript
-  const transcriptParts = filteredMessages
-    .map((msg: any) => {
-      const role = msg.role || 'unknown';
-      let content = '';
+  // Normalize each message to { role, content: <cleaned string> }, dropping
+  // anything that's empty after stripping memory/metadata markers.
+  const normalized: Array<{ role: string; content: string }> = [];
+  for (const msg of filteredMessages) {
+    const role = msg.role || 'unknown';
+    let content = '';
 
-      // Handle different content formats
-      if (typeof msg.content === 'string') {
-        content = msg.content;
-      } else if (Array.isArray(msg.content)) {
-        content = msg.content
-          .filter((block: any) => block.type === 'text')
-          .map((block: any) => block.text)
-          .join('\n');
-      }
+    if (typeof msg.content === 'string') {
+      content = msg.content;
+    } else if (Array.isArray(msg.content)) {
+      content = msg.content
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
+        .join('\n');
+    }
 
-      // Strip plugin-injected memory tags and metadata envelopes to prevent feedback loop
-      content = stripMemoryTags(content);
-      content = stripMetadataEnvelopes(content);
+    // Strip plugin-injected memory tags and metadata envelopes to prevent feedback loop
+    content = stripMemoryTags(content);
+    content = stripMetadataEnvelopes(content);
 
-      return content.trim() ? `[role: ${role}]\n${content}\n[${role}:end]` : null;
-    })
-    .filter(Boolean);
+    if (content.trim()) {
+      normalized.push({ role, content });
+    }
+  }
 
-  const transcript = transcriptParts.join('\n\n');
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  const format = pluginConfig.retainFormat ?? 'json';
+  const transcript =
+    format === 'text'
+      ? normalized.map(({ role, content }) => `[role: ${role}]\n${content}\n[${role}:end]`).join('\n\n')
+      : JSON.stringify(normalized);
 
   if (!transcript.trim() || transcript.length < 10) {
     return null; // Transcript too short
   }
 
-  return { transcript, messageCount: transcriptParts.length };
+  return { transcript, messageCount: normalized.length };
 }
 
 export function sliceLastTurnsByUserBoundary(messages: any[], turns: number): any[] {

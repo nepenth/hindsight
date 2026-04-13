@@ -376,6 +376,34 @@ describe('prepareRetentionTranscript', () => {
     expect(result?.transcript).toContain('Dark mode is a display setting.');
   });
 
+  it('emits JSON by default (array of {role, content})', () => {
+    const messages = [
+      { role: 'user', content: 'Hello there' },
+      { role: 'assistant', content: 'Hi back' },
+    ];
+    const result = prepareRetentionTranscript(messages, baseConfig);
+    expect(result).not.toBeNull();
+    const parsed = JSON.parse(result!.transcript);
+    expect(parsed).toEqual([
+      { role: 'user', content: 'Hello there' },
+      { role: 'assistant', content: 'Hi back' },
+    ]);
+    // No legacy [role: x] markers in the JSON payload.
+    expect(result!.transcript).not.toContain('[role:');
+  });
+
+  it('emits legacy text markers when retainFormat is "text"', () => {
+    const config: PluginConfig = { ...baseConfig, retainFormat: 'text' };
+    const messages = [
+      { role: 'user', content: 'Hello there' },
+      { role: 'assistant', content: 'Hi back' },
+    ];
+    const result = prepareRetentionTranscript(messages, config);
+    expect(result).not.toBeNull();
+    expect(result!.transcript).toContain('[role: user]\nHello there\n[user:end]');
+    expect(result!.transcript).toContain('[role: assistant]\nHi back\n[assistant:end]');
+  });
+
   it('reports accurate messageCount excluding empty messages', () => {
     const messages = [
       { role: 'user', content: 'Real message' },
