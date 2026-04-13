@@ -137,53 +137,67 @@ def resolve_secret(value: Any) -> str | None:
     return None
 
 
-# ────────────────────── hindsight HTTP ──────────────────────
+# ────────────────────── hindsight CLI ──────────────────────
+#
+# We drive bank + mental-model setup through the `hindsight` CLI rather than
+# raw HTTP so credentials live in `~/.hindsight/config` (the CLI's source of
+# truth) instead of being sprinkled across env files. The one exception is
+# the mental-model `refresh_after_consolidation` trigger — `hindsight
+# mental-model create/update` doesn't expose that flag yet, so we PATCH it
+# directly via urllib using the same plugin creds.
 
 
-def http(method: str, url: str, token: str, body: dict | None = None) -> tuple[int, dict | None]:
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("Authorization", f"Bearer {token}")
-    if data is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req) as resp:
-            payload = resp.read().decode() or ""
-            return resp.status, (json.loads(payload) if payload else None)
-    except urllib.error.HTTPError as e:
-        payload = e.read().decode() or ""
-        try:
-            parsed = json.loads(payload) if payload else None
-        except json.JSONDecodeError:
-            parsed = {"raw": payload}
-        return e.code, parsed
+def configure_hindsight_cli(api_url: str, token: str) -> None:
+    """Point the hindsight CLI at the openclaw plugin's URL/token.
+
+    Writes ~/.hindsight/config so all subsequent `hindsight …` calls
+    (and any skill that shells out to the CLI) hit the configured Cloud /
+    external API instead of the CLI's localhost:8888 default.
+    """
+    cmd = ["hindsight", "configure", "--api-url", api_url]
+    if token:
+        cmd += ["--api-key", token]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        die(f"`hindsight configure` failed:\n{proc.stderr or proc.stdout}")
+    ok(f"hindsight CLI pointed at {api_url}")
 
 
-def hindsight_health(api_url: str, token: str) -> None:
-    status, _ = http("GET", f"{api_url}/v1/default/banks?limit=1", token)
-    if status >= 400:
-        die(f"Hindsight API health check failed (status {status}) at {api_url}")
-    ok(f"Hindsight reachable at {api_url}")
+def hindsight_cli(args: list[str], *, allow_fail: bool = False) -> subprocess.CompletedProcess:
+    info("$ hindsight " + " ".join(args))
+    proc = subprocess.run(["hindsight", *args], capture_output=True, text=True)
+    if proc.returncode != 0 and not allow_fail:
+        die(f"`hindsight {' '.join(args)}` failed:\n{(proc.stderr or proc.stdout).strip()}")
+    return proc
 
 
-def upsert_bank(api_url: str, token: str, bank_id: str, name: str | None) -> None:
-    body: dict[str, Any] = {}
+def hindsight_health() -> None:
+    proc = hindsight_cli(["health"], allow_fail=True)
+    if proc.returncode != 0:
+        die(f"hindsight health check failed:\n{(proc.stderr or proc.stdout).strip()}")
+    ok("Hindsight reachable")
+
+
+def upsert_bank(bank_id: str, name: str | None) -> None:
+    cmd = ["bank", "create", bank_id]
     if name:
-        body["name"] = name
-    status, payload = http("PUT", f"{api_url}/v1/default/banks/{bank_id}", token, body)
-    if status >= 400:
-        die(f"create/update bank '{bank_id}' failed: {status} {payload}")
-    ok(f"bank '{bank_id}' upserted")
+        cmd += ["--name", name]
+    proc = hindsight_cli(cmd, allow_fail=True)
+    if proc.returncode == 0:
+        ok(f"bank '{bank_id}' created")
+    elif "already exists" in (proc.stderr + proc.stdout).lower():
+        ok(f"bank '{bank_id}' already exists")
+    else:
+        die(f"create bank '{bank_id}' failed:\n{(proc.stderr or proc.stdout).strip()}")
 
 
-def patch_bank_config(api_url: str, token: str, bank_id: str, updates: dict[str, Any]) -> None:
+def patch_bank_config(bank_id: str, updates: dict[str, str]) -> None:
     if not updates:
         return
-    status, payload = http(
-        "PATCH", f"{api_url}/v1/default/banks/{bank_id}/config", token, {"updates": updates}
-    )
-    if status >= 400:
-        die(f"update bank config failed: {status} {payload}")
+    cmd = ["bank", "set-config", bank_id]
+    for key, value in updates.items():
+        cmd += [f"--{key.replace('_', '-')}", value]
+    hindsight_cli(cmd)
     ok(f"bank '{bank_id}' missions configured ({', '.join(updates)})")
 
 
@@ -195,35 +209,47 @@ def upsert_mental_model(api_url: str, token: str, bank_id: str, spec: dict[str, 
     source_query = spec.get("source_query")
     if not source_query:
         die(f"mental-model '{mm_id}' missing 'source_query'")
+
+    # `hindsight mental-model create` returns a generic 500 when an MM with
+    # the same id already exists, so we probe with `get` first instead of
+    # relying on an "already exists" error message.
+    existing = hindsight_cli(
+        ["mental-model", "get", bank_id, mm_id], allow_fail=True
+    )
+    if existing.returncode == 0:
+        ok(f"mental-model '{mm_id}' already exists")
+    else:
+        proc = hindsight_cli(
+            ["mental-model", "create", bank_id, name, source_query, "--id", mm_id],
+            allow_fail=True,
+        )
+        if proc.returncode != 0:
+            die(f"create mental-model '{mm_id}' failed:\n{(proc.stderr or proc.stdout).strip()}")
+        ok(f"mental-model '{mm_id}' created")
+
+    # The CLI doesn't expose the trigger field yet — PATCH it ourselves.
     tags = spec.get("tags") or []
     trigger = {}
     if spec.get("refresh_after_consolidation"):
         trigger["refresh_after_consolidation"] = True
-
-    base = f"{api_url}/v1/default/banks/{bank_id}/mental-models"
-    status, _ = http("GET", f"{base}/{mm_id}", token)
-
-    if status == 404:
-        body: dict[str, Any] = {"id": mm_id, "name": name, "source_query": source_query, "tags": tags}
-        if trigger:
-            body["trigger"] = trigger
-        s, payload = http("POST", base, token, body)
-        if s >= 400:
-            die(f"create mental-model '{mm_id}' failed: {s} {payload}")
-        ok(f"mental-model '{mm_id}' created")
+    if not trigger and not tags:
         return
-
-    if status >= 400:
-        die(f"check mental-model '{mm_id}' failed: {status}")
-
-    # exists → patch
-    body = {"name": name, "source_query": source_query, "tags": tags}
+    body: dict[str, Any] = {}
     if trigger:
         body["trigger"] = trigger
-    s, payload = http("PATCH", f"{base}/{mm_id}", token, body)
-    if s >= 400:
-        die(f"update mental-model '{mm_id}' failed: {s} {payload}")
-    ok(f"mental-model '{mm_id}' updated")
+    if tags:
+        body["tags"] = tags
+    url = f"{api_url}/v1/default/banks/{bank_id}/mental-models/{mm_id}"
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode(), method="PATCH"
+    )
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        urllib.request.urlopen(req).read()
+    except urllib.error.HTTPError as e:
+        die(f"set mental-model '{mm_id}' trigger failed: {e.code} {e.read().decode()[:200]}")
+    ok(f"mental-model '{mm_id}' trigger configured ({list(trigger) or 'tags only'})")
 
 
 # ────────────────────── workflow ──────────────────────
@@ -282,33 +308,41 @@ def cmd_install(source_dir: Path, model: str | None = None) -> None:
             "plugin config has no hindsightApiUrl. Configure the plugin first "
             "(`hindsight-openclaw-setup`)."
         )
-    token = resolve_secret(plugin_cfg.get("hindsightApiToken"))
-    if not token:
-        die(
-            "could not resolve hindsightApiToken from plugin config "
-            "(check SecretRef env var is exported)"
-        )
-    hindsight_health(api_url, token)
+    token = resolve_secret(plugin_cfg.get("hindsightApiToken")) or ""
+    # Configure the hindsight CLI so subsequent `hindsight …` commands (and
+    # any skill that shells out to the CLI) hit the same Hindsight instance
+    # the openclaw plugin is configured for, instead of falling back to the
+    # CLI's localhost:8888 default.
+    configure_hindsight_cli(api_url, token)
+    hindsight_health()
 
     # 2. Create the OpenClaw agent (idempotent: skip if already exists).
     existing = run(["openclaw", "agents", "list", "--json"], check=False)
     already = False
     if existing.returncode == 0:
-        # `openclaw … --json` prefixes its output with config warnings, so
-        # scan for the JSON payload rather than parsing stdout directly.
-        idx = existing.stdout.find("[")
-        if idx >= 0:
+        # `openclaw … --json` prefixes its output with config warnings AND
+        # plugin-load logs that contain stray `[` chars, so we can't grab the
+        # first `[` and call `json.loads`. Find the last `[` that opens a
+        # balanced array containing the agent list — easiest just to walk
+        # candidates from the end.
+        out = existing.stdout
+        for start in range(len(out) - 1, -1, -1):
+            if out[start] != "[":
+                continue
             try:
-                for a in json.loads(existing.stdout[idx:]) or []:
-                    if isinstance(a, dict) and (
-                        a.get("agentId") == name
-                        or a.get("id") == name
-                        or a.get("name") == name
-                    ):
-                        already = True
-                        break
+                payload = json.loads(out[start:])
             except json.JSONDecodeError:
-                pass
+                continue
+            if not isinstance(payload, list):
+                continue
+            for a in payload:
+                if isinstance(a, dict) and (
+                    a.get("agentId") == name
+                    or a.get("id") == name
+                    or a.get("name") == name
+                ):
+                    already = True
+            break
     if already:
         ok(f"openclaw agent '{name}' already exists, skipping create")
     else:
@@ -367,14 +401,14 @@ def cmd_install(source_dir: Path, model: str | None = None) -> None:
             die(
                 f"{setup_yaml_path.name}: bank.id missing and not derivable from agent.yaml"
             )
-        upsert_bank(api_url, token, bank_id, bank_spec.get("name"))
+        upsert_bank(bank_id, bank_spec.get("name"))
 
         updates: dict[str, str] = {}
         for key in ("retain_mission", "observations_mission", "reflect_mission"):
             val = bank_spec.get(key)
             if val:
                 updates[key] = val.strip()
-        patch_bank_config(api_url, token, bank_id, updates)
+        patch_bank_config(bank_id, updates)
 
         for mm in spec.get("mental_models") or []:
             upsert_mental_model(api_url, token, bank_id, mm)
