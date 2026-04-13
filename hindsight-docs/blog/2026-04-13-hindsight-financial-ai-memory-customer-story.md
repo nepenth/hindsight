@@ -1,7 +1,7 @@
 ---
 title: "How I Built Multi-User AI Memory into a Financial Product from Day One"
 authors: [mingfang, benfrank241]
-date: 2026-04-10T09:00
+date: 2026-04-13T09:00
 tags: [hindsight, self-hosted, finance, customer-story, memory, agents, multi-user]
 description: "A fintech co-founder shares how he integrated Hindsight into a financial AI system from the start, using self-hosted deployment and tag-based isolation for multi-user memory."
 image: /img/blog/hindsight-financial-ai-memory.png
