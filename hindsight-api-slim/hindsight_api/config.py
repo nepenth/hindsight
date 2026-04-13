@@ -1367,7 +1367,9 @@ class HindsightConfig:
             # SiliconFlow reranker (Cohere-compatible /rerank endpoint)
             reranker_siliconflow_api_key=os.getenv(ENV_RERANKER_SILICONFLOW_API_KEY),
             reranker_siliconflow_model=os.getenv(ENV_RERANKER_SILICONFLOW_MODEL, DEFAULT_RERANKER_SILICONFLOW_MODEL),
-            reranker_siliconflow_base_url=os.getenv(ENV_RERANKER_SILICONFLOW_BASE_URL, DEFAULT_RERANKER_SILICONFLOW_BASE_URL),
+            reranker_siliconflow_base_url=os.getenv(
+                ENV_RERANKER_SILICONFLOW_BASE_URL, DEFAULT_RERANKER_SILICONFLOW_BASE_URL
+            ),
             # Google Discovery Engine reranker (with fallback to LLM Vertex AI keys)
             reranker_google_model=os.getenv(ENV_RERANKER_GOOGLE_MODEL, DEFAULT_RERANKER_GOOGLE_MODEL),
             reranker_google_project_id=os.getenv(ENV_RERANKER_GOOGLE_PROJECT_ID)

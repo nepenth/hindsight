@@ -793,9 +793,7 @@ class SiliconFlowCrossEncoder(CrossEncoderModel):
     async def initialize(self) -> None:
         if self._client._async_client is not None:
             return
-        logger.info(
-            f"Reranker: initializing SiliconFlow provider at {self.base_url} with model {self.model}"
-        )
+        logger.info(f"Reranker: initializing SiliconFlow provider at {self.base_url} with model {self.model}")
         await self._client.initialize()
         logger.info("Reranker: SiliconFlow provider initialized")
 
