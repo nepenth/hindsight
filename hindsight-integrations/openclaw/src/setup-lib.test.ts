@@ -180,7 +180,7 @@ describe('applyEmbeddedMode', () => {
 describe('summarize*', () => {
   it('produces human-readable mode summaries', () => {
     expect(summarizeCloud({ tokenEnvVar: 'HINDSIGHT_CLOUD_TOKEN' })).toBe(
-      'Cloud → https://api.hindsight.ai (token from ${HINDSIGHT_CLOUD_TOKEN})',
+      'Cloud → https://api.hindsight.vectorize.io (token from ${HINDSIGHT_CLOUD_TOKEN})',
     );
     expect(summarizeApi({ apiUrl: 'https://api.example.com', tokenEnvVar: 'T' })).toBe(
       'External API → https://api.example.com (authenticated)',

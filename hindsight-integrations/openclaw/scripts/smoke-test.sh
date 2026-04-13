@@ -188,7 +188,7 @@ main() {
   # -------------------------------------------------------------------------
   run_setup_mode "cloud (default URL)" \
     --mode cloud --token-env HINDSIGHT_CLOUD_TOKEN
-  [[ "$(get_config_value plugins.entries.hindsight-openclaw.config.hindsightApiUrl)" == "https://api.hindsight.ai" ]] \
+  [[ "$(get_config_value plugins.entries.hindsight-openclaw.config.hindsightApiUrl)" == "https://api.hindsight.vectorize.io" ]] \
     || fail "cloud mode: hindsightApiUrl not set to the default URL"
 
   run_setup_mode "external API (no auth)" \

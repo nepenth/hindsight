@@ -17,7 +17,7 @@ export const PLUGIN_ID = 'hindsight-openclaw';
  * Default Hindsight Cloud endpoint. Update this when the hosted service URL is
  * finalized, or users can override it at the prompt.
  */
-export const HINDSIGHT_CLOUD_URL = 'https://api.hindsight.ai';
+export const HINDSIGHT_CLOUD_URL = 'https://api.hindsight.vectorize.io';
 
 export const DEFAULT_OPENCLAW_CONFIG_PATH = join(homedir(), '.openclaw', 'openclaw.json');
 

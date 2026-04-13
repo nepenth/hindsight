@@ -103,7 +103,7 @@ describe('runNonInteractive', () => {
     expect(result.summary).toContain('Cloud');
     const cfg = await readBack();
     const pc = cfg.plugins?.entries?.[PLUGIN_ID]?.config ?? {};
-    expect(pc.hindsightApiUrl).toBe('https://api.hindsight.ai');
+    expect(pc.hindsightApiUrl).toBe('https://api.hindsight.vectorize.io');
     expect(pc.hindsightApiToken).toEqual({
       source: 'env',
       provider: 'default',
@@ -228,6 +228,6 @@ describe('runNonInteractive', () => {
     const pc = cfg.plugins?.entries?.[PLUGIN_ID]?.config ?? {};
     expect(pc.llmProvider).toBeUndefined();
     expect(pc.llmApiKey).toBeUndefined();
-    expect(pc.hindsightApiUrl).toBe('https://api.hindsight.ai');
+    expect(pc.hindsightApiUrl).toBe('https://api.hindsight.vectorize.io');
   });
 });
