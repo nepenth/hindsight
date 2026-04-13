@@ -15,11 +15,24 @@ These tests verify:
 """
 
 import sys
+import types
 from unittest.mock import patch
 
 import pytest
 
 from hindsight_api.engine.cross_encoder import JinaMLXCrossEncoder
+
+
+def _stub_mlx_modules() -> dict[str, types.ModuleType]:
+    """Stub mlx + mlx.core so `import mlx.core` succeeds even without mlx installed."""
+    import importlib.machinery
+
+    mlx = types.ModuleType("mlx")
+    mlx.__spec__ = importlib.machinery.ModuleSpec("mlx", loader=None)
+    mlx_core = types.ModuleType("mlx.core")
+    mlx_core.__spec__ = importlib.machinery.ModuleSpec("mlx.core", loader=None)
+    mlx.core = mlx_core
+    return {"mlx": mlx, "mlx.core": mlx_core}
 
 
 @pytest.mark.asyncio
@@ -30,16 +43,16 @@ async def test_initialize_surfaces_transitive_import_error():
     real_import = __import__
 
     def fake_import(name, *args, **kwargs):
-        if name == "mlx_lm":
+        if name == "mlx_lm" or name.startswith("mlx_lm."):
             raise ImportError("cannot import name 'AutoTokenizer' from 'transformers'")
         return real_import(name, *args, **kwargs)
 
-    # Ensure mlx_lm isn't already cached from an earlier import
     sys.modules.pop("mlx_lm", None)
 
-    with patch("builtins.__import__", side_effect=fake_import):
-        with pytest.raises(ImportError, match="AutoTokenizer"):
-            await encoder.initialize()
+    with patch.dict(sys.modules, _stub_mlx_modules()):
+        with patch("builtins.__import__", side_effect=fake_import):
+            with pytest.raises(ImportError, match="AutoTokenizer"):
+                await encoder.initialize()
 
 
 @pytest.mark.asyncio
