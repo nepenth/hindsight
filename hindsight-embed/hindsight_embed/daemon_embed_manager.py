@@ -237,6 +237,15 @@ class DaemonEmbedManager(EmbedManager):
             if value:
                 env[env_key] = str(value)
 
+        # Propagate any other HINDSIGHT_* keys from the merged profile/explicit
+        # config into the daemon env. Without this, arbitrary settings in the
+        # profile's .env file (e.g. HINDSIGHT_API_EMBEDDINGS_LOCAL_FORCE_CPU,
+        # HINDSIGHT_API_EMBEDDINGS_PROVIDER) are silently dropped because the
+        # whitelist above only covers LLM/log/idle_timeout keys.
+        for key, value in config.items():
+            if key.startswith("HINDSIGHT_") and value is not None:
+                env[key] = str(value)
+
         # Use profile-specific database (check config for override)
         db_override = config.get("HINDSIGHT_EMBED_API_DATABASE_URL") or env.get("HINDSIGHT_EMBED_API_DATABASE_URL")
         if db_override:
