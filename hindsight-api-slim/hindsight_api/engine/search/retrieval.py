@@ -145,18 +145,23 @@ async def retrieve_semantic_bm25_combined(
     )
     table = fq_table("memory_units")
 
+    config = get_config()
+    # Non-PG backends skip BM25 (requires different full-text search setup)
+    _is_pg = getattr(conn, "backend_type", "postgresql") == "postgresql"
+
     # --- Parameter layout ---
     # $1 = query_emb_str  (semantic arms)
     # $2 = bank_id
-    # When tokens present:
+    # When tokens present (and PG backend):
     #   $3 = limit          (BM25 LIMIT; semantic uses inlined hnsw_fetch literal)
     #   $4 = bm25_text
     #   $5 = tags           (if present)
     #   $6+ = tag_groups params (one per leaf)
-    # When no tokens ($3 is skipped — not included in params to avoid type inference gap):
+    # When no tokens (or non-PG):
     #   $3 = tags           (if present)
     #   $4+ = tag_groups params (one per leaf)
-    tags_param_idx = 5 if tokens else 3
+    _include_bm25 = bool(tokens) and _is_pg
+    tags_param_idx = 5 if _include_bm25 else 3
     tags_clause = build_tags_where_clause_simple(tags, tags_param_idx, match=tags_match)
 
     # tag_groups params start immediately after the tags param slot
@@ -164,31 +169,49 @@ async def retrieve_semantic_bm25_combined(
     groups_clause, groups_params, _ = build_tag_groups_where_clause(tag_groups, tag_groups_param_start)
 
     # --- Semantic UNION ALL arms (one per fact_type) ---
-    # Each arm has its own ORDER BY embedding <=> $1 LIMIT {hnsw_fetch}, which
-    # lets the planner use the partial HNSW index for that fact_type.
+    # Each arm has its own ORDER BY ... LIMIT, enabling the partial HNSW indexes
+    # per fact_type instead of forcing a full sequential scan.
     sem_arms = []
     for ft in fact_types:
-        sem_arms.append(
-            f"(SELECT {cols},"
-            f"        1 - (embedding <=> $1::vector) AS similarity,"
-            f"        NULL::float AS bm25_score,"
-            f"        'semantic' AS source"
-            f" FROM {table}"
-            f" WHERE bank_id = $2"
-            f"   AND fact_type = '{ft}'"
-            f"   AND embedding IS NOT NULL"
-            f"   AND (1 - (embedding <=> $1::vector)) >= 0.3"
-            f"   {tags_clause}"
-            f"   {groups_clause}"
-            f" ORDER BY embedding <=> $1::vector"
-            f" LIMIT {hnsw_fetch})"
-        )
+        if not _is_pg:
+            # Non-PG: use VECTOR_DISTANCE function, FETCH FIRST syntax
+            sem_arms.append(
+                f"SELECT * FROM (SELECT {cols},"
+                f"        1 - VECTOR_DISTANCE(embedding, $1, COSINE) AS similarity,"
+                f"        NULL AS bm25_score,"
+                f"        'semantic' AS source"
+                f" FROM {table}"
+                f" WHERE bank_id = $2"
+                f"   AND fact_type = '{ft}'"
+                f"   AND embedding IS NOT NULL"
+                f"   AND (1 - VECTOR_DISTANCE(embedding, $1, COSINE)) >= 0.3"
+                f"   {tags_clause}"
+                f"   {groups_clause}"
+                f" ORDER BY VECTOR_DISTANCE(embedding, $1, COSINE)"
+                f" FETCH FIRST {hnsw_fetch} ROWS ONLY)"
+            )
+        else:
+            sem_arms.append(
+                f"(SELECT {cols},"
+                f"        1 - (embedding <=> $1::vector) AS similarity,"
+                f"        NULL::float AS bm25_score,"
+                f"        'semantic' AS source"
+                f" FROM {table}"
+                f" WHERE bank_id = $2"
+                f"   AND fact_type = '{ft}'"
+                f"   AND embedding IS NOT NULL"
+                f"   AND (1 - (embedding <=> $1::vector)) >= 0.3"
+                f"   {tags_clause}"
+                f"   {groups_clause}"
+                f" ORDER BY embedding <=> $1::vector"
+                f" LIMIT {hnsw_fetch})"
+            )
 
     arms = sem_arms
 
     # --- BM25 UNION ALL arms (one per fact_type, only when tokens present) ---
-    if tokens:
-        config = get_config()
+    # Non-PG backends skip BM25 (requires platform-specific full-text search setup)
+    if _include_bm25:
         if config.text_search_extension == "vchord":
             bm25_score_expr = (
                 "search_vector <&> to_bm25query('idx_memory_units_text_search', tokenize($4, 'llmlingua2'))"
@@ -227,7 +250,7 @@ async def retrieve_semantic_bm25_combined(
     query = "\nUNION ALL\n".join(arms)
 
     params: list = [query_emb_str, bank_id]
-    if tokens:
+    if _include_bm25:
         params.append(limit)  # $3: BM25 LIMIT (only referenced when tokens are present)
         params.append(bm25_text_param)  # $4
     if tags:

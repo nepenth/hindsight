@@ -11,7 +11,6 @@ from hindsight_api.engine.db.postgresql import PostgreSQLBackend
 from hindsight_api.engine.sql import SQLDialect, create_sql_dialect
 from hindsight_api.engine.sql.postgresql import PostgreSQLDialect
 
-
 # ---------------------------------------------------------------------------
 # ResultRow tests
 # ---------------------------------------------------------------------------
@@ -237,54 +236,66 @@ class TestOracleDialect:
 
 
 class TestOracleQueryRewriter:
+    """Tests for _rewrite_pg_to_oracle which returns (query, has_returning, returning_cols)."""
+
     def test_param_rewrite(self):
         from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
 
-        assert ":1" in _rewrite_pg_to_oracle("SELECT $1 FROM t")
-        assert ":2" in _rewrite_pg_to_oracle("WHERE a = $1 AND b = $2")
+        query, _, _ = _rewrite_pg_to_oracle("SELECT $1 FROM t")
+        assert ":1" in query
+        query2, _, _ = _rewrite_pg_to_oracle("WHERE a = $1 AND b = $2")
+        assert ":2" in query2
 
     def test_cast_removal(self):
         from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
 
-        result = _rewrite_pg_to_oracle("$1::jsonb")
-        assert "::jsonb" not in result
-        assert ":1" in result
+        query, _, _ = _rewrite_pg_to_oracle("$1::jsonb")
+        assert "::jsonb" not in query
+        assert ":1" in query
 
     def test_multiple_casts(self):
         from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
 
-        result = _rewrite_pg_to_oracle("$1::text, $2::uuid, $3::varchar[]")
-        assert "::text" not in result
-        assert "::uuid" not in result
-        assert "::varchar[]" not in result
+        query, _, _ = _rewrite_pg_to_oracle("$1::text, $2::uuid, $3::varchar[]")
+        assert "::text" not in query
+        assert "::uuid" not in query
+        assert "::varchar[]" not in query
 
     def test_now_to_systimestamp(self):
         from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
 
-        assert "SYSTIMESTAMP" in _rewrite_pg_to_oracle("updated_at > NOW()")
-        assert "NOW()" not in _rewrite_pg_to_oracle("updated_at > NOW()")
+        query, _, _ = _rewrite_pg_to_oracle("updated_at > NOW()")
+        assert "SYSTIMESTAMP" in query
+        assert "NOW()" not in query
 
     def test_gen_random_uuid(self):
         from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
 
-        assert "SYS_GUID()" in _rewrite_pg_to_oracle("gen_random_uuid()")
+        query, _, _ = _rewrite_pg_to_oracle("gen_random_uuid()")
+        assert "SYS_GUID()" in query
 
     def test_combined_rewrite(self):
         from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
 
-        result = _rewrite_pg_to_oracle(
+        query, ignore_dup, returning_cols = _rewrite_pg_to_oracle(
             "INSERT INTO t (id, data) VALUES ($1::uuid, $2::jsonb) RETURNING id"
         )
-        assert ":1" in result
-        assert ":2" in result
-        assert "::uuid" not in result
-        assert "::jsonb" not in result
+        assert ":1" in query
+        assert ":2" in query
+        assert "::uuid" not in query
+        assert "::jsonb" not in query
+        assert not ignore_dup
+        assert returning_cols == ["id"]
+        assert "RETURNING id INTO :ret_0" in query
 
     def test_no_rewrite_needed(self):
         from hindsight_api.engine.db.oracle import _rewrite_pg_to_oracle
 
         query = "SELECT 1 FROM DUAL"
-        assert _rewrite_pg_to_oracle(query) == query
+        result_query, ignore_dup, returning_cols = _rewrite_pg_to_oracle(query)
+        assert result_query == query
+        assert not ignore_dup
+        assert returning_cols is None
 
 
 # ---------------------------------------------------------------------------
@@ -311,10 +322,10 @@ class TestPostgreSQLBackendUnit:
 
 class TestConfig:
     def test_database_backend_field_exists(self):
-        from hindsight_api.config import HindsightConfig
-
         # Verify the field exists on the dataclass
         import dataclasses
+
+        from hindsight_api.config import HindsightConfig
 
         field_names = {f.name for f in dataclasses.fields(HindsightConfig)}
         assert "database_backend" in field_names

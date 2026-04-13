@@ -110,6 +110,41 @@ async def insert_facts_batch(
     # Note: tags are passed as JSON strings and converted back to varchar[] via jsonb_array_elements_text + array_agg
     # Query varies based on text search backend
     config = get_config()
+
+    if getattr(conn, "backend_type", "postgresql") != "postgresql":
+        # Non-PG: unnest is not available — insert rows individually.
+        # Tags and observation_scopes are stored as-is; tags are decoded from
+        # the JSON string back to a Python list so the driver can bind them.
+        unit_ids = []
+        for i in range(len(fact_texts)):
+            tags_value = json.loads(tags_list[i]) if tags_list[i] else []
+            row_id = await conn.fetchval(
+                f"""
+                INSERT INTO {fq_table("memory_units")} (bank_id, text, embedding, event_date, occurred_start,
+                    occurred_end, mentioned_at, context, fact_type, metadata, chunk_id, document_id,
+                    tags, observation_scopes, text_signals)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                RETURNING id
+                """,
+                bank_id,
+                fact_texts[i],
+                embeddings[i],
+                event_dates[i],
+                occurred_starts[i],
+                occurred_ends[i],
+                mentioned_ats[i],
+                contexts[i],
+                fact_types[i],
+                metadata_jsons[i],
+                chunk_ids[i],
+                document_ids[i],
+                tags_value,
+                observation_scopes_list[i],
+                text_signals_list[i],
+            )
+            unit_ids.append(str(row_id))
+        return unit_ids
+
     if config.text_search_extension == "vchord":
         # VectorChord: manually tokenize and insert search_vector
         # text_signals (entity names etc.) are included in the tokenize input for enriched BM25

@@ -56,6 +56,11 @@ async def create_bank_vector_indexes(conn, bank_id: str, internal_id: str) -> No
     (index build is instant). Idempotent via CREATE INDEX IF NOT EXISTS.
     bank_id is escaped for SQL literal safety (apostrophes doubled).
     """
+    # Backends without partial index support use global vector indexes
+    # created during migrations — nothing to do here.
+    if getattr(conn, "backend_type", "postgresql") != "postgresql":
+        return
+
     table = fq_table("memory_units")
     escaped = bank_id.replace("'", "''")
     using_clause = _vector_index_clause()
@@ -74,6 +79,9 @@ async def drop_bank_vector_indexes(conn, internal_id: str) -> None:
     Called before the bank row is deleted so internal_id is still known.
     Idempotent via DROP INDEX IF EXISTS.
     """
+    if getattr(conn, "backend_type", "postgresql") != "postgresql":
+        return
+
     schema = get_current_schema()
     for ft in _BANK_INDEX_FACT_TYPES:
         idx = _bank_index_name(ft, internal_id)

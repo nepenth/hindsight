@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 def fq_table(table: str, schema: str | None = None) -> str:
     """Get fully-qualified table name with optional schema prefix."""
-    if schema:
-        return f'"{schema}".{table}'
-    return table
+    from ..schema import fq_table_explicit
+
+    return fq_table_explicit(table, schema)
 
 
 class PostgreSQLFileStorage(FileStorage):

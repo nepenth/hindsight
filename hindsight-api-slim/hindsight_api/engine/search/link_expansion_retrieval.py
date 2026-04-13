@@ -280,7 +280,43 @@ class LinkExpansionRetriever(GraphRetriever):
         # LATERAL subquery orders by unit_id DESC so the most recently inserted
         # units are preferred (a recency proxy that is free — it rides the PK
         # index with no extra sort).
-        entity_cte = f"""
+        _is_pg = getattr(conn, "backend_type", "postgresql") == "postgresql"
+
+        if not _is_pg:
+            # Oracle: can't GROUP BY CLOB columns (text, context).
+            # Restructure: count entities per unit_id in a subquery, then join to get full columns.
+            entity_cte = f"""
+            seed_entities AS (
+                SELECT DISTINCT ue.entity_id
+                FROM {ue} ue
+                WHERE ue.unit_id = ANY($1::uuid[])
+            ),
+            entity_scores AS (
+                SELECT t.unit_id, COUNT(DISTINCT se.entity_id) AS score
+                FROM seed_entities se
+                CROSS JOIN LATERAL (
+                    SELECT ue_target.unit_id
+                    FROM {ue} ue_target
+                    WHERE ue_target.entity_id = se.entity_id
+                      AND ue_target.unit_id != ALL($1::uuid[])
+                    ORDER BY ue_target.unit_id DESC
+                    FETCH FIRST {per_entity_limit} ROWS ONLY
+                ) t
+                GROUP BY t.unit_id
+            ),
+            entity_expanded AS (
+                SELECT mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
+                       mu.occurred_end, mu.mentioned_at,
+                       mu.fact_type, mu.document_id, mu.chunk_id, mu.tags, mu.proof_count,
+                       es.score, 'entity' AS source
+                FROM entity_scores es
+                JOIN {mu} mu ON mu.id = es.unit_id
+                WHERE mu.fact_type = $2
+                ORDER BY es.score DESC
+                FETCH FIRST $3 ROWS ONLY
+            )"""
+        else:
+            entity_cte = f"""
             seed_entities AS (
                 SELECT DISTINCT ue.entity_id
                 FROM {ue} ue
@@ -308,11 +344,66 @@ class LinkExpansionRetriever(GraphRetriever):
                 LIMIT $3
             )"""
 
-        semantic_causal_cte = f"""
+        if not _is_pg:
+            # Non-PG: can't GROUP BY CLOB columns, no DISTINCT ON.
+            # Restructure semantic: compute max weight per id, then join for full columns.
+            semantic_causal_cte = f"""
+            sem_scores AS (
+                SELECT id, MAX(weight) AS score
+                FROM (
+                    SELECT mu.id, ml.weight
+                    FROM {ml} ml
+                    JOIN {mu} mu ON mu.id = ml.to_unit_id
+                    WHERE ml.from_unit_id = ANY($1::uuid[])
+                      AND ml.link_type = 'semantic'
+                      AND mu.fact_type = $2
+                      AND mu.id != ALL($1::uuid[])
+                    UNION ALL
+                    SELECT mu.id, ml.weight
+                    FROM {ml} ml
+                    JOIN {mu} mu ON mu.id = ml.from_unit_id
+                    WHERE ml.to_unit_id = ANY($1::uuid[])
+                      AND ml.link_type = 'semantic'
+                      AND mu.fact_type = $2
+                      AND mu.id != ALL($1::uuid[])
+                ) sem_raw
+                GROUP BY id
+            ),
             semantic_expanded AS (
-                -- Semantic kNN: both outgoing (seeds → their kNN at insert time) and
-                -- incoming (facts inserted after seeds that found seeds as kNN).
-                -- Score = max similarity weight across both directions.
+                SELECT mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
+                       mu.occurred_end, mu.mentioned_at,
+                       mu.fact_type, mu.document_id, mu.chunk_id, mu.tags, mu.proof_count,
+                       ss.score, 'semantic' AS source
+                FROM sem_scores ss
+                JOIN {mu} mu ON mu.id = ss.id
+                ORDER BY ss.score DESC
+                FETCH FIRST $3 ROWS ONLY
+            ),
+            causal_ranked AS (
+                SELECT
+                    mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
+                    mu.occurred_end, mu.mentioned_at,
+                    mu.fact_type, mu.document_id, mu.chunk_id, mu.tags, mu.proof_count,
+                    ml.weight AS score,
+                    'causal' AS source,
+                    ROW_NUMBER() OVER (PARTITION BY mu.id ORDER BY ml.weight DESC) AS rn_
+                FROM {ml} ml
+                JOIN {mu} mu ON ml.to_unit_id = mu.id
+                WHERE ml.from_unit_id = ANY($1::uuid[])
+                  AND ml.link_type IN ('causes', 'caused_by', 'enables', 'prevents')
+                  AND ml.weight >= $4
+                  AND mu.fact_type = $2
+            ),
+            causal_expanded AS (
+                SELECT id, text, context, event_date, occurred_start, occurred_end, mentioned_at,
+                       fact_type, document_id, chunk_id, tags, proof_count, score, source
+                FROM causal_ranked WHERE rn_ = 1
+                ORDER BY score DESC
+                FETCH FIRST $3 ROWS ONLY
+            )"""
+        else:
+            semantic_causal_cte = f"""
+            semantic_expanded AS (
                 SELECT
                     id, text, context, event_date, occurred_start,
                     occurred_end, mentioned_at,
@@ -351,9 +442,6 @@ class LinkExpansionRetriever(GraphRetriever):
                 LIMIT $3
             ),
             causal_expanded AS (
-                -- Causal chains: explicit causes/enables/prevents links from seeds.
-                -- DISTINCT ON handles the case where a seed has multiple causal links
-                -- to the same target; best weight wins.
                 SELECT DISTINCT ON (mu.id)
                     mu.id, mu.text, mu.context, mu.event_date, mu.occurred_start,
                     mu.occurred_end, mu.mentioned_at,

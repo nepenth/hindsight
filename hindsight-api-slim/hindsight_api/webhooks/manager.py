@@ -25,9 +25,9 @@ MAX_ATTEMPTS = len(RETRY_DELAYS) + 1  # first attempt + len(RETRY_DELAYS) retrie
 
 def _fq_table(table: str, schema: str | None = None) -> str:
     """Get fully-qualified table name with optional schema prefix."""
-    if schema:
-        return f'"{schema}".{table}'
-    return table
+    from ..engine.schema import fq_table_explicit
+
+    return fq_table_explicit(table, schema)
 
 
 def _parse_http_config(value: str | dict | None) -> WebhookHttpConfig:

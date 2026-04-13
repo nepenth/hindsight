@@ -21,7 +21,9 @@ from ..pg0 import parse_pg0_url, resolve_database_url
 
 def _fq_table(table: str, schema: str) -> str:
     """Get fully-qualified table name with schema prefix."""
-    return f"{schema}.{table}"
+    from ..engine.schema import fq_table_explicit
+
+    return fq_table_explicit(table, schema)
 
 
 # Setup logging

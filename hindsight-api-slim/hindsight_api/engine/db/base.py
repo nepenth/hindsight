@@ -19,6 +19,48 @@ class DatabaseConnection(ABC):
     Methods mirror asyncpg's connection API for minimal migration friction.
     """
 
+    @property
+    def backend_type(self) -> str:
+        """Return ``"postgresql"`` or ``"oracle"``."""
+        return "postgresql"
+
+    async def bulk_insert_from_arrays(
+        self,
+        table: str,
+        columns: list[str],
+        arrays: list[list],
+        *,
+        column_types: list[str] | None = None,
+        returning: str | None = None,
+    ) -> list[ResultRow] | str:
+        """Insert multiple rows from parallel arrays.
+
+        Default implementation uses ``INSERT ... SELECT * FROM unnest(...)``
+        (PostgreSQL).  Oracle overrides this with ``executemany``.
+
+        Args:
+            table: Fully-qualified table name.
+            columns: Column names matching the arrays.
+            arrays: Parallel lists of values, one per column.
+            column_types: PG type suffixes for unnest casting (e.g. ``["text[]", "uuid[]"]``).
+                          Ignored by backends that don't use unnest.
+            returning: Optional column expression for a RETURNING clause.
+
+        Returns:
+            If *returning* is set, a list of ResultRow; otherwise a status string.
+        """
+        # Default: PostgreSQL unnest path
+        col_list = ", ".join(columns)
+        n_cols = len(columns)
+        types = column_types or ["text[]"] * n_cols
+        unnest_args = ", ".join(f"${i + 1}::{types[i]}" for i in range(n_cols))
+        query = f"INSERT INTO {table} ({col_list}) SELECT * FROM unnest({unnest_args})"
+        if returning:
+            query += f" RETURNING {returning}"
+            return await self.fetch(query, *arrays)
+        result = await self.execute(query, *arrays)
+        return result
+
     @abstractmethod
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator["DatabaseConnection"]:
@@ -124,6 +166,35 @@ class DatabaseBackend(ABC):
     Manages the connection pool and provides context managers for
     acquiring connections and running transactions.
     """
+
+    # -- Backend capabilities --------------------------------------------
+    # Subclasses override these to advertise what the platform supports.
+    # Callers use these instead of checking ``config.database_backend``.
+
+    @property
+    def backend_type(self) -> str:
+        """Return ``"postgresql"`` or ``"oracle"``."""
+        return "postgresql"
+
+    @property
+    def supports_partial_indexes(self) -> bool:
+        """Can CREATE INDEX … WHERE <predicate>."""
+        return True
+
+    @property
+    def supports_bm25(self) -> bool:
+        """Has BM25 / tsvector full-text search."""
+        return True
+
+    @property
+    def supports_unnest(self) -> bool:
+        """Supports ``unnest()`` for expanding arrays into rows."""
+        return True
+
+    @property
+    def supports_pg_trgm(self) -> bool:
+        """Platform *might* have pg_trgm (must still be checked at runtime)."""
+        return True
 
     @abstractmethod
     async def initialize(

@@ -68,14 +68,14 @@ def count_tokens(text: str) -> int:
 
 
 def fq_table(table_name: str) -> str:
-    """
-    Get fully-qualified table name with current schema.
+    """Get fully-qualified table name with current schema.
 
-    Example:
-        fq_table("memory_units") -> "public.memory_units"
-        fq_table("memory_units") -> "tenant_xyz.memory_units" (if schema is set)
+    Delegates to :func:`engine.schema.fq_table` — kept here for backward
+    compatibility (many modules import ``fq_table`` from ``memory_engine``).
     """
-    return f"{get_current_schema()}.{table_name}"
+    from .schema import fq_table as _fq_table
+
+    return _fq_table(table_name)
 
 
 def _json_default(obj: Any) -> str:
@@ -1773,54 +1773,76 @@ class MemoryEngine(MemoryEngineInterface):
 
         # Run database migrations if enabled
         if self._run_migrations:
-            from ..migrations import (
-                ensure_embedding_dimension,
-                ensure_text_search_extension,
-                ensure_vector_extension,
-                run_migrations,
-            )
-
             if not self.db_url:
                 raise ValueError("Database URL is required for migrations")
 
-            # Migrate all schemas from the tenant extension
-            # The tenant extension is the single source of truth for which schemas exist
-            logger.info("Running database migrations...")
             config = get_config()
-            tenants = await self._tenant_extension.list_tenants()
-            if tenants:
-                logger.info(f"Running migrations on {len(tenants)} schema(s)...")
-                for tenant in tenants:
-                    schema = tenant.schema
-                    if schema:
-                        run_migrations(self.db_url, schema=schema, migration_database_url=config.migration_database_url)
-                logger.info("Schema migrations completed")
 
-                # Ensure embedding column dimension matches the model's dimension
-                # This is done after migrations and after embeddings.initialize()
-                for tenant in tenants:
-                    schema = tenant.schema
-                    if schema:
-                        ensure_embedding_dimension(
-                            self.db_url,
-                            self.embeddings.dimension,
-                            schema=schema,
-                            vector_extension=config.vector_extension,
-                        )
+            if self._database_backend_type != "postgresql":
+                # Non-PG backends use their own idempotent migration runner (no Alembic)
+                from ..migrations_oracle import run_oracle_migrations
 
-                # Ensure vector indexes match the configured extension
-                for tenant in tenants:
-                    schema = tenant.schema
-                    if schema:
-                        ensure_vector_extension(self.db_url, vector_extension=config.vector_extension, schema=schema)
+                logger.info(f"Running {self._database_backend_type} database migrations...")
+                tenants = await self._tenant_extension.list_tenants()
+                if tenants:
+                    for tenant in tenants:
+                        schema = tenant.schema
+                        # Non-PG backends use users as schemas; "public" is PG-specific
+                        # and doesn't exist — use None (connecting user's default)
+                        alt_schema = None if schema == "public" else schema
+                        if schema:
+                            run_oracle_migrations(self.db_url, schema=alt_schema)
+                    logger.info(f"{self._database_backend_type} schema migrations completed")
+            else:
+                # PostgreSQL uses Alembic migrations
+                from ..migrations import (
+                    ensure_embedding_dimension,
+                    ensure_text_search_extension,
+                    ensure_vector_extension,
+                    run_migrations,
+                )
 
-                # Ensure text search columns/indexes match the configured extension
-                for tenant in tenants:
-                    schema = tenant.schema
-                    if schema:
-                        ensure_text_search_extension(
-                            self.db_url, text_search_extension=config.text_search_extension, schema=schema
-                        )
+                # Migrate all schemas from the tenant extension
+                # The tenant extension is the single source of truth for which schemas exist
+                logger.info("Running database migrations...")
+                tenants = await self._tenant_extension.list_tenants()
+                if tenants:
+                    logger.info(f"Running migrations on {len(tenants)} schema(s)...")
+                    for tenant in tenants:
+                        schema = tenant.schema
+                        if schema:
+                            run_migrations(
+                                self.db_url, schema=schema, migration_database_url=config.migration_database_url
+                            )
+                    logger.info("Schema migrations completed")
+
+                    # Ensure embedding column dimension matches the model's dimension
+                    # This is done after migrations and after embeddings.initialize()
+                    for tenant in tenants:
+                        schema = tenant.schema
+                        if schema:
+                            ensure_embedding_dimension(
+                                self.db_url,
+                                self.embeddings.dimension,
+                                schema=schema,
+                                vector_extension=config.vector_extension,
+                            )
+
+                    # Ensure vector indexes match the configured extension
+                    for tenant in tenants:
+                        schema = tenant.schema
+                        if schema:
+                            ensure_vector_extension(
+                                self.db_url, vector_extension=config.vector_extension, schema=schema
+                            )
+
+                    # Ensure text search columns/indexes match the configured extension
+                    for tenant in tenants:
+                        schema = tenant.schema
+                        if schema:
+                            ensure_text_search_extension(
+                                self.db_url, text_search_extension=config.text_search_extension, schema=schema
+                            )
 
         logger.info(f"Connecting to database at {mask_network_location(self.db_url)}")
 
@@ -3640,12 +3662,10 @@ class MemoryEngine(MemoryEngineInterface):
                 f"""
                 SELECT d.id, d.bank_id, d.original_text, d.content_hash,
                        d.created_at, d.updated_at, d.tags, d.retain_params,
-                       COUNT(mu.id) as unit_count
+                       (SELECT COUNT(*) FROM {fq_table("memory_units")} mu
+                        WHERE mu.document_id = d.id) as unit_count
                 FROM {fq_table("documents")} d
-                LEFT JOIN {fq_table("memory_units")} mu ON mu.document_id = d.id
                 WHERE d.id = $1 AND d.bank_id = $2
-                GROUP BY d.id, d.bank_id, d.original_text, d.content_hash,
-                         d.created_at, d.updated_at, d.tags, d.retain_params
                 """,
                 document_id,
                 bank_id,
@@ -6169,7 +6189,10 @@ class MemoryEngine(MemoryEngineInterface):
             ctx = BankReadContext(bank_id=bank_id, operation="list_tags", request_context=request_context)
             await self._validate_operation(self._operation_validator.validate_bank_read(ctx))
         backend = await self._get_backend()
+
         async with acquire_with_retry(backend) as conn:
+            _is_pg = getattr(conn, "backend_type", "postgresql") == "postgresql"
+
             # Build pattern filter if provided (convert * to % for ILIKE)
             pattern_clause = ""
             params: list[Any] = [bank_id]
@@ -6179,13 +6202,31 @@ class MemoryEngine(MemoryEngineInterface):
                 pattern_clause = "AND tag ILIKE $2"
                 params.append(sql_pattern)
 
+            if not _is_pg:
+                # Non-PG: tags is CLOB JSON array, use JSON_TABLE to expand
+                tag_source = (
+                    f"{fq_table('memory_units')} mu "
+                    f"CROSS APPLY JSON_TABLE(mu.tags, '$[*]' COLUMNS (tag VARCHAR2(256) PATH '$')) jt"
+                )
+                non_empty_check = "AND mu.tags IS NOT NULL AND DBMS_LOB.GETLENGTH(mu.tags) > 2"
+                tag_col = "jt.tag"
+                bank_prefix = "mu."
+            else:
+                # PostgreSQL: tags is VARCHAR[], use unnest
+                tag_source = f"{fq_table('memory_units')}, unnest(tags) AS tag"
+                non_empty_check = "AND tags IS NOT NULL AND tags != '{{}}'"
+                tag_col = "tag"
+                bank_prefix = ""
+
+            tag_pattern_clause = pattern_clause.replace("tag", tag_col) if not _is_pg else pattern_clause
+
             # Get total count of distinct tags matching pattern
             total_row = await conn.fetchrow(
                 f"""
-                SELECT COUNT(DISTINCT tag) as total
-                FROM {fq_table("memory_units")}, unnest(tags) AS tag
-                WHERE bank_id = $1 AND tags IS NOT NULL AND tags != '{{}}'
-                {pattern_clause}
+                SELECT COUNT(DISTINCT {tag_col}) as total
+                FROM {tag_source}
+                WHERE {bank_prefix}bank_id = $1 {non_empty_check}
+                {tag_pattern_clause}
                 """,
                 *params,
             )
@@ -6198,12 +6239,12 @@ class MemoryEngine(MemoryEngineInterface):
 
             rows = await conn.fetch(
                 f"""
-                SELECT tag, COUNT(*) as count
-                FROM {fq_table("memory_units")}, unnest(tags) AS tag
-                WHERE bank_id = $1 AND tags IS NOT NULL AND tags != '{{}}'
-                {pattern_clause}
-                GROUP BY tag
-                ORDER BY count DESC, tag ASC
+                SELECT {tag_col} as tag, COUNT(*) as count
+                FROM {tag_source}
+                WHERE {bank_prefix}bank_id = $1 {non_empty_check}
+                {tag_pattern_clause}
+                GROUP BY {tag_col}
+                ORDER BY count DESC, {tag_col} ASC
                 LIMIT ${limit_param} OFFSET ${offset_param}
                 """,
                 *params,
@@ -6936,13 +6977,16 @@ class MemoryEngine(MemoryEngineInterface):
         # Convert embedding to string for asyncpg vector type
         embedding_str = str(embedding[0]) if embedding else None
 
+        if not mental_model_id:
+            mental_model_id = f"mm-{uuid.uuid4().hex}"
+
         async with acquire_with_retry(backend) as conn:
             if mental_model_id:
                 row = await conn.fetchrow(
                     f"""
                     INSERT INTO {fq_table("mental_models")}
-                    (id, bank_id, name, source_query, content, embedding, tags, max_tokens, trigger)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 2048), COALESCE($9, '{{"refresh_after_consolidation": false}}'::jsonb))
+                    (id, bank_id, subtype, name, description, source_query, content, embedding, tags, max_tokens, trigger)
+                    VALUES ($1, $2, 'pinned', $3, ' ', $4, $5, $6, $7, COALESCE($8, 2048), COALESCE($9, '{{"refresh_after_consolidation": false}}'::jsonb))
                     RETURNING id, bank_id, name, source_query, content, tags,
                               last_refreshed_at, created_at, reflect_response,
                               max_tokens, trigger, structured_content
@@ -6961,8 +7005,8 @@ class MemoryEngine(MemoryEngineInterface):
                 row = await conn.fetchrow(
                     f"""
                     INSERT INTO {fq_table("mental_models")}
-                    (bank_id, name, source_query, content, embedding, tags, max_tokens, trigger)
-                    VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 2048), COALESCE($8, '{{"refresh_after_consolidation": false}}'::jsonb))
+                    (bank_id, subtype, name, description, source_query, content, embedding, tags, max_tokens, trigger)
+                    VALUES ($1, 'pinned', $2, ' ', $3, $4, $5, $6, COALESCE($7, 2048), COALESCE($8, '{{"refresh_after_consolidation": false}}'::jsonb))
                     RETURNING id, bank_id, name, source_query, content, tags,
                               last_refreshed_at, created_at, reflect_response,
                               max_tokens, trigger, structured_content

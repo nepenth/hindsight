@@ -101,27 +101,41 @@ async def store_chunks_batch(conn, bank_id: str, document_id: str, chunks: list[
         chunk_id_map[chunk.chunk_index] = chunk_id
 
     # Batch upsert all chunks. ON CONFLICT makes this idempotent: re-submitting
-    # a retain under the same document_id (the pattern in vectorize-io/hindsight#977)
-    # may produce chunk_ids that already exist when upstream cascade-delete or
-    # delta-retain paths don't run (or race with a concurrent task). Overwriting
-    # is the correct behavior per the document_id grouping semantics — the caller
-    # intends this chunk to hold the latest content at that (document_id, index).
-    await conn.execute(
-        f"""
-        INSERT INTO {fq_table("chunks")} (chunk_id, document_id, bank_id, chunk_text, chunk_index, content_hash)
-        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::integer[], $6::text[])
-        ON CONFLICT (chunk_id) DO UPDATE SET
-            chunk_text = EXCLUDED.chunk_text,
-            chunk_index = EXCLUDED.chunk_index,
-            content_hash = EXCLUDED.content_hash
-        """,
-        chunk_ids,
-        [document_id] * len(chunk_texts),
-        [bank_id] * len(chunk_texts),
-        chunk_texts,
-        chunk_indices,
-        content_hashes,
-    )
+    # a retain under the same document_id may produce chunk_ids that already exist.
+    # Overwriting is the correct behavior per document_id grouping semantics.
+    _is_pg = getattr(conn, "backend_type", "postgresql") == "postgresql"
+    if _is_pg:
+        await conn.execute(
+            f"""
+            INSERT INTO {fq_table("chunks")} (chunk_id, document_id, bank_id, chunk_text, chunk_index, content_hash)
+            SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::integer[], $6::text[])
+            ON CONFLICT (chunk_id) DO UPDATE SET
+                chunk_text = EXCLUDED.chunk_text,
+                chunk_index = EXCLUDED.chunk_index,
+                content_hash = EXCLUDED.content_hash
+            """,
+            chunk_ids,
+            [document_id] * len(chunk_texts),
+            [bank_id] * len(chunk_texts),
+            chunk_texts,
+            chunk_indices,
+            content_hashes,
+        )
+    else:
+        # Oracle: row-by-row via bulk_insert_from_arrays (executemany, no unnest)
+        await conn.bulk_insert_from_arrays(
+            fq_table("chunks"),
+            ["chunk_id", "document_id", "bank_id", "chunk_text", "chunk_index", "content_hash"],
+            [
+                chunk_ids,
+                [document_id] * len(chunk_texts),
+                [bank_id] * len(chunk_texts),
+                chunk_texts,
+                chunk_indices,
+                content_hashes,
+            ],
+            column_types=["text[]", "text[]", "text[]", "text[]", "integer[]", "text[]"],
+        )
 
     return chunk_id_map
 

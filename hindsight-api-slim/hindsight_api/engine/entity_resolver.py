@@ -219,7 +219,13 @@ class EntityResolver:
             # "full" strategy if the extension is not installed.  See #626.
             if not self._pg_trgm_checked:
                 self._pg_trgm_checked = True
-                has_trgm = await conn.fetchval("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')")
+                # Non-PG backends don't have pg_trgm — always use 'full' strategy
+                if getattr(conn, "backend_type", "postgresql") != "postgresql":
+                    has_trgm = False
+                else:
+                    has_trgm = await conn.fetchval(
+                        "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')"
+                    )
                 if not has_trgm:
                     logger.warning(
                         "pg_trgm extension is not available — falling back to 'full' "
@@ -490,20 +496,53 @@ class EntityResolver:
             # INSERT ... ON CONFLICT DO NOTHING — no row lock on already-existing entities.
             # mention_count starts at 0 here; flush_pending_stats() is the sole source of
             # truth for mention counting (one stat per original mention in the batch).
-            inserted_rows = await conn.fetch(
-                f"""
-                INSERT INTO {fq_table("entities")} (bank_id, canonical_name, first_seen, last_seen, mention_count)
-                SELECT $1, name, COALESCE(event_date, now()), COALESCE(event_date, now()), 0
-                FROM unnest($2::text[], $3::timestamptz[]) AS t(name, event_date)
-                ON CONFLICT (bank_id, LOWER(canonical_name))
-                DO NOTHING
-                RETURNING id, LOWER(canonical_name) AS name_lower
-                """,
-                bank_id,
-                entity_names,
-                entity_dates,
-            )
-            id_by_name: dict[str, str] = {row["name_lower"]: row["id"] for row in inserted_rows}
+            _is_pg = getattr(conn, "backend_type", "postgresql") == "postgresql"
+
+            if not _is_pg:
+                # Non-PG: row-by-row insert with duplicate suppression.
+                # Can't use RETURNING with ON CONFLICT DO NOTHING,
+                # so INSERT (ignoring dups) then SELECT all IDs at the end.
+                id_by_name: dict[str, str] = {}
+                for name, event_date in zip(entity_names, entity_dates):
+                    ts = event_date if event_date else datetime.now(UTC)
+                    await conn.execute(
+                        f"""
+                        INSERT INTO {fq_table("entities")} (bank_id, canonical_name, first_seen, last_seen, mention_count)
+                        VALUES ($1, $2, $3, $3, 0)
+                        ON CONFLICT (bank_id, LOWER(canonical_name)) DO NOTHING
+                        """,
+                        bank_id,
+                        name,
+                        ts,
+                    )
+                # Now SELECT all the entities we just inserted (or that already existed)
+                for name in entity_names:
+                    row = await conn.fetchrow(
+                        f"""
+                        SELECT id, LOWER(canonical_name) AS name_lower
+                        FROM {fq_table("entities")}
+                        WHERE bank_id = $1 AND LOWER(canonical_name) = LOWER($2)
+                        """,
+                        bank_id,
+                        name,
+                    )
+                    if row:
+                        id_by_name[row["name_lower"]] = row["id"]
+            else:
+                inserted_rows = await conn.fetch(
+                    f"""
+                    INSERT INTO {fq_table("entities")} (bank_id, canonical_name, first_seen, last_seen, mention_count)
+                    SELECT $1, name, COALESCE(event_date, now()), COALESCE(event_date, now()), 0
+                    FROM unnest($2::text[], $3::timestamptz[]) AS t(name, event_date)
+                    ON CONFLICT (bank_id, LOWER(canonical_name))
+                    DO NOTHING
+                    RETURNING id, LOWER(canonical_name) AS name_lower
+                    """,
+                    bank_id,
+                    entity_names,
+                    entity_dates,
+                )
+                id_by_name: dict[str, str] = {row["name_lower"]: row["id"] for row in inserted_rows}
 
             # Fallback SELECT for names that conflicted (another worker won the race).
             #
@@ -523,25 +562,41 @@ class EntityResolver:
             # name, which is what the assignment loop below uses as its lookup key.
             missing_original = [g.name for name_lower, g in sorted_groups if name_lower not in id_by_name]
             if missing_original:
-                existing_rows = await conn.fetch(
-                    f"""
-                    SELECT e.id, LOWER(e.canonical_name) AS name_lower, inputs.input_name
-                    FROM {fq_table("entities")} e
-                    JOIN (
-                        SELECT LOWER(n) AS input_name_lower, n AS input_name
-                        FROM unnest($2::text[]) AS n
-                    ) AS inputs ON LOWER(e.canonical_name) = inputs.input_name_lower
-                    WHERE e.bank_id = $1
-                    """,
-                    bank_id,
-                    missing_original,
-                )
-                for row in existing_rows:
-                    id_by_name[row["name_lower"]] = row["id"]
-                    # Also index by Python's lower() of the original input name so the
-                    # assignment loop (which uses Python-lowercased keys) finds it even
-                    # when Python and PostgreSQL produce different lowercase strings.
-                    id_by_name[row["input_name"].lower()] = row["id"]
+                if not _is_pg:
+                    # Non-PG: query each missing entity individually
+                    for orig_name in missing_original:
+                        row = await conn.fetchrow(
+                            f"""
+                            SELECT id, LOWER(canonical_name) AS name_lower
+                            FROM {fq_table("entities")}
+                            WHERE bank_id = $1 AND LOWER(canonical_name) = LOWER($2)
+                            """,
+                            bank_id,
+                            orig_name,
+                        )
+                        if row:
+                            id_by_name[row["name_lower"]] = row["id"]
+                            id_by_name[orig_name.lower()] = row["id"]
+                else:
+                    existing_rows = await conn.fetch(
+                        f"""
+                        SELECT e.id, LOWER(e.canonical_name) AS name_lower, inputs.input_name
+                        FROM {fq_table("entities")} e
+                        JOIN (
+                            SELECT LOWER(n) AS input_name_lower, n AS input_name
+                            FROM unnest($2::text[]) AS n
+                        ) AS inputs ON LOWER(e.canonical_name) = inputs.input_name_lower
+                        WHERE e.bank_id = $1
+                        """,
+                        bank_id,
+                        missing_original,
+                    )
+                    for row in existing_rows:
+                        id_by_name[row["name_lower"]] = row["id"]
+                        # Also index by Python's lower() of the original input name so the
+                        # assignment loop (which uses Python-lowercased keys) finds it even
+                        # when Python and PostgreSQL produce different lowercase strings.
+                        id_by_name[row["input_name"].lower()] = row["id"]
 
             # Assign entity IDs back and queue one stat per original mention so that
             # flush_pending_stats() increments mention_count by the true mention count,
@@ -814,15 +869,27 @@ class EntityResolver:
         sorted_pairs = sorted(unit_entity_pairs)
         unit_ids = [p[0] for p in sorted_pairs]
         entity_ids = [p[1] for p in sorted_pairs]
-        await conn.execute(
-            f"""
-            INSERT INTO {fq_table("unit_entities")} (unit_id, entity_id)
-            SELECT u, e FROM unnest($1::uuid[], $2::uuid[]) AS t(u, e)
-            ON CONFLICT DO NOTHING
-            """,
-            unit_ids,
-            entity_ids,
-        )
+
+        if getattr(conn, "backend_type", "postgresql") != "postgresql":
+            # Non-PG: unnest is not available — use executemany with individual INSERT rows.
+            await conn.executemany(
+                f"""
+                INSERT INTO {fq_table("unit_entities")} (unit_id, entity_id)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+                """,
+                list(zip(unit_ids, entity_ids)),
+            )
+        else:
+            await conn.execute(
+                f"""
+                INSERT INTO {fq_table("unit_entities")} (unit_id, entity_id)
+                SELECT u, e FROM unnest($1::uuid[], $2::uuid[]) AS t(u, e)
+                ON CONFLICT DO NOTHING
+                """,
+                unit_ids,
+                entity_ids,
+            )
 
         # Build map of unit -> entities for co-occurrence calculation
         # Use sets to avoid duplicate entities in the same unit

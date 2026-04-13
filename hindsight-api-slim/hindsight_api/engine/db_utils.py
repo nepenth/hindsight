@@ -83,9 +83,7 @@ async def retry_with_backoff(
 
 
 @asynccontextmanager
-async def acquire_with_retry(
-    backend_or_pool: Any, max_retries: int = DEFAULT_MAX_RETRIES
-) -> AsyncIterator[Any]:
+async def acquire_with_retry(backend_or_pool: Any, max_retries: int = DEFAULT_MAX_RETRIES) -> AsyncIterator[Any]:
     """
     Async context manager to acquire a database connection with retry logic.
 
@@ -104,7 +102,7 @@ async def acquire_with_retry(
     """
     from .db.base import DatabaseBackend
 
-    if isinstance(backend_or_pool, DatabaseBackend) or getattr(backend_or_pool, '_wraps_backend', False):
+    if isinstance(backend_or_pool, DatabaseBackend) or getattr(backend_or_pool, "_wraps_backend", False):
         # Use the backend's acquire context manager with retry
         start = time.time()
         last_exception = None
