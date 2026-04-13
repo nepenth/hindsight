@@ -720,6 +720,12 @@ class ReflectRequest(BaseModel):
         default=None,
         description="Exclude specific mental models by ID from the reflect loop.",
     )
+    facts_only: bool = Field(
+        default=False,
+        description="When true, only extracted facts are used during reflect. "
+        "Raw source chunks and document context are excluded. "
+        "The expand tool is disabled.",
+    )
 
     @field_validator("fact_types")
     @classmethod
@@ -1525,6 +1531,12 @@ class MentalModelTrigger(BaseModel):
             "When set, these tag groups are passed to reflect and the model's flat tags are NOT used for filtering. "
             "Supports nested and/or/not expressions for complex tag-based scoping."
         ),
+    )
+    facts_only: bool = Field(
+        default=False,
+        description="When true, only extracted facts are used during mental model refresh. "
+        "Raw source chunks and document context are excluded. "
+        "The expand tool is disabled.",
     )
 
     @field_validator("fact_types")
@@ -3100,6 +3112,7 @@ def _register_routes(app: FastAPI):
                     fact_types=request.fact_types,
                     exclude_mental_models=request.exclude_mental_models,
                     exclude_mental_model_ids=request.exclude_mental_model_ids,
+                    facts_only=request.facts_only,
                 )
 
             # Build based_on (memories + mental_models + directives) if facts are requested

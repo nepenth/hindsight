@@ -214,6 +214,7 @@ async def tool_recall(
     connection_budget: int = 1,
     max_chunk_tokens: int = 1000,
     fact_types: list[str] | None = None,
+    include_chunks: bool = True,
 ) -> dict[str, Any]:
     """
     Search memories using TEMPR retrieval.
@@ -232,13 +233,14 @@ async def tool_recall(
         connection_budget: Max DB connections for this recall (default 1 for internal ops)
         max_chunk_tokens: Maximum tokens for raw source chunk text (default 1000, always included)
         fact_types: Optional filter for fact types to retrieve. Defaults to ["experience", "world"].
+        include_chunks: Whether to include raw chunk text in results (default True).
+            When False, only extracted facts are returned (facts_only mode).
 
     Returns:
         Dict with list of matching memories including raw chunk text
     """
     # Only world/experience are valid for raw recall (observation is handled by search_observations)
     recall_fact_type = [ft for ft in (fact_types or ["experience", "world"]) if ft in ("world", "experience")]
-    include_chunks = True
     internal_ctx = replace(request_context, internal=True)
     result = await memory_engine.recall_async(
         bank_id=bank_id,
@@ -256,11 +258,13 @@ async def tool_recall(
         max_chunk_tokens=max_chunk_tokens,
     )
 
-    return {
+    response: dict[str, Any] = {
         "query": query,
         "memories": [m.model_dump() for m in result.results],
-        "chunks": {k: v.model_dump() for k, v in (result.chunks or {}).items()},
     }
+    if include_chunks:
+        response["chunks"] = {k: v.model_dump() for k, v in (result.chunks or {}).items()}
+    return response
 
 
 async def tool_expand(

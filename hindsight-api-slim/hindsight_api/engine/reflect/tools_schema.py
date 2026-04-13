@@ -227,11 +227,48 @@ def _build_done_tool_with_directives(directive_rules: list[str]) -> dict:
     }
 
 
+def _build_facts_only_recall_tool() -> dict:
+    """Build a recall tool schema without chunk-related parameters for facts_only mode."""
+    return {
+        "type": "function",
+        "function": {
+            "name": "recall",
+            "description": (
+                "Search raw memories (facts and experiences). This is the ground truth data. "
+                "Use when: (1) no reflections/mental models exist, (2) mental models are stale, "
+                "(3) you need specific details not in synthesized knowledge. "
+                "Returns individual memory facts with their timestamps. "
+                "Note: only extracted facts are returned; raw source chunks are not available."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of why you're making this search (for debugging)",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Search query string",
+                    },
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Optional limit on result size (default 2048). Use higher values for broader searches.",
+                    },
+                },
+                "required": ["reason", "query"],
+            },
+        },
+    }
+
+
 def get_reflect_tools(
     directive_rules: list[str] | None = None,
     include_mental_models: bool = True,
     include_observations: bool = True,
     include_recall: bool = True,
+    include_expand: bool = True,
+    facts_only: bool = False,
 ) -> list[dict]:
     """
     Get the list of tools for the reflect agent.
@@ -247,6 +284,9 @@ def get_reflect_tools(
         include_mental_models: Whether to include the search_mental_models tool.
         include_observations: Whether to include the search_observations tool.
         include_recall: Whether to include the recall tool.
+        include_expand: Whether to include the expand tool.
+        facts_only: When True, strips chunk-related parameters from the recall tool
+            schema and excludes expand. Only extracted facts are available.
 
     Returns:
         List of tool definitions in OpenAI format
@@ -258,9 +298,13 @@ def get_reflect_tools(
     if include_observations:
         tools.append(TOOL_SEARCH_OBSERVATIONS)
     if include_recall:
-        tools.append(TOOL_RECALL)
+        if facts_only:
+            tools.append(_build_facts_only_recall_tool())
+        else:
+            tools.append(TOOL_RECALL)
 
-    tools.append(TOOL_EXPAND)
+    if include_expand and not facts_only:
+        tools.append(TOOL_EXPAND)
 
     # Use directive-aware done tool if directives are present
     if directive_rules:

@@ -952,6 +952,7 @@ class MemoryEngine(MemoryEngineInterface):
         fact_types = trigger_data.get("fact_types")
         exclude_mental_models = trigger_data.get("exclude_mental_models", False)
         stored_exclude_ids: list[str] = trigger_data.get("exclude_mental_model_ids") or []
+        facts_only = trigger_data.get("facts_only", False)
 
         tag_filtering = _resolve_refresh_tag_filtering(mental_model.get("tags"), trigger_data)
 
@@ -967,6 +968,7 @@ class MemoryEngine(MemoryEngineInterface):
             fact_types=fact_types,
             exclude_mental_models=exclude_mental_models,
             exclude_mental_model_ids=list({*stored_exclude_ids, mental_model_id}),
+            facts_only=facts_only,
         )
 
         generated_content = reflect_result.text or "No content generated"
@@ -5399,6 +5401,7 @@ class MemoryEngine(MemoryEngineInterface):
         exclude_mental_model_ids: list[str] | None = None,
         fact_types: list[str] | None = None,
         exclude_mental_models: bool = False,
+        facts_only: bool = False,
         _skip_span: bool = False,
     ) -> ReflectResult:
         """
@@ -5553,6 +5556,7 @@ class MemoryEngine(MemoryEngineInterface):
                 tag_groups=tag_groups,
                 max_chunk_tokens=max_chunk_tokens,
                 fact_types=recall_fact_types if fact_types is not None else None,
+                include_chunks=not facts_only,
             )
 
         async def expand_fn(memory_ids: list[str], depth: str) -> dict[str, Any]:
@@ -5616,6 +5620,7 @@ class MemoryEngine(MemoryEngineInterface):
                         include_recall=include_recall,
                         budget=effective_budget,
                         max_context_tokens=max_context_tokens,
+                        facts_only=facts_only,
                     ),
                     timeout=wall_timeout,
                 )

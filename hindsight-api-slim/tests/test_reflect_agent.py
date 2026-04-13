@@ -633,3 +633,172 @@ class TestContextOverflowIntegration:
 
         finally:
             await memory.delete_bank(bank_id, request_context=request_context)
+
+
+class TestFactsOnlyMode:
+    """Test that facts_only mode excludes chunks and the expand tool."""
+
+    @pytest.fixture
+    def mock_llm(self):
+        llm = MagicMock()
+        llm.call_with_tools = AsyncMock()
+        llm.call = AsyncMock(
+            return_value=("Facts only answer", TokenUsage(input_tokens=100, output_tokens=50, total_tokens=150))
+        )
+        return llm
+
+    @pytest.fixture
+    def mock_functions(self):
+        return {
+            "search_mental_models_fn": AsyncMock(return_value={"mental_models": []}),
+            "search_observations_fn": AsyncMock(return_value={"observations": []}),
+            "recall_fn": AsyncMock(return_value={"memories": [{"id": "mem-1", "text": "test fact"}]}),
+            "expand_fn": AsyncMock(return_value={"results": []}),
+        }
+
+    @pytest.mark.asyncio
+    async def test_facts_only_excludes_expand_from_tools(self, mock_llm, mock_functions):
+        """When facts_only=True, expand tool should not be in the tool list sent to the LLM."""
+        mock_llm.call_with_tools.side_effect = [
+            LLMToolCallResult(
+                tool_calls=[LLMToolCall(id="1", name="recall", arguments={"reason": "test", "query": "test"})],
+                finish_reason="tool_calls",
+            ),
+            LLMToolCallResult(
+                tool_calls=[
+                    LLMToolCall(id="2", name="done", arguments={"answer": "Facts only answer", "memory_ids": ["mem-1"]})
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+
+        await run_reflect_agent(
+            llm_config=mock_llm,
+            bank_id="test-bank",
+            query="test query",
+            bank_profile={"name": "Test", "mission": "Testing"},
+            facts_only=True,
+            **mock_functions,
+        )
+
+        # Check the tools passed to LLM - expand should not be present
+        first_call_args = mock_llm.call_with_tools.call_args_list[0]
+        tools_arg = first_call_args.kwargs.get("tools") or first_call_args[1].get("tools")
+        tool_names = [t["function"]["name"] for t in tools_arg]
+        assert "expand" not in tool_names
+        assert "recall" in tool_names
+        assert "done" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_facts_only_recall_tool_has_no_chunk_param(self, mock_llm, mock_functions):
+        """When facts_only=True, recall tool schema should not have max_chunk_tokens param."""
+        mock_llm.call_with_tools.side_effect = [
+            LLMToolCallResult(
+                tool_calls=[LLMToolCall(id="1", name="done", arguments={"answer": "Answer", "memory_ids": []})],
+                finish_reason="tool_calls",
+            ),
+        ]
+
+        await run_reflect_agent(
+            llm_config=mock_llm,
+            bank_id="test-bank",
+            query="test query",
+            bank_profile={"name": "Test", "mission": "Testing"},
+            facts_only=True,
+            **mock_functions,
+        )
+
+        first_call_args = mock_llm.call_with_tools.call_args_list[0]
+        tools_arg = first_call_args.kwargs.get("tools") or first_call_args[1].get("tools")
+        recall_tools = [t for t in tools_arg if t["function"]["name"] == "recall"]
+        assert len(recall_tools) == 1
+        recall_props = recall_tools[0]["function"]["parameters"]["properties"]
+        assert "max_chunk_tokens" not in recall_props
+
+    @pytest.mark.asyncio
+    async def test_facts_only_rejects_expand_calls(self, mock_llm, mock_functions):
+        """When facts_only=True, if LLM hallucinates an expand call, it should be rejected."""
+        mock_llm.call_with_tools.side_effect = [
+            LLMToolCallResult(
+                tool_calls=[LLMToolCall(id="1", name="expand", arguments={"reason": "need context", "memory_ids": ["mem-1"], "depth": "chunk"})],
+                finish_reason="tool_calls",
+            ),
+            LLMToolCallResult(
+                tool_calls=[
+                    LLMToolCall(id="2", name="done", arguments={"answer": "Answer without expand", "memory_ids": []})
+                ],
+                finish_reason="tool_calls",
+            ),
+        ]
+
+        result = await run_reflect_agent(
+            llm_config=mock_llm,
+            bank_id="test-bank",
+            query="test query",
+            bank_profile={"name": "Test", "mission": "Testing"},
+            facts_only=True,
+            **mock_functions,
+        )
+
+        # expand_fn should never be called since the tool is not available
+        mock_functions["expand_fn"].assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_default_mode_includes_expand(self, mock_llm, mock_functions):
+        """When facts_only is not set (default), expand tool should be available."""
+        mock_llm.call_with_tools.side_effect = [
+            LLMToolCallResult(
+                tool_calls=[LLMToolCall(id="1", name="done", arguments={"answer": "Answer", "memory_ids": []})],
+                finish_reason="tool_calls",
+            ),
+        ]
+
+        await run_reflect_agent(
+            llm_config=mock_llm,
+            bank_id="test-bank",
+            query="test query",
+            bank_profile={"name": "Test", "mission": "Testing"},
+            **mock_functions,
+        )
+
+        first_call_args = mock_llm.call_with_tools.call_args_list[0]
+        tools_arg = first_call_args.kwargs.get("tools") or first_call_args[1].get("tools")
+        tool_names = [t["function"]["name"] for t in tools_arg]
+        assert "expand" in tool_names
+
+
+class TestFactsOnlyToolSchema:
+    """Test get_reflect_tools with facts_only flag."""
+
+    def test_facts_only_excludes_expand(self):
+        from hindsight_api.engine.reflect.tools_schema import get_reflect_tools
+
+        tools = get_reflect_tools(facts_only=True)
+        tool_names = [t["function"]["name"] for t in tools]
+        assert "expand" not in tool_names
+
+    def test_facts_only_strips_chunk_param_from_recall(self):
+        from hindsight_api.engine.reflect.tools_schema import get_reflect_tools
+
+        tools = get_reflect_tools(facts_only=True)
+        recall_tools = [t for t in tools if t["function"]["name"] == "recall"]
+        assert len(recall_tools) == 1
+        props = recall_tools[0]["function"]["parameters"]["properties"]
+        assert "max_chunk_tokens" not in props
+
+    def test_default_includes_expand_and_chunk_param(self):
+        from hindsight_api.engine.reflect.tools_schema import get_reflect_tools
+
+        tools = get_reflect_tools()
+        tool_names = [t["function"]["name"] for t in tools]
+        assert "expand" in tool_names
+        recall_tools = [t for t in tools if t["function"]["name"] == "recall"]
+        props = recall_tools[0]["function"]["parameters"]["properties"]
+        assert "max_chunk_tokens" in props
+
+    def test_facts_only_does_not_mutate_original_tool_recall(self):
+        from hindsight_api.engine.reflect.tools_schema import TOOL_RECALL, get_reflect_tools
+
+        get_reflect_tools(facts_only=True)
+        # Original TOOL_RECALL should still have max_chunk_tokens
+        assert "max_chunk_tokens" in TOOL_RECALL["function"]["parameters"]["properties"]

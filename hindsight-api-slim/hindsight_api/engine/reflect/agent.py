@@ -320,6 +320,7 @@ async def run_reflect_agent(
     include_recall: bool = True,
     budget: str | None = None,
     max_context_tokens: int = 100_000,
+    facts_only: bool = False,
 ) -> ReflectAgentResult:
     """
     Execute the reflect agent loop using native tool calling.
@@ -362,6 +363,7 @@ async def run_reflect_agent(
         include_mental_models=has_mental_models,
         include_observations=include_observations,
         include_recall=include_recall,
+        facts_only=facts_only,
     )
     # Build set of enabled tool names to guard against LLM hallucinating disabled tool calls
     enabled_tools: frozenset[str] = frozenset(t["function"]["name"] for t in tools if t.get("type") == "function")
@@ -782,7 +784,7 @@ async def run_reflect_agent(
             hallucinated_tools = []
             for tc in other_tools:
                 norm = _normalize_tool_name(tc.name)
-                if enabled_tools is not None and norm not in enabled_tools and norm not in ("done", "expand"):
+                if enabled_tools is not None and norm not in enabled_tools and norm not in ("done",):
                     hallucinated_tools.append(tc)
                 else:
                     allowed_tools.append(tc)
