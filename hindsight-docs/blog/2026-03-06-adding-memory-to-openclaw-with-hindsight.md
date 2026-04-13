@@ -100,7 +100,7 @@ npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
 npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
     --mode embedded --provider openai --api-key sk-...
 
-# Embedded with Claude Code (no API key needed — uses local Claude Code CLI)
+# Embedded with Claude Code (authenticates via the Claude Code CLI — no separate API key required)
 npx --package @vectorize-io/hindsight-openclaw hindsight-openclaw-setup \
     --mode embedded --provider claude-code
 ```
