@@ -7,6 +7,7 @@ consolidating daemon lifecycle, profile management, and database URL resolution.
 
 import logging
 import os
+import platform
 import re
 import subprocess
 import time
@@ -251,6 +252,15 @@ class DaemonEmbedManager(EmbedManager):
             env["HINDSIGHT_API_LOG_LEVEL"] = "info"
         if "HINDSIGHT_EMBED_DAEMON_IDLE_TIMEOUT" not in env:
             env["HINDSIGHT_EMBED_DAEMON_IDLE_TIMEOUT"] = str(DEFAULT_DAEMON_IDLE_TIMEOUT)
+
+        # On macOS, force CPU for local embeddings/reranker to avoid MPS/XPC
+        # hangs during sentence-transformers init in daemon mode (issue #962).
+        # Users can opt back into MPS by explicitly setting these to "0".
+        if platform.system() == "Darwin":
+            if "HINDSIGHT_API_EMBEDDINGS_LOCAL_FORCE_CPU" not in env:
+                env["HINDSIGHT_API_EMBEDDINGS_LOCAL_FORCE_CPU"] = "1"
+            if "HINDSIGHT_API_RERANKER_LOCAL_FORCE_CPU" not in env:
+                env["HINDSIGHT_API_RERANKER_LOCAL_FORCE_CPU"] = "1"
 
         # Get idle timeout from env
         idle_timeout = int(env.get("HINDSIGHT_EMBED_DAEMON_IDLE_TIMEOUT", str(DEFAULT_DAEMON_IDLE_TIMEOUT)))
