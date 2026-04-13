@@ -1,0 +1,460 @@
+#!/usr/bin/env python3
+"""openclaw-agent — install a self-improving OpenClaw agent from a boilerplate dir.
+
+Usage:
+    openclaw-agent install <agent-dir>
+
+<agent-dir> is a directory containing:
+  - agent.yaml                 (manifest: name, skills, harness.openclaw.config, …)
+  - skills/<skill>/SKILL.md    (one dir per skill listed in agent.yaml)
+  - setup/hindsight-config.yaml (bank + mental-model spec — optional)
+
+Assumes:
+  - openclaw CLI on PATH and the gateway already running
+  - The hindsight-openclaw plugin is already installed AND configured
+    (hindsightApiUrl + hindsightApiToken set in ~/.openclaw/openclaw.json)
+
+What the installer does, in order:
+  1. Validates the boilerplate dir + reads agent.yaml.
+  2. Reads Hindsight URL/token from the openclaw plugin config (raw file,
+     so we can resolve SecretRef sources too).
+  3. Calls `openclaw agents add` to create the agent with the boilerplate
+     dir as its workspace — OpenClaw will auto-discover the skills/.
+  4. Applies harness.openclaw.config overrides (bankIdPrefix, dynamicBankId)
+     to the global plugin config in openclaw.json.
+  5. Copies the hindsight-skill-builder meta-skill from this repo into
+     <agent-dir>/skills/ if it's listed in agent.yaml and missing locally.
+  6. Provisions the Hindsight bank + mental models via the REST API
+     (idempotent: PUT bank, PATCH config, POST/PATCH mental-models).
+  7. Tells the user to restart the gateway.
+
+PoC. No tests. No rollback if a step fails mid-flow.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+META_SKILL_DIR = REPO_ROOT / "skills" / "hindsight-skill-builder"
+OPENCLAW_CONFIG_PATH = Path.home() / ".openclaw" / "openclaw.json"
+INSTALL_ROOT = Path.home() / ".hindsight-agents" / "openclaw"
+PLUGIN_ID = "hindsight-openclaw"
+
+
+# ────────────────────── output helpers ──────────────────────
+
+
+def info(msg: str) -> None:
+    print(f"  • {msg}", file=sys.stderr)
+
+
+def ok(msg: str) -> None:
+    print(f"  ✓ {msg}", file=sys.stderr)
+
+
+def warn(msg: str) -> None:
+    print(f"  ! {msg}", file=sys.stderr)
+
+
+def die(msg: str) -> None:
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
+    info("$ " + " ".join(cmd))
+    return subprocess.run(cmd, check=check, text=True, capture_output=True)
+
+
+# ────────────────────── yaml ──────────────────────
+
+
+def read_yaml(path: Path) -> dict[str, Any]:
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        die(
+            "PyYAML is required. Install with `uv pip install pyyaml` or "
+            "`pip install pyyaml`."
+        )
+    with path.open() as f:
+        return yaml.safe_load(f) or {}
+
+
+# ────────────────────── openclaw plugin config ──────────────────────
+
+
+def load_openclaw_config() -> dict[str, Any]:
+    if not OPENCLAW_CONFIG_PATH.exists():
+        die(f"openclaw config not found at {OPENCLAW_CONFIG_PATH}")
+    return json.loads(OPENCLAW_CONFIG_PATH.read_text())
+
+
+def save_openclaw_config(cfg: dict[str, Any]) -> None:
+    OPENCLAW_CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+
+
+def get_plugin_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    entries = cfg.get("plugins", {}).get("entries", {})
+    entry = entries.get(PLUGIN_ID)
+    if not entry:
+        die(
+            f"hindsight-openclaw plugin not configured. Run "
+            f"`hindsight-openclaw-setup` first."
+        )
+    return entry.setdefault("config", {})
+
+
+def resolve_secret(value: Any) -> str | None:
+    """Resolve a SecretRef ({source:'env'|'file'|'exec', id:…}) or pass through string."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and value.get("source") == "env":
+        env_var = value.get("id")
+        if not env_var:
+            return None
+        return os.environ.get(env_var)
+    if isinstance(value, dict) and value.get("source") == "file":
+        p = value.get("id")
+        return Path(p).read_text().strip() if p else None
+    if isinstance(value, dict) and value.get("source") == "exec":
+        cmd = value.get("id")
+        if not cmd:
+            return None
+        return subprocess.check_output(cmd, shell=True, text=True).strip()
+    return None
+
+
+# ────────────────────── hindsight HTTP ──────────────────────
+
+
+def http(method: str, url: str, token: str, body: dict | None = None) -> tuple[int, dict | None]:
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {token}")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            payload = resp.read().decode() or ""
+            return resp.status, (json.loads(payload) if payload else None)
+    except urllib.error.HTTPError as e:
+        payload = e.read().decode() or ""
+        try:
+            parsed = json.loads(payload) if payload else None
+        except json.JSONDecodeError:
+            parsed = {"raw": payload}
+        return e.code, parsed
+
+
+def hindsight_health(api_url: str, token: str) -> None:
+    status, _ = http("GET", f"{api_url}/v1/default/banks?limit=1", token)
+    if status >= 400:
+        die(f"Hindsight API health check failed (status {status}) at {api_url}")
+    ok(f"Hindsight reachable at {api_url}")
+
+
+def upsert_bank(api_url: str, token: str, bank_id: str, name: str | None) -> None:
+    body: dict[str, Any] = {}
+    if name:
+        body["name"] = name
+    status, payload = http("PUT", f"{api_url}/v1/default/banks/{bank_id}", token, body)
+    if status >= 400:
+        die(f"create/update bank '{bank_id}' failed: {status} {payload}")
+    ok(f"bank '{bank_id}' upserted")
+
+
+def patch_bank_config(api_url: str, token: str, bank_id: str, updates: dict[str, Any]) -> None:
+    if not updates:
+        return
+    status, payload = http(
+        "PATCH", f"{api_url}/v1/default/banks/{bank_id}/config", token, {"updates": updates}
+    )
+    if status >= 400:
+        die(f"update bank config failed: {status} {payload}")
+    ok(f"bank '{bank_id}' missions configured ({', '.join(updates)})")
+
+
+def upsert_mental_model(api_url: str, token: str, bank_id: str, spec: dict[str, Any]) -> None:
+    mm_id = spec.get("id")
+    if not mm_id:
+        die("mental-model entry missing 'id'")
+    name = spec.get("name") or mm_id
+    source_query = spec.get("source_query")
+    if not source_query:
+        die(f"mental-model '{mm_id}' missing 'source_query'")
+    tags = spec.get("tags") or []
+    trigger = {}
+    if spec.get("refresh_after_consolidation"):
+        trigger["refresh_after_consolidation"] = True
+
+    base = f"{api_url}/v1/default/banks/{bank_id}/mental-models"
+    status, _ = http("GET", f"{base}/{mm_id}", token)
+
+    if status == 404:
+        body: dict[str, Any] = {"id": mm_id, "name": name, "source_query": source_query, "tags": tags}
+        if trigger:
+            body["trigger"] = trigger
+        s, payload = http("POST", base, token, body)
+        if s >= 400:
+            die(f"create mental-model '{mm_id}' failed: {s} {payload}")
+        ok(f"mental-model '{mm_id}' created")
+        return
+
+    if status >= 400:
+        die(f"check mental-model '{mm_id}' failed: {status}")
+
+    # exists → patch
+    body = {"name": name, "source_query": source_query, "tags": tags}
+    if trigger:
+        body["trigger"] = trigger
+    s, payload = http("PATCH", f"{base}/{mm_id}", token, body)
+    if s >= 400:
+        die(f"update mental-model '{mm_id}' failed: {s} {payload}")
+    ok(f"mental-model '{mm_id}' updated")
+
+
+# ────────────────────── workflow ──────────────────────
+
+
+def cmd_install(source_dir: Path, model: str | None = None) -> None:
+    source_dir = source_dir.expanduser().resolve()
+    if not source_dir.is_dir():
+        die(f"not a directory: {source_dir}")
+
+    manifest_path = source_dir / "agent.yaml"
+    if not manifest_path.exists():
+        die(f"missing {manifest_path}")
+    manifest = read_yaml(manifest_path)
+
+    name = manifest.get("name")
+    if not name:
+        die("agent.yaml: 'name' is required")
+
+    skills: list[str] = manifest.get("skills") or []
+    harness_cfg = (manifest.get("harness") or {}).get("openclaw") or {}
+    plugin_overrides = harness_cfg.get("config") or {}
+    # Model precedence: --model CLI > harness.openclaw.model > harness fallback.
+    # OpenClaw's gateway default is `openai/codex-mini-latest`, which requires a
+    # paid OpenAI key — many users only have Codex OAuth, so we fall back to
+    # `openai-codex/gpt-5.4` (the OAuth-friendly model `my-agent` uses) to keep
+    # first-run zero-config.
+    effective_model = model or harness_cfg.get("model") or "openai-codex/gpt-5.4"
+
+    hindsight_spec = manifest.get("hindsight") or {}
+    bank_from_manifest = hindsight_spec.get("bank")
+
+    # Copy the source dir into an isolated workspace under
+    # ~/.hindsight-agents/openclaw/<agent_id>/ so the boilerplate stays
+    # untouched and the agent's runtime files (skills, context, generated
+    # output) live under our control.
+    agent_dir = INSTALL_ROOT / name
+    INSTALL_ROOT.mkdir(parents=True, exist_ok=True)
+    info(f"agent name: {name}")
+    info(f"source:     {source_dir}")
+    info(f"workspace:  {agent_dir}")
+    info(f"skills:     {', '.join(skills) if skills else '(none listed)'}")
+    if agent_dir.exists():
+        ok(f"workspace exists, syncing on top of it")
+    shutil.copytree(source_dir, agent_dir, dirs_exist_ok=True)
+    ok(f"copied boilerplate → {agent_dir}")
+
+    setup_yaml_path = agent_dir / "setup" / "hindsight-config.yaml"
+
+    # 1. Read openclaw config + resolve hindsight creds.
+    cfg = load_openclaw_config()
+    plugin_cfg = get_plugin_config(cfg)
+    api_url = plugin_cfg.get("hindsightApiUrl")
+    if not api_url:
+        die(
+            "plugin config has no hindsightApiUrl. Configure the plugin first "
+            "(`hindsight-openclaw-setup`)."
+        )
+    token = resolve_secret(plugin_cfg.get("hindsightApiToken"))
+    if not token:
+        die(
+            "could not resolve hindsightApiToken from plugin config "
+            "(check SecretRef env var is exported)"
+        )
+    hindsight_health(api_url, token)
+
+    # 2. Create the OpenClaw agent (idempotent: skip if already exists).
+    existing = run(["openclaw", "agents", "list", "--json"], check=False)
+    already = False
+    if existing.returncode == 0:
+        # `openclaw … --json` prefixes its output with config warnings, so
+        # scan for the JSON payload rather than parsing stdout directly.
+        idx = existing.stdout.find("[")
+        if idx >= 0:
+            try:
+                for a in json.loads(existing.stdout[idx:]) or []:
+                    if isinstance(a, dict) and (
+                        a.get("agentId") == name
+                        or a.get("id") == name
+                        or a.get("name") == name
+                    ):
+                        already = True
+                        break
+            except json.JSONDecodeError:
+                pass
+    if already:
+        ok(f"openclaw agent '{name}' already exists, skipping create")
+    else:
+        proc = run(
+            [
+                "openclaw", "agents", "add",
+                "--workspace", str(agent_dir),
+                "--model", effective_model,
+                "--non-interactive",
+                "--json",
+                name,
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            die(f"`openclaw agents add` failed:\n{proc.stderr or proc.stdout}")
+        ok(f"openclaw agent '{name}' created (model={effective_model})")
+
+    # 3. Apply harness.openclaw.config overrides to the global plugin config.
+    # Re-load openclaw.json *after* `agents add` ran — that command rewrites
+    # the file too, so reusing the in-memory copy from before would clobber
+    # the new agent registration.
+    if plugin_overrides:
+        cfg = load_openclaw_config()
+        plugin_cfg = get_plugin_config(cfg)
+        for k, v in plugin_overrides.items():
+            plugin_cfg[k] = v
+        save_openclaw_config(cfg)
+        ok(f"plugin config updated: {', '.join(plugin_overrides)}")
+
+    # 4. Copy the hindsight-skill-builder meta-skill into the agent's
+    # workspace if listed and missing.
+    if "hindsight-skill-builder" in skills:
+        target = agent_dir / "skills" / "hindsight-skill-builder"
+        if target.exists():
+            ok("hindsight-skill-builder already present in workspace")
+        elif META_SKILL_DIR.exists():
+            shutil.copytree(META_SKILL_DIR, target)
+            ok(f"copied hindsight-skill-builder → {target}")
+        else:
+            warn(
+                f"hindsight-skill-builder listed but source skill not found "
+                f"at {META_SKILL_DIR} — skipping"
+            )
+
+    # 5. Provision Hindsight bank + mental models from setup/hindsight-config.yaml.
+    if not setup_yaml_path.exists():
+        warn(
+            f"no {setup_yaml_path.relative_to(agent_dir)} — skipping bank/mental-model provisioning"
+        )
+    else:
+        spec = read_yaml(setup_yaml_path)
+        bank_spec = spec.get("bank") or {}
+        bank_id = bank_spec.get("id") or bank_from_manifest
+        if not bank_id:
+            die(
+                f"{setup_yaml_path.name}: bank.id missing and not derivable from agent.yaml"
+            )
+        upsert_bank(api_url, token, bank_id, bank_spec.get("name"))
+
+        updates: dict[str, str] = {}
+        for key in ("retain_mission", "observations_mission", "reflect_mission"):
+            val = bank_spec.get(key)
+            if val:
+                updates[key] = val.strip()
+        patch_bank_config(api_url, token, bank_id, updates)
+
+        for mm in spec.get("mental_models") or []:
+            upsert_mental_model(api_url, token, bank_id, mm)
+
+    # 6. Restart the gateway so plugin-config changes + the new agent
+    # registration take effect, then bootstrap a starter session — without
+    # one, the control-plane chat dropdown (which lists from sessions, not
+    # agents) won't show the agent at all.
+    info("restarting gateway to pick up new agent + plugin config")
+    rc = subprocess.call(["openclaw", "gateway", "restart"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if rc != 0:
+        warn("gateway restart returned non-zero — restart manually with `openclaw gateway restart`")
+    else:
+        # Wait for RPC to come back before bootstrapping.
+        import time
+        for _ in range(30):
+            probe = subprocess.run(
+                ["openclaw", "gateway", "status"], capture_output=True, text=True
+            )
+            if "RPC probe: ok" in probe.stdout:
+                ok("gateway back online")
+                break
+            time.sleep(1)
+        else:
+            warn("gateway did not come back within 30s — skipping bootstrap")
+            rc = 1
+
+    if rc == 0:
+        info(f"bootstrapping initial session so '{name}' shows up in the chat UI")
+        boot = subprocess.run(
+            [
+                "openclaw", "agent",
+                "--agent", name,
+                "--session-id", f"{name}-bootstrap",
+                "--message", "hello",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if boot.returncode == 0:
+            ok(f"session '{name}-bootstrap' created — refresh the chat UI to see it")
+        else:
+            warn(
+                f"bootstrap session failed (likely a model auth issue):\n"
+                f"{(boot.stderr or boot.stdout).strip().splitlines()[-1] if (boot.stderr or boot.stdout).strip() else '(no output)'}"
+            )
+
+    # 7. Done — tell the user.
+    bank_id_print = bank_from_manifest or (
+        (read_yaml(setup_yaml_path).get("bank") or {}).get("id")
+        if setup_yaml_path.exists()
+        else None
+    )
+    print()
+    print("━" * 64)
+    print(f"  ✅ openclaw agent '{name}' installed")
+    print("━" * 64)
+    print()
+    print(f"workspace : {agent_dir}")
+    if bank_id_print:
+        print(f"bank      : {bank_id_print}")
+    print(f"model     : {effective_model}")
+    print()
+    print(f"Chat:  openclaw agent --agent {name} --message 'hello'")
+    print()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    p_install = sub.add_parser("install", help="install an agent from a boilerplate directory")
+    p_install.add_argument("agent_dir", type=Path, help="path to the agent boilerplate directory")
+    p_install.add_argument(
+        "--model",
+        help="OpenClaw model id for the agent (overrides agent.yaml harness.openclaw.model)",
+    )
+    args = parser.parse_args()
+    if args.cmd == "install":
+        cmd_install(args.agent_dir, model=args.model)
+
+
+if __name__ == "__main__":
+    main()
