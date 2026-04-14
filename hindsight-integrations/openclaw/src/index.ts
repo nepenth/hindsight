@@ -806,17 +806,26 @@ export function getIdentitySkipReason(
 ): { resolvedCtx: PluginHookAgentContext | undefined; reason?: IdentitySkipReason } {
   const resolvedCtx = resolveSessionIdentity(ctx);
   const sessionKey = resolvedCtx?.sessionKey;
-  // When per-agent banking is enabled, CLI/main sessions are legitimate (each agent
-  // gets its own bank, including 'main'), so the "internal main" / "operational
-  // provider main" / "anonymous sender" filters that exist for the default static
-  // bank mode would otherwise prevent any per-agent bank from being created.
+  // The "internal main" / "operational provider main" / "anonymous sender" filters
+  // exist to keep the default multi-tenant bank from being polluted by CLI/main
+  // sessions that lack a stable identity. They should NOT fire when the user has
+  // explicitly opted into a routing scheme that expects those sessions:
+  //   - dynamicBankGranularity includes 'agent' → each agent (including 'main')
+  //     gets its own bank
+  //   - dynamicBankId === false with a configured bankId → user pinned a single
+  //     named bank and wants every session retained into it
   const agentBanking = pluginConfig?.dynamicBankGranularity?.includes('agent') ?? false;
+  const staticBanking =
+    pluginConfig?.dynamicBankId === false &&
+    typeof pluginConfig?.bankId === 'string' &&
+    pluginConfig.bankId.length > 0;
+  const allowCliSessions = agentBanking || staticBanking;
 
   if (typeof sessionKey === 'string') {
     if (/^agent:[^:]+:(cron|heartbeat|subagent):/.test(sessionKey)) {
       return { resolvedCtx, reason: finalSkipReason(`operational session ${sessionKey}`) };
     }
-    if (!agentBanking && /^agent:[^:]+:main$/.test(sessionKey)) {
+    if (!allowCliSessions && /^agent:[^:]+:main$/.test(sessionKey)) {
       return { resolvedCtx, reason: finalSkipReason(`internal main session ${sessionKey}`) };
     }
     if (/^temp:/.test(sessionKey)) {
@@ -824,7 +833,7 @@ export function getIdentitySkipReason(
     }
   }
 
-  const operationalProviders = agentBanking
+  const operationalProviders = allowCliSessions
     ? ['cron', 'heartbeat', 'subagent']
     : ['cron', 'heartbeat', 'subagent', 'main'];
   if (resolvedCtx?.messageProvider && operationalProviders.includes(resolvedCtx.messageProvider)) {
@@ -834,7 +843,7 @@ export function getIdentitySkipReason(
     return { resolvedCtx, reason: retryableSkipReason('missing stable message provider') };
   }
   if (!resolvedCtx?.senderId || resolvedCtx.senderId === 'anonymous') {
-    if (agentBanking && resolvedCtx?.agentId) {
+    if (allowCliSessions && resolvedCtx?.agentId) {
       resolvedCtx.senderId = `agent-user:${resolvedCtx.agentId}`;
     } else {
       return { resolvedCtx, reason: retryableSkipReason('missing stable sender identity') };
