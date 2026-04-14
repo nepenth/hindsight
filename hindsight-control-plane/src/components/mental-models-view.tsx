@@ -101,6 +101,9 @@ interface MentalModel {
     exclude_mental_model_ids?: string[];
     tags_match?: TagsMatch;
     tag_groups?: TagGroup[];
+    include_chunks?: boolean;
+    recall_max_tokens?: number;
+    recall_chunks_max_tokens?: number;
   };
   last_refreshed_at: string;
   created_at: string;
@@ -613,6 +616,10 @@ function CreateMentalModelDialog({
     excludeMentalModelIds: "",
     tagsMatch: "" as string,
     tagGroups: "",
+    // Recall overrides for refresh: "" means inherit bank/global default
+    includeChunks: "" as "" | "true" | "false",
+    recallMaxTokens: "",
+    recallChunksMaxTokens: "",
   });
 
   const handleCreate = async () => {
@@ -643,6 +650,15 @@ function CreateMentalModelDialog({
         }
       }
 
+      const recallMaxTokens = form.recallMaxTokens.trim()
+        ? parseInt(form.recallMaxTokens, 10)
+        : undefined;
+      const recallChunksMaxTokens = form.recallChunksMaxTokens.trim()
+        ? parseInt(form.recallChunksMaxTokens, 10)
+        : undefined;
+      const includeChunks =
+        form.includeChunks === "true" ? true : form.includeChunks === "false" ? false : undefined;
+
       await client.createMentalModel(currentBank, {
         id: form.id.trim() || undefined,
         name: form.name.trim(),
@@ -656,6 +672,9 @@ function CreateMentalModelDialog({
           exclude_mental_model_ids: excludeIds.length > 0 ? excludeIds : undefined,
           tags_match: (form.tagsMatch as TagsMatch) || undefined,
           tag_groups: tagGroups,
+          include_chunks: includeChunks,
+          recall_max_tokens: recallMaxTokens,
+          recall_chunks_max_tokens: recallChunksMaxTokens,
         },
       });
 
@@ -671,6 +690,9 @@ function CreateMentalModelDialog({
         excludeMentalModelIds: "",
         tagsMatch: "",
         tagGroups: "",
+        includeChunks: "",
+        recallMaxTokens: "",
+        recallChunksMaxTokens: "",
       });
       onCreated();
     } catch (error) {
@@ -697,6 +719,9 @@ function CreateMentalModelDialog({
             excludeMentalModelIds: "",
             tagsMatch: "",
             tagGroups: "",
+            includeChunks: "",
+            recallMaxTokens: "",
+            recallChunksMaxTokens: "",
           });
           onClose();
         }
@@ -860,6 +885,62 @@ function CreateMentalModelDialog({
                 set.
               </p>
             </div>
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-medium text-foreground">Recall during refresh</p>
+              <p className="text-xs text-muted-foreground">
+                Override how the internal recall behaves when this model refreshes. Leave blank to
+                inherit the bank/global default.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Include chunks</label>
+              <Select
+                value={form.includeChunks || "default"}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    includeChunks: v === "default" ? "" : (v as "true" | "false"),
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (inherit)</SelectItem>
+                  <SelectItem value="true">Yes — include raw chunk text</SelectItem>
+                  <SelectItem value="false">No — skip chunks (smaller prompt)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Recall max tokens</label>
+              <Input
+                type="number"
+                value={form.recallMaxTokens}
+                onChange={(e) => setForm({ ...form, recallMaxTokens: e.target.value })}
+                placeholder="Default (inherit)"
+                min="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                Token budget for facts returned by recall.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Recall chunks max tokens
+              </label>
+              <Input
+                type="number"
+                value={form.recallChunksMaxTokens}
+                onChange={(e) => setForm({ ...form, recallChunksMaxTokens: e.target.value })}
+                placeholder="Default (inherit)"
+                min="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                Token budget for raw chunk text returned by recall.
+              </p>
+            </div>
           </TabsContent>
         </Tabs>
 
@@ -899,7 +980,7 @@ function UpdateMentalModelDialog({
 }) {
   const { currentBank } = useBank();
   const [updating, setUpdating] = useState(false);
-  const [form, setForm] = useState({
+  const buildFormState = () => ({
     name: mentalModel.name,
     sourceQuery: mentalModel.source_query,
     maxTokens: String(mentalModel.max_tokens || 2048),
@@ -915,28 +996,26 @@ function UpdateMentalModelDialog({
     tagGroups: mentalModel.trigger?.tag_groups
       ? JSON.stringify(mentalModel.trigger.tag_groups, null, 2)
       : "",
+    includeChunks: (mentalModel.trigger?.include_chunks === true
+      ? "true"
+      : mentalModel.trigger?.include_chunks === false
+        ? "false"
+        : "") as "" | "true" | "false",
+    recallMaxTokens:
+      mentalModel.trigger?.recall_max_tokens != null
+        ? String(mentalModel.trigger.recall_max_tokens)
+        : "",
+    recallChunksMaxTokens:
+      mentalModel.trigger?.recall_chunks_max_tokens != null
+        ? String(mentalModel.trigger.recall_chunks_max_tokens)
+        : "",
   });
+  const [form, setForm] = useState(buildFormState);
 
   // Reset form when mental model changes or dialog opens
   useEffect(() => {
     if (open) {
-      setForm({
-        name: mentalModel.name,
-        sourceQuery: mentalModel.source_query,
-        maxTokens: String(mentalModel.max_tokens || 2048),
-        tags: mentalModel.tags.join(", "),
-        autoRefresh: mentalModel.trigger?.refresh_after_consolidation || false,
-        factTypes:
-          (mentalModel.trigger?.fact_types as
-            | Array<"world" | "experience" | "observation">
-            | undefined) || [],
-        excludeMentalModels: mentalModel.trigger?.exclude_mental_models || false,
-        excludeMentalModelIds: (mentalModel.trigger?.exclude_mental_model_ids || []).join(", "),
-        tagsMatch: (mentalModel.trigger?.tags_match as string) || "",
-        tagGroups: mentalModel.trigger?.tag_groups
-          ? JSON.stringify(mentalModel.trigger.tag_groups, null, 2)
-          : "",
-      });
+      setForm(buildFormState());
     }
   }, [open, mentalModel]);
 
@@ -967,6 +1046,15 @@ function UpdateMentalModelDialog({
         }
       }
 
+      const recallMaxTokens = form.recallMaxTokens.trim()
+        ? parseInt(form.recallMaxTokens, 10)
+        : undefined;
+      const recallChunksMaxTokens = form.recallChunksMaxTokens.trim()
+        ? parseInt(form.recallChunksMaxTokens, 10)
+        : undefined;
+      const includeChunks =
+        form.includeChunks === "true" ? true : form.includeChunks === "false" ? false : undefined;
+
       const updated = await client.updateMentalModel(currentBank, mentalModel.id, {
         name: form.name.trim(),
         source_query: form.sourceQuery.trim(),
@@ -979,6 +1067,9 @@ function UpdateMentalModelDialog({
           exclude_mental_model_ids: excludeIds.length > 0 ? excludeIds : undefined,
           tags_match: (form.tagsMatch as TagsMatch) || undefined,
           tag_groups: tagGroups,
+          include_chunks: includeChunks,
+          recall_max_tokens: recallMaxTokens,
+          recall_chunks_max_tokens: recallChunksMaxTokens,
         },
       });
 
@@ -1144,6 +1235,62 @@ function UpdateMentalModelDialog({
               <p className="text-xs text-muted-foreground">
                 Compound boolean tag expressions for refresh filtering. Overrides flat tags when
                 set.
+              </p>
+            </div>
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-medium text-foreground">Recall during refresh</p>
+              <p className="text-xs text-muted-foreground">
+                Override how the internal recall behaves when this model refreshes. Leave blank to
+                inherit the bank/global default.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Include chunks</label>
+              <Select
+                value={form.includeChunks || "default"}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    includeChunks: v === "default" ? "" : (v as "true" | "false"),
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (inherit)</SelectItem>
+                  <SelectItem value="true">Yes — include raw chunk text</SelectItem>
+                  <SelectItem value="false">No — skip chunks (smaller prompt)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Recall max tokens</label>
+              <Input
+                type="number"
+                value={form.recallMaxTokens}
+                onChange={(e) => setForm({ ...form, recallMaxTokens: e.target.value })}
+                placeholder="Default (inherit)"
+                min="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                Token budget for facts returned by recall.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Recall chunks max tokens
+              </label>
+              <Input
+                type="number"
+                value={form.recallChunksMaxTokens}
+                onChange={(e) => setForm({ ...form, recallChunksMaxTokens: e.target.value })}
+                placeholder="Default (inherit)"
+                min="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                Token budget for raw chunk text returned by recall.
               </p>
             </div>
           </TabsContent>
