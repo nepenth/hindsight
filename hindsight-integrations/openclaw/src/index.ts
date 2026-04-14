@@ -741,6 +741,7 @@ interface ResolveAndCacheIdentityOptions {
   ctx?: PluginHookAgentContext;
   senderIdHint?: string;
   dispatchChannel?: string;
+  pluginConfig?: PluginConfig;
 }
 
 function resolveAndCacheIdentity(
@@ -787,7 +788,7 @@ function resolveAndCacheIdentity(
 
   cacheSessionIdentity(sessionKey, resolvedCtx);
 
-  const { reason: skipReason } = getIdentitySkipReason(resolvedCtx);
+  const { reason: skipReason } = getIdentitySkipReason(resolvedCtx, options.pluginConfig);
   if (sessionKey) {
     if (skipReason) {
       setCappedMapValue(skipHindsightTurnBySession, sessionKey, skipReason);
@@ -801,15 +802,21 @@ function resolveAndCacheIdentity(
 
 export function getIdentitySkipReason(
   ctx: PluginHookAgentContext | undefined,
+  pluginConfig?: PluginConfig,
 ): { resolvedCtx: PluginHookAgentContext | undefined; reason?: IdentitySkipReason } {
   const resolvedCtx = resolveSessionIdentity(ctx);
   const sessionKey = resolvedCtx?.sessionKey;
+  // When per-agent banking is enabled, CLI/main sessions are legitimate (each agent
+  // gets its own bank, including 'main'), so the "internal main" / "operational
+  // provider main" / "anonymous sender" filters that exist for the default static
+  // bank mode would otherwise prevent any per-agent bank from being created.
+  const agentBanking = pluginConfig?.dynamicBankGranularity?.includes('agent') ?? false;
 
   if (typeof sessionKey === 'string') {
     if (/^agent:[^:]+:(cron|heartbeat|subagent):/.test(sessionKey)) {
       return { resolvedCtx, reason: finalSkipReason(`operational session ${sessionKey}`) };
     }
-    if (/^agent:[^:]+:main$/.test(sessionKey)) {
+    if (!agentBanking && /^agent:[^:]+:main$/.test(sessionKey)) {
       return { resolvedCtx, reason: finalSkipReason(`internal main session ${sessionKey}`) };
     }
     if (/^temp:/.test(sessionKey)) {
@@ -817,14 +824,21 @@ export function getIdentitySkipReason(
     }
   }
 
-  if (resolvedCtx?.messageProvider && ['cron', 'heartbeat', 'subagent', 'main'].includes(resolvedCtx.messageProvider)) {
+  const operationalProviders = agentBanking
+    ? ['cron', 'heartbeat', 'subagent']
+    : ['cron', 'heartbeat', 'subagent', 'main'];
+  if (resolvedCtx?.messageProvider && operationalProviders.includes(resolvedCtx.messageProvider)) {
     return { resolvedCtx, reason: finalSkipReason(`operational provider ${resolvedCtx.messageProvider}`) };
   }
   if (!resolvedCtx?.messageProvider || resolvedCtx.messageProvider === 'unknown') {
     return { resolvedCtx, reason: retryableSkipReason('missing stable message provider') };
   }
   if (!resolvedCtx?.senderId || resolvedCtx.senderId === 'anonymous') {
-    return { resolvedCtx, reason: retryableSkipReason('missing stable sender identity') };
+    if (agentBanking && resolvedCtx?.agentId) {
+      resolvedCtx.senderId = `agent-user:${resolvedCtx.agentId}`;
+    } else {
+      return { resolvedCtx, reason: retryableSkipReason('missing stable sender identity') };
+    }
   }
   if (
     resolvedCtx.messageProvider === 'telegram' &&
@@ -1520,6 +1534,7 @@ export default function (api: MoltbotPluginAPI) {
               ctx?.senderId,
           },
           dispatchChannel,
+          pluginConfig,
         });
 
         if (skipReason) {
@@ -1543,7 +1558,7 @@ export default function (api: MoltbotPluginAPI) {
     api.on('before_agent_start', async (event: any, ctx?: PluginHookAgentContext) => {
       try {
         const sessionKey = ctx?.sessionKey ?? (typeof event?.sessionKey === 'string' ? event.sessionKey : undefined);
-        const { resolvedCtx, skipReason } = resolveAndCacheIdentity({ sessionKey, ctx });
+        const { resolvedCtx, skipReason } = resolveAndCacheIdentity({ sessionKey, ctx, pluginConfig });
 
         if (sessionKey && skipReason) {
           debug(`[Hindsight] before_agent_start skipping session ${sessionKey}: ${formatIdentitySkipReason(skipReason)}`);
@@ -1604,6 +1619,7 @@ export default function (api: MoltbotPluginAPI) {
           sessionKey: sessionKeyForCache,
           ctx,
           senderIdHint: senderIdFromPrompt,
+          pluginConfig,
         });
         if (identitySkipReason) {
           debug(`[Hindsight] Skipping recall for session ${sessionKeyForCache}: ${formatIdentitySkipReason(identitySkipReason)}`);
@@ -1769,7 +1785,7 @@ ${memoriesFormatted}
         }
 
         const { effectiveCtx: effectiveCtxForRetain, resolvedCtx: resolvedCtxForRetain, skipReason: identitySkipReason } =
-          resolveAndCacheIdentity({ sessionKey: sessionKeyForLookup, ctx: effectiveCtx });
+          resolveAndCacheIdentity({ sessionKey: sessionKeyForLookup, ctx: effectiveCtx, pluginConfig });
 
         if (identitySkipReason) {
           debug(`[Hindsight Hook] Skipping retain for session ${sessionKeyForLookup}: ${formatIdentitySkipReason(identitySkipReason)}`);
