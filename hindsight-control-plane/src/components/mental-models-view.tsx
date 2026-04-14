@@ -791,9 +791,7 @@ function CreateMentalModelDialog({
                 <Checkbox
                   id="auto-refresh"
                   checked={form.autoRefresh}
-                  onCheckedChange={(checked) =>
-                    setForm({ ...form, autoRefresh: checked === true })
-                  }
+                  onCheckedChange={(checked) => setForm({ ...form, autoRefresh: checked === true })}
                 />
                 <label
                   htmlFor="auto-refresh"
@@ -802,14 +800,12 @@ function CreateMentalModelDialog({
                   Auto-refresh after consolidation
                 </label>
               </div>
-              <div className="space-y-3">
-                <label className="text-sm font-medium text-foreground">Fact Types</label>
-                <FactTypeCheckboxGroup
-                  value={form.factTypes}
-                  onChange={(v) => setForm({ ...form, factTypes: v as FactType[] })}
-                />
-                <p className="text-xs text-muted-foreground">Leave empty to include all types.</p>
-              </div>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground border-b pb-1">
+                Other Mental Models
+              </h3>
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="exclude-mental-models"
@@ -901,6 +897,14 @@ function CreateMentalModelDialog({
                 Override how the internal recall behaves when this model refreshes. Leave blank to
                 inherit the bank/global default.
               </p>
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground">Fact Types</label>
+                <FactTypeCheckboxGroup
+                  value={form.factTypes}
+                  onChange={(v) => setForm({ ...form, factTypes: v as FactType[] })}
+                />
+                <p className="text-xs text-muted-foreground">Leave empty to include all types.</p>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Include chunks</label>
                 <Select
@@ -1153,9 +1157,7 @@ function UpdateMentalModelDialog({
                 <Checkbox
                   id="update-auto-refresh"
                   checked={form.autoRefresh}
-                  onCheckedChange={(checked) =>
-                    setForm({ ...form, autoRefresh: checked === true })
-                  }
+                  onCheckedChange={(checked) => setForm({ ...form, autoRefresh: checked === true })}
                 />
                 <label
                   htmlFor="update-auto-refresh"
@@ -1164,14 +1166,12 @@ function UpdateMentalModelDialog({
                   Auto-refresh after consolidation
                 </label>
               </div>
-              <div className="space-y-3">
-                <label className="text-sm font-medium text-foreground">Fact Types</label>
-                <FactTypeCheckboxGroup
-                  value={form.factTypes}
-                  onChange={(v) => setForm({ ...form, factTypes: v as FactType[] })}
-                />
-                <p className="text-xs text-muted-foreground">Leave empty to include all types.</p>
-              </div>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground border-b pb-1">
+                Other Mental Models
+              </h3>
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="update-exclude-mental-models"
@@ -1263,6 +1263,14 @@ function UpdateMentalModelDialog({
                 Override how the internal recall behaves when this model refreshes. Leave blank to
                 inherit the bank/global default.
               </p>
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground">Fact Types</label>
+                <FactTypeCheckboxGroup
+                  value={form.factTypes}
+                  onChange={(v) => setForm({ ...form, factTypes: v as FactType[] })}
+                />
+                <p className="text-xs text-muted-foreground">Leave empty to include all types.</p>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Include chunks</label>
                 <Select
