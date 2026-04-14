@@ -158,25 +158,32 @@ If this fails:
 
 Do not proceed until `hindsight health` returns healthy.
 
-### Ensure the `hindsight` CLI is installed
+### Install (or upgrade) the `hindsight` CLI
 
-The generated skill invokes `hindsight mental-model get` at runtime. Check for the CLI:
+The generated skill invokes `hindsight mental-model get` at runtime, and this meta-skill itself uses the CLI to create banks and mental models. We **always** run the upstream installer so the user ends up on the latest release — older builds won't have the flags this skill relies on (`--trigger-refresh-after-consolidation`, `--tags`).
 
-```bash
-command -v hindsight
-```
+The installer is idempotent — it'll upgrade in place if `hindsight` is already on PATH.
 
-If missing, propose installing it and wait for approval:
+Propose the install and wait for approval:
 
-> I need the `hindsight` CLI to create the mental model and for the new skill to fetch it at runtime. I'd like to run:
+> To set up the bank and the runtime CLI the new skill will use, I want to install or upgrade the `hindsight` CLI to the latest release:
 >
 > ```bash
 > curl -fsSL https://hindsight.vectorize.io/get-cli | bash
 > ```
 >
-> OK to install?
+> The script writes the binary to `~/.local/bin/hindsight` and is safe to re-run. OK to install?
 
-If the user declines, stop the whole flow.
+Once approved, run it. Then verify and report the version:
+
+```bash
+curl -fsSL https://hindsight.vectorize.io/get-cli | bash
+PATH="$HOME/.local/bin:$PATH" hindsight --version
+```
+
+If the install fails (the upstream installer hits the unauthenticated GitHub releases API and gets rate-limited at 60 requests/hour per IP), check whether `hindsight` is already on PATH and meets the minimum version. If yes, proceed and warn the user. If no, stop and tell the user to retry in a few minutes or install manually from <https://github.com/vectorize-io/hindsight/releases>.
+
+If the user declines the install entirely, stop the whole flow.
 
 ### Write the shared env file at `~/.hindsight/learning-skill.env`
 
