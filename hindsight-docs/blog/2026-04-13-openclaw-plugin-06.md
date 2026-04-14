@@ -1,6 +1,6 @@
 ---
 title: "What's new in hindsight-openclaw 0.6"
-authors: [hindsight]
+authors: [benfrank241]
 date: 2026-04-13T12:00
 tags: [release, openclaw, memory, setup-wizard, plugin]
 image: /img/blog/openclaw-plugin-06.png
