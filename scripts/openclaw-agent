@@ -294,21 +294,28 @@ def cmd_install(source_dir: Path, model: str | None = None) -> None:
     existing = run(["openclaw", "agents", "list", "--json"], check=False)
     already = False
     if existing.returncode == 0:
-        # `openclaw … --json` prefixes its output with config warnings, so
-        # scan for the JSON payload rather than parsing stdout directly.
-        idx = existing.stdout.find("[")
-        if idx >= 0:
+        # `openclaw … --json` prefixes its output with config warnings AND
+        # plugin-load logs that contain stray `[` chars (e.g. "[plugins]"),
+        # so we can't grab the first `[` and call `json.loads`. Walk
+        # candidates from the end until one parses as a list.
+        out = existing.stdout
+        for start in range(len(out) - 1, -1, -1):
+            if out[start] != "[":
+                continue
             try:
-                for a in json.loads(existing.stdout[idx:]) or []:
-                    if isinstance(a, dict) and (
-                        a.get("agentId") == name
-                        or a.get("id") == name
-                        or a.get("name") == name
-                    ):
-                        already = True
-                        break
+                payload = json.loads(out[start:])
             except json.JSONDecodeError:
-                pass
+                continue
+            if not isinstance(payload, list):
+                continue
+            for a in payload:
+                if isinstance(a, dict) and (
+                    a.get("agentId") == name
+                    or a.get("id") == name
+                    or a.get("name") == name
+                ):
+                    already = True
+            break
     if already:
         ok(f"openclaw agent '{name}' already exists, skipping create")
     else:
