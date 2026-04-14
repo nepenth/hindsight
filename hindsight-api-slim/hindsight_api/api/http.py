@@ -1662,6 +1662,12 @@ class BankTemplateConfig(BaseModel):
         default=None, description="Custom extraction prompt (when mode='custom')"
     )
     retain_chunk_size: int | None = Field(default=None, description="Max token size for each content chunk")
+    enable_temporal_extraction: bool | None = Field(
+        default=None, description="Toggle dateparser temporal extraction during recall"
+    )
+    enable_graph_retrieval: bool | None = Field(
+        default=None, description="Toggle entity/link graph traversal during recall"
+    )
     enable_observations: bool | None = Field(default=None, description="Toggle observation consolidation")
     observations_mission: str | None = Field(default=None, description="Controls what gets synthesised")
     disposition_skepticism: int | None = Field(default=None, ge=1, le=5, description="Skepticism trait (1-5)")

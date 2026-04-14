@@ -1031,6 +1031,9 @@ class HindsightConfig:
         # Entity labels (controlled vocabulary for entity classification)
         "entity_labels",
         "entities_allow_free_form",
+        # RAG mode — per-bank retrieval pipeline control
+        "enable_temporal_extraction",
+        "enable_graph_retrieval",
         # Consolidation settings
         "enable_observations",
         "consolidation_llm_batch_size",

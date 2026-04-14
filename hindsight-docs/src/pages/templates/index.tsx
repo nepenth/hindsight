@@ -5,7 +5,7 @@ import templatesData from '@site/src/data/templates.json';
 import integrationsData from '@site/src/data/integrations.json';
 import styles from './index.module.css';
 
-const CATEGORIES = ['all', 'chat', 'coding', 'assistant'] as const;
+const CATEGORIES = ['all', 'chat', 'coding', 'assistant', 'retrieval'] as const;
 type Category = (typeof CATEGORIES)[number];
 
 const CATEGORY_LABELS: Record<Category, string> = {
@@ -13,6 +13,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   chat: 'Chat',
   coding: 'Coding',
   assistant: 'Assistant',
+  retrieval: 'Retrieval',
 };
 
 // Build a lookup from integration ID to icon path and name

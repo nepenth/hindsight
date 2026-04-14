@@ -125,6 +125,29 @@
           }
         ]
       }
+    },
+    {
+      "id": "rag",
+      "name": "RAG Mode",
+      "description": "Low-latency retrieval-only mode. Stores raw chunks without LLM processing and retrieves via semantic + BM25 search only. No fact extraction, no observations, no graph traversal, no temporal filtering.",
+      "category": "retrieval",
+      "integrations": [
+        "litellm",
+        "langgraph",
+        "pydantic-ai",
+        "ai-sdk",
+        "llamaindex",
+        "local-mcp"
+      ],
+      "manifest": {
+        "version": "1",
+        "bank": {
+          "retain_extraction_mode": "chunks",
+          "enable_observations": false,
+          "enable_temporal_extraction": false,
+          "enable_graph_retrieval": false
+        }
+      }
     }
   ]
 }

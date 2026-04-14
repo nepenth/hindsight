@@ -1691,14 +1691,8 @@ class MemoryEngine(MemoryEngineInterface):
         init_tasks = [
             start_pg0(),
             init_embeddings(),
+            init_query_analyzer(),
         ]
-
-        # Only load dateparser if temporal extraction is enabled (saves ~120ms per recall)
-        config = get_config()
-        if config.enable_temporal_extraction:
-            init_tasks.append(init_query_analyzer())
-        else:
-            logger.info("Temporal extraction disabled (HINDSIGHT_API_ENABLE_TEMPORAL_EXTRACTION=false)")
 
         # Only init cross-encoder eagerly if not using lazy initialization
         if not self._lazy_reranker:
@@ -2803,7 +2797,8 @@ class MemoryEngine(MemoryEngineInterface):
 
             try:
                 # Run optimized retrieval with connection budget
-                config = get_config()
+                # Resolve bank-specific config (supports per-bank RAG mode)
+                config = await self._config_resolver.resolve_full_config(bank_id, request_context)
                 effective_connection_budget = (
                     connection_budget if connection_budget is not None else config.recall_connection_budget
                 )
