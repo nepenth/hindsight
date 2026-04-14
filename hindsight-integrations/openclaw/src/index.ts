@@ -2163,7 +2163,7 @@ function buildAnthropicStructuredMessages(
 
 function extractStructuredBlocks(content: any, role: string): any[] {
   if (typeof content === 'string') {
-    const cleaned = stripMetadataEnvelopes(stripMemoryTags(content)).trim();
+    const cleaned = stripMetadataEnvelopes(stripInlineRetainTags(stripMemoryTags(content))).trim();
     return cleaned ? [{ type: 'text', text: cleaned }] : [];
   }
   if (!Array.isArray(content)) return [];
@@ -2174,7 +2174,7 @@ function extractStructuredBlocks(content: any, role: string): any[] {
     const blockType = block.type;
 
     if (blockType === 'text') {
-      const cleaned = stripMetadataEnvelopes(stripMemoryTags(block.text ?? '')).trim();
+      const cleaned = stripMetadataEnvelopes(stripInlineRetainTags(stripMemoryTags(block.text ?? ''))).trim();
       if (cleaned) blocks.push({ type: 'text', text: cleaned });
     } else if (blockType === 'toolCall' && role === 'assistant') {
       const name = typeof block.name === 'string' ? block.name : 'unknown';
