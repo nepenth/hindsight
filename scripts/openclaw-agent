@@ -143,57 +143,6 @@ def resolve_secret(value: Any) -> str | None:
 # lockstep with whatever endpoints the current CLI understands.
 
 
-CLI_INSTALLER_URL = "https://hindsight.vectorize.io/get-cli"
-
-
-def ensure_hindsight_cli() -> None:
-    """Install or upgrade the `hindsight` CLI to the latest release.
-
-    The installer is idempotent and writes to ~/.local/bin, so we always
-    try to run it — that way the installer doesn't depend on whatever
-    `hindsight` happens to be on PATH (which may pre-date features we rely
-    on, e.g. the `--trigger-refresh-after-consolidation` flag).
-
-    The upstream installer hits the unauthenticated GitHub releases API,
-    which gets rate-limited (60 req/h per IP). When that fails, we fall
-    back to whatever `hindsight` is already on PATH and let the rest of
-    the install proceed — only erroring out if no CLI is reachable at all.
-    """
-    info(f"installing/upgrading hindsight CLI from {CLI_INSTALLER_URL}")
-    proc = subprocess.run(
-        f"curl -fsSL {CLI_INSTALLER_URL} | bash",
-        shell=True,
-        capture_output=True,
-        text=True,
-    )
-
-    # Make sure ~/.local/bin (where the installer writes) is on PATH for
-    # the rest of this process before we probe for the binary.
-    local_bin = str(Path.home() / ".local" / "bin")
-    if local_bin not in os.environ.get("PATH", "").split(os.pathsep):
-        os.environ["PATH"] = local_bin + os.pathsep + os.environ.get("PATH", "")
-
-    version_proc = subprocess.run(
-        ["hindsight", "--version"], capture_output=True, text=True
-    )
-    have_cli = version_proc.returncode == 0
-    version = version_proc.stdout.strip() if have_cli else "(none)"
-
-    if proc.returncode == 0:
-        ok(f"hindsight CLI ready: {version}")
-        return
-    if have_cli:
-        warn(
-            f"hindsight CLI install failed (likely GitHub rate limit) — "
-            f"continuing with already-installed {version}"
-        )
-        return
-    die(
-        f"hindsight CLI install failed and no `hindsight` binary on PATH:\n"
-        f"{(proc.stderr or proc.stdout).strip()[-400:]}"
-    )
-
-
 def configure_hindsight_cli(api_url: str, token: str) -> None:
     """Point the hindsight CLI at the openclaw plugin's URL/token.
 
@@ -341,13 +290,10 @@ def cmd_install(source_dir: Path, model: str | None = None) -> None:
             "(`hindsight-openclaw-setup`)."
         )
     token = resolve_secret(plugin_cfg.get("hindsightApiToken")) or ""
-    # Make sure the hindsight CLI is installed AND fresh enough to know about
-    # the flags we use (--trigger-refresh-after-consolidation, --tags), then
-    # point it at the same URL/token the openclaw plugin uses so subsequent
-    # `hindsight …` calls (and any skill that shells out to the CLI) hit the
-    # configured Cloud / external API instead of the CLI's localhost:8888
-    # default.
-    ensure_hindsight_cli()
+    # Configure the hindsight CLI so subsequent `hindsight …` commands (and
+    # any skill that shells out to the CLI) hit the same Hindsight instance
+    # the openclaw plugin is configured for, instead of falling back to the
+    # CLI's localhost:8888 default.
     configure_hindsight_cli(api_url, token)
     hindsight_health()
 
