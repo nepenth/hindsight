@@ -727,7 +727,7 @@ function CreateMentalModelDialog({
         }
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Create Mental Model</DialogTitle>
           <DialogDescription>
@@ -736,7 +736,7 @@ function CreateMentalModelDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="py-2">
+        <Tabs defaultValue="general" className="py-2 flex-1 min-h-0 overflow-y-auto">
           <TabsList className="w-full">
             <TabsTrigger value="general" className="flex-1">
               General
@@ -1084,7 +1084,7 @@ function UpdateMentalModelDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Update Mental Model</DialogTitle>
           <DialogDescription>
@@ -1092,7 +1092,7 @@ function UpdateMentalModelDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="py-2">
+        <Tabs defaultValue="general" className="py-2 flex-1 min-h-0 overflow-y-auto">
           <TabsList className="w-full">
             <TabsTrigger value="general" className="flex-1">
               General
