@@ -39,6 +39,8 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -137,10 +139,12 @@ def resolve_secret(value: Any) -> str | None:
 
 # ────────────────────── hindsight CLI ──────────────────────
 #
-# All bank + mental-model setup goes through the `hindsight` CLI so
-# credentials live in `~/.hindsight/config` (the CLI's source of truth)
-# instead of being sprinkled across env files, and the installer stays in
-# lockstep with whatever endpoints the current CLI understands.
+# We drive bank + mental-model setup through the `hindsight` CLI rather than
+# raw HTTP so credentials live in `~/.hindsight/config` (the CLI's source of
+# truth) instead of being sprinkled across env files. The one exception is
+# the mental-model `refresh_after_consolidation` trigger — `hindsight
+# mental-model create/update` doesn't expose that flag yet, so we PATCH it
+# directly via urllib using the same plugin creds.
 
 
 def configure_hindsight_cli(api_url: str, token: str) -> None:
@@ -197,7 +201,7 @@ def patch_bank_config(bank_id: str, updates: dict[str, str]) -> None:
     ok(f"bank '{bank_id}' missions configured ({', '.join(updates)})")
 
 
-def upsert_mental_model(bank_id: str, spec: dict[str, Any]) -> None:
+def upsert_mental_model(api_url: str, token: str, bank_id: str, spec: dict[str, Any]) -> None:
     mm_id = spec.get("id")
     if not mm_id:
         die("mental-model entry missing 'id'")
@@ -205,32 +209,47 @@ def upsert_mental_model(bank_id: str, spec: dict[str, Any]) -> None:
     source_query = spec.get("source_query")
     if not source_query:
         die(f"mental-model '{mm_id}' missing 'source_query'")
-    tags = spec.get("tags") or []
-    refresh = bool(spec.get("refresh_after_consolidation"))
 
-    # Probe with `get` first — `mental-model create` returns a generic 500
-    # on duplicate id instead of a clean 409, so we can't rely on the error
-    # message to distinguish conflict from real failure.
+    # `hindsight mental-model create` returns a generic 500 when an MM with
+    # the same id already exists, so we probe with `get` first instead of
+    # relying on an "already exists" error message.
     existing = hindsight_cli(
         ["mental-model", "get", bank_id, mm_id], allow_fail=True
     )
-
     if existing.returncode == 0:
-        cmd = ["mental-model", "update", bank_id, mm_id, "--name", name, "--source-query", source_query]
-        if tags:
-            cmd += ["--tags", ",".join(tags)]
-        if refresh:
-            cmd += ["--trigger-refresh-after-consolidation", "true"]
-        hindsight_cli(cmd)
-        ok(f"mental-model '{mm_id}' updated")
+        ok(f"mental-model '{mm_id}' already exists")
     else:
-        cmd = ["mental-model", "create", bank_id, name, source_query, "--id", mm_id]
-        if tags:
-            cmd += ["--tags", ",".join(tags)]
-        if refresh:
-            cmd.append("--trigger-refresh-after-consolidation")
-        hindsight_cli(cmd)
+        proc = hindsight_cli(
+            ["mental-model", "create", bank_id, name, source_query, "--id", mm_id],
+            allow_fail=True,
+        )
+        if proc.returncode != 0:
+            die(f"create mental-model '{mm_id}' failed:\n{(proc.stderr or proc.stdout).strip()}")
         ok(f"mental-model '{mm_id}' created")
+
+    # The CLI doesn't expose the trigger field yet — PATCH it ourselves.
+    tags = spec.get("tags") or []
+    trigger = {}
+    if spec.get("refresh_after_consolidation"):
+        trigger["refresh_after_consolidation"] = True
+    if not trigger and not tags:
+        return
+    body: dict[str, Any] = {}
+    if trigger:
+        body["trigger"] = trigger
+    if tags:
+        body["tags"] = tags
+    url = f"{api_url}/v1/default/banks/{bank_id}/mental-models/{mm_id}"
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode(), method="PATCH"
+    )
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        urllib.request.urlopen(req).read()
+    except urllib.error.HTTPError as e:
+        die(f"set mental-model '{mm_id}' trigger failed: {e.code} {e.read().decode()[:200]}")
+    ok(f"mental-model '{mm_id}' trigger configured ({list(trigger) or 'tags only'})")
 
 
 # ────────────────────── workflow ──────────────────────
@@ -392,7 +411,7 @@ def cmd_install(source_dir: Path, model: str | None = None) -> None:
         patch_bank_config(bank_id, updates)
 
         for mm in spec.get("mental_models") or []:
-            upsert_mental_model(bank_id, mm)
+            upsert_mental_model(api_url, token, bank_id, mm)
 
     # 6. Restart the gateway so plugin-config changes + the new agent
     # registration take effect, then bootstrap a starter session — without
