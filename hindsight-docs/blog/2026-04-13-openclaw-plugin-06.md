@@ -12,6 +12,8 @@ description: "hindsight-openclaw 0.6 adds an interactive setup wizard, per-chann
 
 <!-- truncate -->
 
+![Hindsight x OpenClaw](/img/blog/openclaw-plugin-06.png)
+
 - [**Setup Wizard**](#setup-wizard): One command gets you from zero to working memory in under two minutes.
 - [**Config Overhaul**](#config-overhaul-breaking-change): All settings now live in `openclaw.json`. Environment variables are gone.
 - [**Per-Channel Memory Banks**](#per-channel-memory-banks): Memory is now isolated per agent, channel, and user by default.
