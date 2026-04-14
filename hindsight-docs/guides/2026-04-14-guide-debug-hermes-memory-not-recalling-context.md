@@ -2,7 +2,7 @@
 title: "How to Fix Hermes Memory When It Stops Recalling Context"
 authors: [benfrank241]
 date: 2026-04-14
-tags: [seo, how-to, hermes, memory, troubleshooting]
+tags: [how-to, hermes, memory, troubleshooting]
 description: "Debug Hermes memory when it stops recalling context. Check mode, health, hooks, logs, and retention timing so auto-recall starts working again."
 image: /img/blog/guide-debug-hermes-memory-not-recalling-context.png
 hide_table_of_contents: true

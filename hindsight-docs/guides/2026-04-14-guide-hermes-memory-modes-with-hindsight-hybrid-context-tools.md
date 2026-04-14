@@ -2,7 +2,7 @@
 title: "Hermes Memory Modes with Hindsight, Hybrid, Context, Tools"
 authors: [benfrank241]
 date: 2026-04-14
-tags: [seo, how-to, hermes, memory, configuration]
+tags: [how-to, hermes, memory, configuration]
 description: "Choose the right Hermes memory mode for Hindsight. Learn when to use hybrid, context, or tools, how to switch modes, and how to verify recall."
 image: /img/blog/guide-hermes-memory-modes-with-hindsight-hybrid-context-tools.png
 hide_table_of_contents: true

@@ -2,7 +2,7 @@
 title: "Guide: Migrate hindsight-hermes to Native Hermes Memory"
 authors: [benfrank241]
 date: 2026-04-14
-tags: [seo, how-to, hermes, memory, migration]
+tags: [how-to, hermes, memory, migration]
 description: "Learn how to migrate hindsight-hermes to native Hermes memory without losing your bank, then verify recall, tools, and cross-session memory still work."
 image: /img/blog/guide-migrate-hindsight-hermes-to-native-hermes-memory.png
 hide_table_of_contents: true
