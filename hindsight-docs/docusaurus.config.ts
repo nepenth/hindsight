@@ -367,6 +367,10 @@ const config: Config = {
               to: '/changelog',
             },
             {
+              label: 'Guides',
+              to: '/guides',
+            },
+            {
               label: 'Hindsight Cloud',
               href: 'https://ui.hindsight.vectorize.io/signup',
             },
