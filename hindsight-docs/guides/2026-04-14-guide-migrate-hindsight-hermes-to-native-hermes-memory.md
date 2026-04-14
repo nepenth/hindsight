@@ -8,6 +8,8 @@ image: /img/blog/guide-migrate-hindsight-hermes-to-native-hermes-memory.png
 hide_table_of_contents: true
 ---
 
+![Guide: Migrate hindsight-hermes to Native Hermes Memory](/img/blog/guide-migrate-hindsight-hermes-to-native-hermes-memory.png)
+
 If you need to **migrate `hindsight-hermes` to native Hermes memory**, the good news is that the move is smaller than it looks. Hermes now has a built-in Hindsight provider, so you no longer need the old pip plugin path from the original setup guide. In most cases, the migration is just: uninstall the old plugin package, point Hermes at the native provider, keep the same bank ID, and verify that automatic recall works on the next turn.
 
 That last part matters. Many teams are nervous about migration because they assume it means rebuilding memory from scratch, re-teaching the agent, or manually exporting and importing data. Usually, none of that is required. If your old setup already stored memories in Hindsight, your bank already exists. The native provider can keep using it as long as you preserve the same backend and `bank_id`.

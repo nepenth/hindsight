@@ -8,6 +8,8 @@ image: /img/blog/guide-hermes-memory-modes-with-hindsight-hybrid-context-tools.p
 hide_table_of_contents: true
 ---
 
+![Hermes Memory Modes with Hindsight, Hybrid, Context, Tools](/img/blog/guide-hermes-memory-modes-with-hindsight-hybrid-context-tools.png)
+
 If you are trying to choose between **Hermes memory modes with Hindsight**, the decision is really about one question: should memory be injected automatically, exposed as tools, or both? Hermes's native Hindsight provider supports three integration modes, `hybrid`, `context`, and `tools`, and each one changes how the model experiences memory during a conversation.
 
 This matters more than it sounds. Teams often turn on Hindsight, see that memory works, and stop there. But the mode determines whether recall happens before every turn, whether the model can call `hindsight_recall` and `hindsight_reflect` directly, and whether your assistant behaves like a silent memory system or an explicit tool-using agent. Pick the wrong mode and the setup still looks healthy, but the behavior feels off.
