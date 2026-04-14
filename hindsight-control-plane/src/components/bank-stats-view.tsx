@@ -23,8 +23,8 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  TooltipProps,
 } from "recharts";
+import type { TooltipContentProps } from "recharts";
 
 interface BankStats {
   bank_id: string;
@@ -114,12 +114,13 @@ function CompactNumber({ value, className }: { value: number; className?: string
 }
 
 // Custom tooltip — clean shadow card, no harsh borders, tabular numbers.
-function ChartTooltip({
-  active,
-  payload,
-  label,
-  valueLabel,
-}: TooltipProps<number, string> & { valueLabel?: string }) {
+// Recharts' content prop can be rendered without all the normally-required
+// TooltipContentProps fields populated, so we make them Partial here.
+type ChartTooltipProps = Partial<TooltipContentProps<number, string>> & {
+  valueLabel?: string;
+};
+
+function ChartTooltip({ active, payload, label, valueLabel }: ChartTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="rounded-lg border border-border/60 bg-popover/95 backdrop-blur-sm px-3 py-2 shadow-md">
@@ -359,8 +360,15 @@ const OPS_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+interface OpsStatusEntry {
+  status: string;
+  label: string;
+  value: number;
+  color: string;
+}
+
 function OperationsCard({ byStatus }: { byStatus: Record<string, number> }) {
-  const entries = OPS_STATUS_ORDER.map((s) => ({
+  const entries: OpsStatusEntry[] = OPS_STATUS_ORDER.map((s) => ({
     status: s,
     label: OPS_STATUS_LABELS[s],
     value: byStatus[s] || 0,
