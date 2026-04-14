@@ -8,8 +8,6 @@ image: /img/blog/guide-debug-hermes-memory-not-recalling-context.png
 hide_table_of_contents: true
 ---
 
-![How to Fix Hermes Memory When It Stops Recalling Context](/img/blog/guide-debug-hermes-memory-not-recalling-context.png)
-
 If you are trying to **debug Hermes memory not recalling context**, the fastest way to think about it is this: one of five things is usually wrong. Hermes is in the wrong memory mode, the backend is unhealthy, the native hooks are not active, the new memory has not finished retaining yet, or the model is still using the wrong memory path.
 
 What makes this frustrating is that the system can look half-correct while still failing in practice. `hermes memory status` may show a configured provider, the Hindsight tools may appear in the tool list, and the config file may look fine, yet the agent still answers like it has amnesia. That usually means the issue is behavioral, not just configurational. The wrong mode, the wrong expectation, or the wrong timing is enough to make healthy infrastructure feel broken.
