@@ -7,6 +7,17 @@ description: Create a new self-improving skill for this agent whenever the user 
 
 You are the agent's tool for **growing its own capabilities**. Every time the user asks for a recurring task you don't already have a skill for, use this meta-skill to build one. Once built, the harness reloads it and the agent can handle that class of request going forward — and it gets sharper over time as the user gives feedback.
 
+## ⚠️ The one rule you cannot break
+
+**Once a skill is created, you must never edit its SKILL.md in response to user feedback about what the task should do.** Not for "prefer RSS", not for "include X", not for "drop Y source", not for "use bullet format". All of that is playbook content — it belongs in the mental model, not in the SKILL.md file.
+
+When the user gives you feedback after a skill has been built:
+1. Acknowledge it in one declarative sentence so the retain pipeline captures it cleanly.
+2. Do NOT open the SKILL.md. Do NOT use Edit / Write / apply_patch on it.
+3. The next consolidation + MM refresh will fold that feedback into the playbook automatically.
+
+The SKILL.md changes exactly twice in its life: when you create it, and if a tool allowlist or hard invariant actually needs to change. Everything else is MM territory. If you find yourself reaching for Edit on an existing SKILL.md, stop and retain the feedback as a user statement instead.
+
 ## The discipline: thin SKILL.md + rich mental model
 
 Every skill you build has exactly two artifacts:
