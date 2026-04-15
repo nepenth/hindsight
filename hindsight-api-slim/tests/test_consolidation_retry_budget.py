@@ -29,18 +29,16 @@ def mock_config():
 
 class TestConsolidationRetryBudget:
     @pytest.mark.asyncio
-    async def test_default_max_attempts_without_config(self, mock_llm_config):
-        """When config is None, max_attempts defaults to 3."""
-        mock_llm_config.call.side_effect = RuntimeError("fail")
-        result = await _consolidate_batch_with_llm(
-            llm_config=mock_llm_config,
-            memories=[{"id": "m1", "text": "test"}],
-            union_observations=[],
-            union_source_facts={},
-            config=None,
-        )
-        assert result.failed
-        assert mock_llm_config.call.call_count == 3
+    async def test_config_is_required(self, mock_llm_config):
+        """Passing config=None raises — it's a programmer error, not a runtime fallback."""
+        with pytest.raises(ValueError, match="config is required"):
+            await _consolidate_batch_with_llm(
+                llm_config=mock_llm_config,
+                memories=[{"id": "m1", "text": "test"}],
+                union_observations=[],
+                union_source_facts={},
+                config=None,
+            )
 
     @pytest.mark.asyncio
     async def test_configurable_max_attempts(self, mock_llm_config, mock_config):
