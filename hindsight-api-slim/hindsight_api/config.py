@@ -335,6 +335,11 @@ ENV_ENABLE_TEMPORAL_EXTRACTION = "HINDSIGHT_API_ENABLE_TEMPORAL_EXTRACTION"
 # (e.g. pure RAG / chunks mode).
 ENV_ENABLE_GRAPH_RETRIEVAL = "HINDSIGHT_API_ENABLE_GRAPH_RETRIEVAL"
 
+# Reranking — cross-encoder reranking of candidates during recall.
+# Disable to skip the cross-encoder scoring step and use RRF-merged scores
+# directly. Significantly reduces recall latency on large banks.
+ENV_ENABLE_RERANKING = "HINDSIGHT_API_ENABLE_RERANKING"
+
 # Observations settings (consolidated knowledge from facts)
 ENV_ENABLE_OBSERVATIONS = "HINDSIGHT_API_ENABLE_OBSERVATIONS"
 ENV_CONSOLIDATION_BATCH_SIZE = "HINDSIGHT_API_CONSOLIDATION_BATCH_SIZE"
@@ -552,6 +557,7 @@ DEFAULT_FILE_DELETE_AFTER_RETAIN = True  # Delete file bytes after retain (saves
 # Observations defaults (consolidated knowledge from facts)
 DEFAULT_ENABLE_TEMPORAL_EXTRACTION = True  # Temporal extraction enabled by default
 DEFAULT_ENABLE_GRAPH_RETRIEVAL = True  # Graph retrieval enabled by default
+DEFAULT_ENABLE_RERANKING = True  # Cross-encoder reranking enabled by default
 
 DEFAULT_ENABLE_OBSERVATIONS = True  # Observations enabled by default
 DEFAULT_ENABLE_OBSERVATION_HISTORY = True  # Observation history tracking enabled by default
@@ -907,6 +913,7 @@ class HindsightConfig:
     # Observations settings (consolidated knowledge from facts)
     enable_temporal_extraction: bool
     enable_graph_retrieval: bool
+    enable_reranking: bool
     enable_observations: bool
     enable_observation_history: bool
     enable_mental_model_history: bool
@@ -1034,6 +1041,7 @@ class HindsightConfig:
         # RAG mode — per-bank retrieval pipeline control
         "enable_temporal_extraction",
         "enable_graph_retrieval",
+        "enable_reranking",
         # Consolidation settings
         "enable_observations",
         "consolidation_llm_batch_size",
@@ -1462,9 +1470,16 @@ class HindsightConfig:
             ).lower()
             == "true",
             # Temporal extraction (dateparser query analysis for date-aware recall)
-            enable_temporal_extraction=os.getenv(ENV_ENABLE_TEMPORAL_EXTRACTION, str(DEFAULT_ENABLE_TEMPORAL_EXTRACTION)).lower() == "true",
+            enable_temporal_extraction=os.getenv(
+                ENV_ENABLE_TEMPORAL_EXTRACTION, str(DEFAULT_ENABLE_TEMPORAL_EXTRACTION)
+            ).lower()
+            == "true",
             # Graph retrieval (entity/link traversal during recall)
-            enable_graph_retrieval=os.getenv(ENV_ENABLE_GRAPH_RETRIEVAL, str(DEFAULT_ENABLE_GRAPH_RETRIEVAL)).lower() == "true",
+            enable_graph_retrieval=os.getenv(ENV_ENABLE_GRAPH_RETRIEVAL, str(DEFAULT_ENABLE_GRAPH_RETRIEVAL)).lower()
+            == "true",
+            # Reranking (cross-encoder scoring during recall)
+            enable_reranking=os.getenv(ENV_ENABLE_RERANKING, str(DEFAULT_ENABLE_RERANKING)).lower()
+            == "true",
             # Observations settings (consolidated knowledge from facts)
             enable_observations=os.getenv(ENV_ENABLE_OBSERVATIONS, str(DEFAULT_ENABLE_OBSERVATIONS)).lower() == "true",
             enable_observation_history=os.getenv(

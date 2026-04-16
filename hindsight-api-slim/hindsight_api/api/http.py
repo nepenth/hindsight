@@ -1058,6 +1058,19 @@ class CreateBankRequest(BaseModel):
         default=None,
         description="Controls what gets synthesised into observations. Replaces built-in consolidation rules entirely.",
     )
+    # RAG mode retrieval settings
+    enable_temporal_extraction: bool | None = Field(
+        default=None,
+        description="Toggle temporal extraction during recall. Disable for lower latency.",
+    )
+    enable_graph_retrieval: bool | None = Field(
+        default=None,
+        description="Toggle entity/link graph traversal during recall. Disable for lower latency.",
+    )
+    enable_reranking: bool | None = Field(
+        default=None,
+        description="Toggle cross-encoder reranking during recall. Disable for lower latency.",
+    )
 
     def get_config_updates(self) -> dict[str, Any]:
         """Return only the config fields that were explicitly set.
@@ -1090,6 +1103,9 @@ class CreateBankRequest(BaseModel):
             "retain_chunk_size",
             "enable_observations",
             "observations_mission",
+            "enable_temporal_extraction",
+            "enable_graph_retrieval",
+            "enable_reranking",
         ):
             value = getattr(self, field_name)
             if value is not None:
@@ -1667,6 +1683,9 @@ class BankTemplateConfig(BaseModel):
     )
     enable_graph_retrieval: bool | None = Field(
         default=None, description="Toggle entity/link graph traversal during recall"
+    )
+    enable_reranking: bool | None = Field(
+        default=None, description="Toggle cross-encoder reranking during recall"
     )
     enable_observations: bool | None = Field(default=None, description="Toggle observation consolidation")
     observations_mission: str | None = Field(default=None, description="Controls what gets synthesised")

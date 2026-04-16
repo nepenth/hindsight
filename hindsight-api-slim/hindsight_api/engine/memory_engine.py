@@ -3057,47 +3057,62 @@ class MemoryEngine(MemoryEngineInterface):
 
             # Step 4: Rerank using cross-encoder (MergedCandidate -> ScoredResult)
             step_start = time.time()
-            reranker_instance = self._cross_encoder_reranker
-
-            rerank_span = tracer_otel.start_span("hindsight.recall_rerank")
-            rerank_span.set_attribute("hindsight.bank_id", bank_id)
-            rerank_span.set_attribute("hindsight.candidates_count", len(merged_candidates))
 
             scored_results: list = []
             pre_filtered_count = 0
-            try:
-                # Ensure reranker is initialized (for lazy initialization mode)
-                await reranker_instance.ensure_initialized()
 
-                # Pre-filter candidates to reduce reranking cost (RRF already provides good ranking)
-                # This is especially important for remote rerankers with network latency
-                reranker_max_candidates = get_config().reranker_max_candidates
-                if len(merged_candidates) > reranker_max_candidates:
-                    # Sort by RRF score and take top candidates
-                    merged_candidates.sort(key=lambda mc: mc.rrf_score, reverse=True)
-                    pre_filtered_count = len(merged_candidates) - reranker_max_candidates
-                    merged_candidates = merged_candidates[:reranker_max_candidates]
+            if config.enable_reranking:
+                reranker_instance = self._cross_encoder_reranker
 
-                # Rerank using cross-encoder
-                scored_results = await reranker_instance.rerank(query, merged_candidates)
+                rerank_span = tracer_otel.start_span("hindsight.recall_rerank")
+                rerank_span.set_attribute("hindsight.bank_id", bank_id)
+                rerank_span.set_attribute("hindsight.candidates_count", len(merged_candidates))
 
+                try:
+                    # Ensure reranker is initialized (for lazy initialization mode)
+                    await reranker_instance.ensure_initialized()
+
+                    # Pre-filter candidates to reduce reranking cost (RRF already provides good ranking)
+                    # This is especially important for remote rerankers with network latency
+                    reranker_max_candidates = get_config().reranker_max_candidates
+                    if len(merged_candidates) > reranker_max_candidates:
+                        # Sort by RRF score and take top candidates
+                        merged_candidates.sort(key=lambda mc: mc.rrf_score, reverse=True)
+                        pre_filtered_count = len(merged_candidates) - reranker_max_candidates
+                        merged_candidates = merged_candidates[:reranker_max_candidates]
+
+                    # Rerank using cross-encoder
+                    scored_results = await reranker_instance.rerank(query, merged_candidates)
+
+                    step_duration = time.time() - step_start
+                    pre_filter_note = f" (pre-filtered {pre_filtered_count})" if pre_filtered_count > 0 else ""
+                    log_buffer.append(
+                        f"  [4] Reranking: {len(scored_results)} candidates scored in {step_duration:.3f}s{pre_filter_note}"
+                    )
+                finally:
+                    rerank_span.set_attribute("hindsight.scored_count", len(scored_results))
+                    if pre_filtered_count > 0:
+                        rerank_span.set_attribute("hindsight.pre_filtered_count", pre_filtered_count)
+                    rerank_span.end()
+
+                # Step 4.5: Combine cross-encoder score with retrieval signals via multiplicative boosts.
+                # See apply_combined_scoring for the full rationale and formula.
+                if scored_results:
+                    apply_combined_scoring(scored_results, now=utcnow())
+                    scored_results.sort(key=lambda x: x.weight, reverse=True)
+                    log_buffer.append("  [4.6] Combined scoring: ce * recency_boost(0.2) * temporal_boost(0.2)")
+            else:
+                # Reranking disabled — use RRF scores directly
+                from .search.types import ScoredResult
+                merged_candidates.sort(key=lambda mc: mc.rrf_score, reverse=True)
+                scored_results = [
+                    ScoredResult(candidate=mc, weight=mc.rrf_score)
+                    for mc in merged_candidates
+                ]
                 step_duration = time.time() - step_start
-                pre_filter_note = f" (pre-filtered {pre_filtered_count})" if pre_filtered_count > 0 else ""
                 log_buffer.append(
-                    f"  [4] Reranking: {len(scored_results)} candidates scored in {step_duration:.3f}s{pre_filter_note}"
+                    f"  [4] Reranking: skipped ({len(scored_results)} candidates ranked by RRF in {step_duration:.3f}s)"
                 )
-            finally:
-                rerank_span.set_attribute("hindsight.scored_count", len(scored_results))
-                if pre_filtered_count > 0:
-                    rerank_span.set_attribute("hindsight.pre_filtered_count", pre_filtered_count)
-                rerank_span.end()
-
-            # Step 4.5: Combine cross-encoder score with retrieval signals via multiplicative boosts.
-            # See apply_combined_scoring for the full rationale and formula.
-            if scored_results:
-                apply_combined_scoring(scored_results, now=utcnow())
-                scored_results.sort(key=lambda x: x.weight, reverse=True)
-                log_buffer.append("  [4.6] Combined scoring: ce * recency_boost(0.2) * temporal_boost(0.2)")
 
             # Add reranked results to tracer AFTER combined scoring (so normalized values are included)
             if tracer:

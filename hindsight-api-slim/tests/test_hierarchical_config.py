@@ -98,9 +98,10 @@ async def test_hierarchical_fields_categorization():
     assert "retain_chunk_batch_size" in configurable
     assert "enable_temporal_extraction" in configurable
     assert "enable_graph_retrieval" in configurable
+    assert "enable_reranking" in configurable
 
     # Verify count is correct
-    assert len(configurable) == 24
+    assert len(configurable) == 25
 
     # Verify credential fields (NEVER exposed)
     assert "llm_api_key" in credentials
@@ -413,7 +414,7 @@ async def test_config_get_bank_config_no_static_or_credential_fields_leak(memory
             assert field in config, f"Expected configurable field '{field}' missing from config"
 
         # Should have a small number of configurable fields (not hundreds)
-        assert len(config) < 25, f"Too many fields returned: {len(config)}"
+        assert len(config) < 30, f"Too many fields returned: {len(config)}"
 
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
