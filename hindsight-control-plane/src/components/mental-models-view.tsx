@@ -58,7 +58,16 @@ import {
   ChevronsRight,
   LayoutGrid,
   List,
+  MoreVertical,
+  Pencil,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { MentalModelDetailModal } from "./mental-model-detail-modal";
 
 interface ReflectResponseBasedOnFact {
@@ -82,6 +91,7 @@ interface MentalModel {
   tags: string[];
   max_tokens: number;
   trigger: {
+    mode?: "full" | "delta";
     refresh_after_consolidation: boolean;
     fact_types?: Array<"world" | "experience" | "observation">;
     exclude_mental_models?: boolean;
@@ -141,6 +151,37 @@ export function MentalModelsView() {
       console.error("Error loading mental models:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set());
+
+  const handleRowRefresh = async (m: MentalModel) => {
+    if (!currentBank) return;
+    const originalAt = m.last_refreshed_at;
+    setRefreshingIds((prev) => new Set(prev).add(m.id));
+    try {
+      await client.refreshMentalModel(currentBank, m.id);
+      const maxAttempts = 120;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const updated = await client.getMentalModel(currentBank, m.id);
+        if (updated.last_refreshed_at !== originalAt) {
+          setMentalModels((prev) => prev.map((x) => (x.id === m.id ? updated : x)));
+          if (selectedMentalModel?.id === m.id) setSelectedMentalModel(updated);
+          toast.success("Mental model refreshed");
+          return;
+        }
+      }
+      toast.error("Refresh timeout");
+    } catch {
+      // Error toast handled by API client interceptor
+    } finally {
+      setRefreshingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(m.id);
+        return next;
+      });
     }
   };
 
@@ -292,17 +333,19 @@ export function MentalModelsView() {
                                 </span>
                               </div>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 ml-2 text-muted-foreground hover:text-destructive flex-shrink-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteTarget({ id: m.id, name: m.name });
+                            <RowActionsMenu
+                              m={m}
+                              refreshing={refreshingIds.has(m.id)}
+                              onEdit={(target) => {
+                                setMentalModelToUpdate(target);
+                                setShowUpdateDialog(true);
                               }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                              onRefresh={handleRowRefresh}
+                              onDelete={(target) =>
+                                setDeleteTarget({ id: target.id, name: target.name })
+                              }
+                              triggerClassName="h-7 w-7 ml-2 flex-shrink-0"
+                            />
                           </div>
                           <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                             {m.source_query}
@@ -387,17 +430,18 @@ export function MentalModelsView() {
                             {formatRelativeTime(m.last_refreshed_at)}
                           </TableCell>
                           <TableCell className="py-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteTarget({ id: m.id, name: m.name });
+                            <RowActionsMenu
+                              m={m}
+                              refreshing={refreshingIds.has(m.id)}
+                              onEdit={(target) => {
+                                setMentalModelToUpdate(target);
+                                setShowUpdateDialog(true);
                               }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                              onRefresh={handleRowRefresh}
+                              onDelete={(target) =>
+                                setDeleteTarget({ id: target.id, name: target.name })
+                              }
+                            />
                           </TableCell>
                         </TableRow>
                       );
@@ -540,6 +584,56 @@ export function MentalModelsView() {
   );
 }
 
+function RowActionsMenu({
+  m,
+  refreshing,
+  onEdit,
+  onRefresh,
+  onDelete,
+  triggerClassName,
+}: {
+  m: MentalModel;
+  refreshing: boolean;
+  onEdit: (m: MentalModel) => void;
+  onRefresh: (m: MentalModel) => void;
+  onDelete: (m: MentalModel) => void;
+  triggerClassName?: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`p-0 text-muted-foreground ${triggerClassName ?? "h-8 w-8"}`}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Actions"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={() => onEdit(m)}>
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onRefresh(m)} disabled={refreshing}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh Manually
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => onDelete(m)}
+          className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400 focus:bg-red-500/10"
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function CreateMentalModelDialog({
   open,
   onClose,
@@ -558,6 +652,7 @@ function CreateMentalModelDialog({
     maxTokens: "2048",
     tags: "",
     autoRefresh: false,
+    mode: "full" as "full" | "delta",
     factTypes: [] as Array<"world" | "experience" | "observation">,
     excludeMentalModels: false,
     excludeMentalModelIds: "",
@@ -613,6 +708,7 @@ function CreateMentalModelDialog({
         tags: tags.length > 0 ? tags : undefined,
         max_tokens: maxTokens,
         trigger: {
+          mode: form.mode,
           refresh_after_consolidation: form.autoRefresh,
           fact_types: form.factTypes.length > 0 ? form.factTypes : undefined,
           exclude_mental_models: form.excludeMentalModels || undefined,
@@ -632,6 +728,7 @@ function CreateMentalModelDialog({
         maxTokens: "2048",
         tags: "",
         autoRefresh: false,
+        mode: "full",
         factTypes: [],
         excludeMentalModels: false,
         excludeMentalModelIds: "",
@@ -661,6 +758,7 @@ function CreateMentalModelDialog({
             maxTokens: "2048",
             tags: "",
             autoRefresh: false,
+            mode: "full",
             factTypes: [],
             excludeMentalModels: false,
             excludeMentalModelIds: "",
@@ -674,7 +772,7 @@ function CreateMentalModelDialog({
         }
       }}
     >
-      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Create Mental Model</DialogTitle>
           <DialogDescription>
@@ -683,7 +781,10 @@ function CreateMentalModelDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="py-2 flex-1 min-h-0 overflow-y-auto">
+        <Tabs
+          defaultValue="general"
+          className="py-2 flex-1 flex flex-col min-h-0 overflow-hidden"
+        >
           <TabsList className="w-full">
             <TabsTrigger value="general" className="flex-1">
               General
@@ -693,6 +794,7 @@ function CreateMentalModelDialog({
             </TabsTrigger>
           </TabsList>
 
+          <div className="flex-1 overflow-y-auto mt-2 pr-1">
           <TabsContent value="general" className="space-y-4 pt-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">ID</label>
@@ -746,6 +848,29 @@ function CreateMentalModelDialog({
                 >
                   Auto-refresh after consolidation
                 </label>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Refresh mode</label>
+                <Select
+                  value={form.mode}
+                  onValueChange={(value) =>
+                    setForm({ ...form, mode: value as "full" | "delta" })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full">Full — regenerate from scratch each refresh</SelectItem>
+                    <SelectItem value="delta">
+                      Delta — surgical edits, preserve unchanged content
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Delta mode applies minimal changes to the existing content. Falls back to a full
+                  rewrite on the first refresh and whenever the source query changes.
+                </p>
               </div>
             </section>
 
@@ -903,6 +1028,7 @@ function CreateMentalModelDialog({
               </div>
             </section>
           </TabsContent>
+          </div>
         </Tabs>
 
         <DialogFooter>
@@ -947,6 +1073,7 @@ function UpdateMentalModelDialog({
     maxTokens: String(mentalModel.max_tokens || 2048),
     tags: mentalModel.tags.join(", "),
     autoRefresh: mentalModel.trigger?.refresh_after_consolidation || false,
+    mode: (mentalModel.trigger?.mode || "full") as "full" | "delta",
     factTypes:
       (mentalModel.trigger?.fact_types as
         | Array<"world" | "experience" | "observation">
@@ -1022,6 +1149,7 @@ function UpdateMentalModelDialog({
         tags: tags.length > 0 ? tags : undefined,
         max_tokens: maxTokens,
         trigger: {
+          mode: form.mode,
           refresh_after_consolidation: form.autoRefresh,
           fact_types: form.factTypes.length > 0 ? form.factTypes : undefined,
           exclude_mental_models: form.excludeMentalModels || undefined,
@@ -1045,7 +1173,7 @@ function UpdateMentalModelDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Update Mental Model</DialogTitle>
           <DialogDescription>
@@ -1053,7 +1181,10 @@ function UpdateMentalModelDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="py-2 flex-1 min-h-0 overflow-y-auto">
+        <Tabs
+          defaultValue="general"
+          className="py-2 flex-1 flex flex-col min-h-0 overflow-hidden"
+        >
           <TabsList className="w-full">
             <TabsTrigger value="general" className="flex-1">
               General
@@ -1063,6 +1194,7 @@ function UpdateMentalModelDialog({
             </TabsTrigger>
           </TabsList>
 
+          <div className="flex-1 overflow-y-auto mt-2 pr-1">
           <TabsContent value="general" className="space-y-4 pt-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">ID</label>
@@ -1112,6 +1244,29 @@ function UpdateMentalModelDialog({
                 >
                   Auto-refresh after consolidation
                 </label>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Refresh mode</label>
+                <Select
+                  value={form.mode}
+                  onValueChange={(value) =>
+                    setForm({ ...form, mode: value as "full" | "delta" })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full">Full — regenerate from scratch each refresh</SelectItem>
+                    <SelectItem value="delta">
+                      Delta — surgical edits, preserve unchanged content
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Delta mode applies minimal changes to the existing content. Falls back to a full
+                  rewrite on the first refresh and whenever the source query changes.
+                </p>
               </div>
             </section>
 
@@ -1269,6 +1424,7 @@ function UpdateMentalModelDialog({
               </div>
             </section>
           </TabsContent>
+          </div>
         </Tabs>
 
         <DialogFooter>
