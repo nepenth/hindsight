@@ -20,12 +20,12 @@ from .config import (
     get_config,
     reset_config,
 )
+from ._version import __version__
 from .errors import HindsightError
 from .tools import create_hindsight_tools, memory_instructions
 
-__version__ = "0.1.0"
-
 __all__ = [
+    "__version__",
     "configure",
     "get_config",
     "reset_config",

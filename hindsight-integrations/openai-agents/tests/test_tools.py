@@ -514,10 +514,12 @@ class TestRecallEntities:
     @pytest.mark.asyncio
     async def test_recall_surfaces_entities_when_enabled(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response_with_entities([
-            ("User likes Python", ["Python", "User"]),
-            ("User is in NYC", ["NYC"]),
-        ])
+        client.arecall.return_value = _mock_recall_response_with_entities(
+            [
+                ("User likes Python", ["Python", "User"]),
+                ("User is in NYC", ["NYC"]),
+            ]
+        )
         tools = create_hindsight_tools(
             bank_id="test",
             client=client,
@@ -610,6 +612,34 @@ class TestMemoryInstructions:
         call_kwargs = client.arecall.call_args[1]
         assert call_kwargs["budget"] == "low"
         assert call_kwargs["tags"] == ["scope:user"]
+        assert call_kwargs["tags_match"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_config_max_tokens_used_when_no_explicit(self):
+        client = _mock_client()
+        client.arecall.return_value = _mock_recall_response(["fact"])
+        configure(
+            hindsight_api_url="http://localhost:8888",
+            max_tokens=2048,
+        )
+        fn = memory_instructions(client=client, bank_id="test")
+        await fn(MagicMock(), MagicMock())
+        call_kwargs = client.arecall.call_args[1]
+        assert call_kwargs["max_tokens"] == 2048
+
+    @pytest.mark.asyncio
+    async def test_config_recall_tags_used_when_no_explicit(self):
+        client = _mock_client()
+        client.arecall.return_value = _mock_recall_response(["fact"])
+        configure(
+            hindsight_api_url="http://localhost:8888",
+            recall_tags=["env:test"],
+            recall_tags_match="all",
+        )
+        fn = memory_instructions(client=client, bank_id="test")
+        await fn(MagicMock(), MagicMock())
+        call_kwargs = client.arecall.call_args[1]
+        assert call_kwargs["tags"] == ["env:test"]
         assert call_kwargs["tags_match"] == "all"
 
     def test_raises_without_client_or_config(self):

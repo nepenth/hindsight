@@ -130,8 +130,6 @@ def create_hindsight_tools(
                     retain_kwargs["document_id"] = retain_document_id
                 await resolved_client.aretain(**retain_kwargs)
                 return "Memory stored successfully."
-            except HindsightError:
-                raise
             except Exception as e:
                 logger.error("Retain failed: %s", e)
                 raise HindsightError(f"Retain failed: {e}") from e
@@ -170,13 +168,11 @@ def create_hindsight_tools(
                 lines = []
                 for i, result in enumerate(response.results, 1):
                     line = f"{i}. {result.text}"
-                    if recall_include_entities and hasattr(result, "entities") and result.entities:
+                    if recall_include_entities and getattr(result, "entities", None):
                         entity_names = [e.name if hasattr(e, "name") else str(e) for e in result.entities]
                         line += f" [entities: {', '.join(entity_names)}]"
                     lines.append(line)
                 return "\n".join(lines)
-            except HindsightError:
-                raise
             except Exception as e:
                 logger.error("Recall failed: %s", e)
                 raise HindsightError(f"Recall failed: {e}") from e
@@ -217,9 +213,9 @@ def create_hindsight_tools(
                     reflect_kwargs["tags"] = effective_reflect_tags
                     reflect_kwargs["tags_match"] = effective_reflect_tags_match
                 response = await resolved_client.areflect(**reflect_kwargs)
-                return response.text or "No relevant memories found."
-            except HindsightError:
-                raise
+                if response.text is not None and response.text != "":
+                    return response.text
+                return "No relevant memories found."
             except Exception as e:
                 logger.error("Reflect failed: %s", e)
                 raise HindsightError(f"Reflect failed: {e}") from e
@@ -239,7 +235,7 @@ def memory_instructions(
     query: str = "relevant context about the user",
     budget: Budget | None = None,
     max_results: int = 5,
-    max_tokens: int = 4096,
+    max_tokens: int | None = None,
     prefix: str = "\n\nRelevant memories:\n",
     tags: list[str] | None = None,
     tags_match: TagsMatch | None = None,
@@ -264,7 +260,7 @@ def memory_instructions(
         query: The recall query to find relevant memories.
         budget: Recall budget level (low/mid/high).
         max_results: Maximum number of memories to include.
-        max_tokens: Maximum tokens for recall results.
+        max_tokens: Maximum tokens for recall results (falls back to global config).
         prefix: Text prepended before the memory list.
         tags: Tags to filter when searching memories.
         tags_match: Tag matching mode (any/all/any_strict/all_strict).
@@ -290,6 +286,9 @@ def memory_instructions(
 
     config = get_config()
     effective_budget = budget if budget is not None else (config.budget if config else DEFAULT_BUDGET)
+    effective_max_tokens = (
+        max_tokens if max_tokens is not None else (config.max_tokens if config else DEFAULT_MAX_TOKENS)
+    )
     effective_tags = tags if tags is not None else (config.recall_tags if config else None)
     effective_tags_match = (
         tags_match if tags_match is not None else (config.recall_tags_match if config else DEFAULT_RECALL_TAGS_MATCH)
@@ -302,7 +301,7 @@ def memory_instructions(
                 "bank_id": bank_id,
                 "query": query,
                 "budget": effective_budget,
-                "max_tokens": max_tokens,
+                "max_tokens": effective_max_tokens,
             }
             if effective_tags:
                 recall_kwargs["tags"] = effective_tags

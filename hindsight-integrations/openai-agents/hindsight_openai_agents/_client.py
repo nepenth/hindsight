@@ -6,11 +6,11 @@ from typing import Any
 
 from hindsight_client import Hindsight
 
+from ._version import __version__
 from .config import get_config
 from .errors import HindsightError
 
-_VERSION = "0.1.0"
-_USER_AGENT = f"hindsight-openai-agents/{_VERSION}"
+_USER_AGENT = f"hindsight-openai-agents/{__version__}"
 
 
 def resolve_client(
