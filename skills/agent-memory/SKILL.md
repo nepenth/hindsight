@@ -58,11 +58,12 @@ This is how you deduplicate across runs and answer "what did you show me yesterd
 
 ### Write order (mandatory)
 
-1. Respond to the user's request (the actual task output)
-2. Then — visibly separated — update memory files
-3. Then commit to git (see "Version control" below)
+1. **Respond** to the user's request (the actual task output)
+2. **Repair** any structural issues found during the read phase — missing `_index.md`, duplicate files, unnormalized names. Do this every time, not "later".
+3. **Update** knowledge files and activity logs with what you learned / produced this turn
+4. **Commit** to git (see "Version control" below)
 
-The user should see the answer before you start writing memory. Memory updates are a visible post-script, not a silent side-effect.
+You may do structural reads (step 1 of the read sequence) at any time. All writes — repairs, updates, commits — happen after the user sees their answer. Memory updates are a visible post-script, not a silent side-effect.
 
 ## Two kinds of memory files
 
@@ -162,23 +163,29 @@ Example:
 
 ## How to use memory at the start of a turn
 
-### Step 1: Read the index
+Every turn that might use or update memory follows this read sequence. Do it before starting the task.
+
+### Step 1: Read the index (or bootstrap it)
 
 ```bash
 cat ~/.agent-memory/<agent-name>/_index.md 2>/dev/null
 ```
 
-The index is a one-line-per-file summary you maintain. If it exists, scan it to decide which files are relevant to the current request. Read only those files — not everything.
+If `_index.md` exists, scan it to decide which files are relevant to the current request. Read only those files — not everything.
 
-If the index doesn't exist yet, fall back to listing all files and reading the ones whose names look relevant:
+If `_index.md` does NOT exist but memory files do, fall back:
 
 ```bash
 ls ~/.agent-memory/<agent-name>/ 2>/dev/null
 ```
 
+Read the files whose names look relevant. **Mark this as a repair-needed state** — you MUST create `_index.md` during the post-response memory update in this same turn. Do not end the turn without an index.
+
 ### Step 2: Read relevant files
 
-Read the files the index pointed you to. Treat their content as ground truth unless the user contradicts them in this conversation (in which case, update the file after responding).
+Read the files the index (or fallback ls) pointed you to. Treat their content as ground truth unless the user contradicts them in this conversation (in which case, update the file after responding).
+
+**If you find duplicate files covering the same topic** (e.g. `preferences.md` and `news-feed-preferences.md`), merge them into one canonical file during the post-response memory update. Pick the more specific name, combine the content, keep all evidence, delete the duplicate, and update the index. This is a hygiene error — fix it immediately, don't leave it for the self-review.
 
 ### Step 3: For task runs, also read the activity log
 
