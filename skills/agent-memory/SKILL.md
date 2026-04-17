@@ -27,25 +27,64 @@ After any turn where you learned something durable — something that would be u
 - A decision was made ("we agreed to use per-agent bank routing")
 - You learned a fact about the user's setup ("user runs Hindsight locally on port 8888")
 - User explicitly asked you to remember something
+- You produced output the user consumed (a news feed, a report, a draft) — log what you delivered so you can avoid repeating yourself next time
 
 Do NOT write memory for:
 - Ephemeral task state (use the conversation for that)
 - Things already in the skill files or BRIEF.md
 - Trivial acknowledgements ("got it", "ok")
 
+## Two kinds of memory files
+
+### 1. Knowledge files — what you know
+
+One file per topic. Tracks preferences, rules, procedures, setup facts, decisions.
+
+```
+~/.agent-memory/news-feed/preferences.md
+~/.agent-memory/news-feed/rss-procedure.md
+~/.agent-memory/news-feed/user-setup.md
+~/.agent-memory/news-feed/source-list.md
+```
+
+These are **current-state** files — update in place when facts change. Keep them short and declarative.
+
+### 2. Activity log — what you did
+
+One file per recurring task type. Tracks what you produced and when, so you can deduplicate, reference prior output, and avoid repeating yourself.
+
+```
+~/.agent-memory/news-feed/feed-log.md
+~/.agent-memory/discord-watch/sweep-log.md
+```
+
+These are **append-only** — add a new entry each time you complete a task run. Each entry is a short dated record of what you delivered: date, item count, the headlines or item titles (not full content), and any user reaction. Prune entries older than ~30 days to keep the file manageable.
+
+When starting a new task run, read the log first. Skip items you already delivered in a recent run. If the user asks "what did you show me yesterday", the log is your answer.
+
+Example:
+
+```markdown
+# Feed Log
+
+## 2026-04-17
+
+- 10 items delivered
+- Headlines: "OpenAI ships GPT-5.5 API", "Hugging Face releases ...", ...
+- User reaction: "good, but drop the Gemini item next time"
+
+## 2026-04-16
+
+- 8 items delivered
+- Headlines: "Anthropic Claude 4.5 ...", "Google Gemini 2.5 ...", ...
+- User reaction: none
+```
+
 ## File naming
 
-One file per topic. Lowercase with hyphens. Short, descriptive, greppable.
+Lowercase with hyphens. Short, descriptive, greppable. Knowledge files are named by topic; activity logs are named by task + `-log` suffix.
 
-```
-~/.agent-memory/news-feed/news-feed-preferences.md
-~/.agent-memory/news-feed/rss-fetch-procedure.md
-~/.agent-memory/news-feed/user-setup.md
-~/.agent-memory/news-feed/source-allowlist.md
-~/.agent-memory/news-feed/formatting-rules.md
-```
-
-If a topic doesn't exist yet, create the file. If it already exists, update it in place — don't append blindly, rewrite the section that changed so the file stays clean and current.
+If a topic file doesn't exist yet, create it. If it already exists, update it in place (for knowledge files) or append to it (for activity logs).
 
 ## File format
 
