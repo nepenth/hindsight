@@ -248,6 +248,155 @@ The synthesis runs after each session, not during. But the latency needs to be b
 
 6. **Shared topic namespace**: a "global" or "shared" bank that all per-agent banks can read from. Populated by cross-bank observation analysis.
 
+## PoC Spec: LLM Wiki Maintainer (Hindsight-agnostic)
+
+Standalone tool that maintains a structured wiki from conversation transcripts. No database, no server, no Hindsight dependency. Pure files + LLM calls. Designed to validate the pattern before deciding what to build into Hindsight.
+
+Inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) and our findings from the agent-memory skill experiment.
+
+### Three layers
+
+```
+raw/                          # immutable conversation transcripts
+  sessions/                   # JSONL session files (from OpenClaw, Claude Code, etc.)
+  sources/                    # optional: articles, docs, notes the user drops in
+
+wiki/                         # LLM-maintained, git-tracked
+  _index.md                   # topic catalog with one-line summaries
+  _log.md                     # chronological: what was ingested/updated/linted when
+  topics/                     # one file per topic, interlinked
+    preferences.md
+    source-list.md
+    rss-procedure.md
+    ...
+  activity/                   # append-only task-run logs
+    feed-log.md
+    sweep-log.md
+
+schema.md                    # configuration: wiki conventions, topic templates,
+                              # what to extract, how to organize, domain hints
+```
+
+### Three operations
+
+**1. Ingest** — process new conversation transcript(s) into the wiki
+
+```
+llm-wiki ingest <session-file-or-dir>
+```
+
+- Reads new session transcript(s) since last checkpoint
+- Calls LLM: "here's the transcript, here's the current wiki index, here's the schema — what topics need creating/updating?"
+- LLM returns a structured list of file operations: create topic X, update topic Y (with diff), append to activity log Z
+- Each file operation carries provenance: which transcript lines produced this update
+- Applies the operations, updates `_index.md` and `_log.md`, git commits
+- Checkpoint: records which transcripts have been processed
+
+One ingest can touch many wiki pages (Karpathy's "10-15 files per source"). The LLM sees the full wiki index so it knows where things belong.
+
+**2. Query** — answer a question using the wiki (optional, agent can also just read files)
+
+```
+llm-wiki query "what are my news feed preferences?"
+```
+
+- Reads `_index.md`, finds relevant topic files, reads them
+- Synthesizes an answer with citations to topic pages
+- Optionally: files the answer back as a new wiki page if it's a valuable synthesis
+
+For the agent use case, this is optional — the agent can just `cat wiki/topics/preferences.md` directly. But for human use (Karpathy's Obsidian model), the query interface is valuable.
+
+**3. Lint** — health-check the wiki
+
+```
+llm-wiki lint
+```
+
+- Reads all topic files
+- Calls LLM: check for contradictions, stale claims, duplicate topics, orphan pages (no inbound links), missing cross-references, overgrown files
+- Produces a report + optional auto-fix (with git commit)
+- Appends lint entry to `_log.md`
+
+### Topic file format
+
+```markdown
+# Topic Name
+
+<Current state of knowledge. Declarative, no hedging. Cross-references
+to other topics use [[wiki-links]].>
+
+See also: [[source-list]], [[rss-procedure]]
+
+## Provenance
+
+| Fact | Source | Date |
+|---|---|---|
+| Item cap is 10 | session 2026-04-15-abc123, turn 7: "I want 10 items" | 2026-04-15 |
+| No academic papers | session 2026-04-15-abc123, turn 12: "no papers either" | 2026-04-15 |
+| Window is 7 days | session 2026-04-16-def456, turn 3: "make it weekly" | 2026-04-16 |
+```
+
+Provenance is a structured table, not prose. Each fact maps to a specific transcript + turn + quote. This is the per-line provenance we discussed as Hindsight's potential differentiator — but implemented as plain markdown.
+
+### Schema file
+
+The schema tells the LLM how this particular wiki should work. Domain-specific. Examples:
+
+```markdown
+# Schema
+
+## Domain
+AI news feed agent. Topics typically cover: user preferences, source
+lists, procedures, tool-specific knowledge, activity history.
+
+## Conventions
+- One topic per file, max ~50 lines before splitting
+- Cross-reference with [[wiki-links]] when topics mention each other
+- Activity logs are append-only, prune entries older than 30 days
+- Provenance table is mandatory — no fact without a source citation
+
+## Topic templates
+- Knowledge topic: current state + provenance table + see-also links
+- Activity log: dated entries with headlines, sources, user reaction
+
+## Ingest instructions
+- From conversations: extract preferences, corrections, decisions,
+  procedures, reactions. Ignore ephemeral task chatter.
+- From articles/sources: extract key claims, compare with existing
+  topics, note contradictions.
+```
+
+### Implementation sketch
+
+Python CLI. ~200-300 lines for v0.
+
+```
+llm-wiki/
+  cli.py              # argparse: ingest, query, lint
+  ingest.py            # read transcripts, call LLM, apply file ops
+  query.py             # read index, find topics, synthesize answer
+  lint.py              # health check
+  llm.py               # LLM wrapper (OpenAI/Anthropic/local)
+  checkpoint.py        # track processed transcripts
+  schema.py            # load + validate schema.md
+```
+
+Dependencies: one LLM SDK (litellm or anthropic), nothing else. Git via subprocess.
+
+### What this PoC validates
+
+1. **Does the ingest → wiki pipeline produce better knowledge than the agent writing its own memory?** Compare wiki quality after 20 sessions (file-based agent-memory vs llm-wiki ingest from the same session transcripts).
+
+2. **Does per-fact provenance actually work in practice?** Can the LLM consistently produce cited facts in a structured table, and can we trace any wiki statement back to the source transcript?
+
+3. **How does cross-referencing emerge?** Does the LLM naturally create [[wiki-links]] between topics, and do they form a useful graph?
+
+4. **What's the latency?** How fast is ingest for a typical 10-turn session? Is it fast enough to run after every session, or does it need batching?
+
+5. **Where does pure-file-based break?** At what wiki size does `_index.md` stop being sufficient and you need search? How many topics before the LLM can't hold the full index in context?
+
+6. **What would Hindsight add on top?** After running the PoC, the gaps should be clear: semantic search at scale, reliable capture hooks, concurrent write safety, cross-agent sharing. These become the Hindsight product requirements with real evidence, not assumptions.
+
 ## Open Questions
 
 1. **Can the agent self-correct with just a checklist?** The `📝 Memory` checklist helps but it's unclear if it's reliable over 100+ sessions. Needs longer testing.
