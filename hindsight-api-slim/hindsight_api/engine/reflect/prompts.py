@@ -18,6 +18,15 @@ _TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
 # The remainder covers the system prompt, question, bank context, and output tokens.
 _FINAL_PROMPT_CONTEXT_FRACTION = 0.8
 
+_IDENTITY_PREFIXES = ("you are ", "you're ", "i am ", "i'm ")
+
+
+def _mission_defines_identity(mission: str | None) -> bool:
+    """Return True if the mission uses first-person identity framing."""
+    if not mission:
+        return False
+    return mission.lstrip().lower().startswith(_IDENTITY_PREFIXES)
+
 
 def _extract_directive_rules(directives: list[dict[str, Any]]) -> list[str]:
     """Extract directive rules as a list of strings."""
@@ -131,12 +140,25 @@ def build_system_prompt_for_tools(
     if directives:
         parts.append(build_directives_section(directives))
 
-    parts.extend(
-        [
-            "You are a reflection agent that answers questions by reasoning over retrieved memories.",
-            "",
-        ]
-    )
+    if _mission_defines_identity(mission):
+        parts.extend(
+            [
+                mission.lstrip(),
+                "",
+                "In this turn, answer the user's question by reasoning over retrieved memories. "
+                "Respond in your own voice and perspective as defined above — use first-person pronouns "
+                "(I, me, my, we, us, our) when the identity above describes you in first-person terms. "
+                "Do NOT refer to yourself in the third person.",
+                "",
+            ]
+        )
+    else:
+        parts.extend(
+            [
+                "You are a reflection agent that answers questions by reasoning over retrieved memories.",
+                "",
+            ]
+        )
 
     parts.extend(
         [
@@ -301,7 +323,7 @@ def build_system_prompt_for_tools(
     parts.append("")
     parts.append(f"## Memory Bank: {name}")
 
-    if mission:
+    if mission and not _mission_defines_identity(mission):
         parts.append(f"Mission: {mission}")
 
     # Disposition traits
@@ -479,9 +501,9 @@ def build_final_prompt(
     return "\n".join(parts)
 
 
-FINAL_SYSTEM_PROMPT = """CRITICAL: You MUST ONLY use information from retrieved tool results. NEVER make up names, people, events, or entities.
+_FINAL_SYSTEM_PROMPT_BASE = """CRITICAL: You MUST ONLY use information from retrieved tool results. NEVER make up names, people, events, or entities.
 
-You are a thoughtful assistant that synthesizes answers from retrieved memories.
+{role_section}
 
 Your approach:
 - Reason over the retrieved memories to answer the question
@@ -508,6 +530,25 @@ CRITICAL: Output ONLY the final synthesized answer. Do NOT include:
 Just provide the direct answer with proper markdown formatting.
 
 CRITICAL: This is a NON-CONVERSATIONAL system. NEVER ask follow-up questions, offer to search again, suggest alternatives, or end with anything like "Would you like me to..." or "Let me know if...". The user cannot reply. Your answer must be complete and self-contained."""
+
+
+def build_final_system_prompt(mission: str | None = None) -> str:
+    """Build the final synthesis system prompt, respecting mission identity framing."""
+    if _mission_defines_identity(mission):
+        role_section = (
+            f"{mission.lstrip()}\n\n"  # type: ignore[union-attr]
+            "In this turn, synthesize an answer from retrieved memories. "
+            "Respond in your own voice and perspective as defined above — use first-person pronouns "
+            "(I, me, my, we, us, our) when the identity above describes you in first-person terms. "
+            "Do NOT refer to yourself in the third person."
+        )
+    else:
+        role_section = "You are a thoughtful assistant that synthesizes answers from retrieved memories."
+    return _FINAL_SYSTEM_PROMPT_BASE.format(role_section=role_section)
+
+
+# Backward-compatible constant for non-identity missions
+FINAL_SYSTEM_PROMPT = build_final_system_prompt()
 
 
 STRUCTURED_DELTA_SYSTEM_PROMPT = """You are computing a *minimal patch* to a structured document.
