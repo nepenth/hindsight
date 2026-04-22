@@ -6,6 +6,8 @@ date: "2026-04-21"
 image: "/img/blog/hindsight-10k-stars.png"
 ---
 
+![The 10k Star Story](/img/blog/hindsight-10k-stars.png)
+
 # The 10k Star Story: How Hindsight Became Production Standard
 
 Ten thousand stars on GitHub isn't just a number. It's a signal that thousands of AI engineers looked at Hindsight agent memory, tested it, stress-tested it, filed bugs, opened discussions, and decided: "This is the agent memory system I'm building with."
