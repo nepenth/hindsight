@@ -1276,9 +1276,10 @@ def completion(*args, **kwargs):
     # Step 3: Store conversation (raises HindsightError on failure)
     if config and config.store_conversations:
         final_messages = kwargs.get("messages", messages)
-        if _is_streaming_response(response):
-            return _LiteLLMStreamWrapper(response, final_messages, model or "unknown")
-        _store_conversation(final_messages, response, model or "unknown")
+        if final_messages:
+            if _is_streaming_response(response):
+                return _LiteLLMStreamWrapper(response, final_messages, model or "unknown")
+            _store_conversation(final_messages, response, model or "unknown")
 
     return response
 
@@ -1353,9 +1354,10 @@ async def acompletion(*args, **kwargs):
     # Step 3: Store conversation (raises HindsightError on failure)
     if config and config.store_conversations:
         final_messages = kwargs.get("messages", messages)
-        if _is_streaming_response(response):
-            return _LiteLLMAsyncStreamWrapper(response, final_messages, model or "unknown")
-        _store_conversation(final_messages, response, model or "unknown")
+        if final_messages:
+            if _is_streaming_response(response):
+                return _LiteLLMAsyncStreamWrapper(response, final_messages, model or "unknown")
+            _store_conversation(final_messages, response, model or "unknown")
 
     return response
 
