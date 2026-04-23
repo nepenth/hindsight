@@ -86,6 +86,29 @@ class TestSslParamRename:
         )
 
 
+class TestProductionConfigs:
+    """Regression guard: current production URL shapes must pass through unchanged.
+
+    These are the exact shapes currently set for HINDSIGHT_API_DATABASE_URL,
+    HINDSIGHT_API_CONTROL_DATABASE_URL and HINDSIGHT_API_MIGRATION_DATABASE_URL
+    in production. The helper must be a pure no-op for them so this change is
+    truly backward-compatible.
+    """
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "postgresql://app:pw@pg-pooler.example:5432/appdb?sslmode=disable",
+            "postgresql://app:pw@pg-primary.example:5432/appdb_control?sslmode=disable",
+            "postgresql://app:pw@pg-primary.example:5432/appdb?sslmode=disable",
+        ],
+    )
+    def test_prod_urls_object_identical(self, url: str) -> None:
+        # Not just equal — must be the exact same object (early-out path),
+        # guaranteeing no parse/reassembly and no subtle mutation.
+        assert to_libpq_url(url) is url
+
+
 class TestEdgeCases:
     def test_idempotent(self) -> None:
         original = "postgresql+asyncpg://user:pass@host:5432/db?ssl=require"
