@@ -130,6 +130,7 @@ export function BankOperationsView() {
           type: newTaskTypeFilter || undefined,
           limit,
           offset: newOffset,
+          excludeParents: true,
         });
         setOperations(opsData.operations || []);
         setTotalOperations(opsData.total || 0);
