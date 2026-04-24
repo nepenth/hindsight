@@ -66,16 +66,11 @@ def _load_all_agents() -> dict:
 class HindsightAgentProvider(MemoryProvider):
     """Retain-only memory provider that delegates to hindsight-agent config."""
 
-    SYNC_EVERY_N_TURNS = 5  # retain every N turn pairs
-    SYNC_EVERY_SECONDS = 120  # retain at least every 2 minutes
-
     def __init__(self) -> None:
         self._agent_id: str | None = None
         self._config: dict | None = None
         self._session_id: str = ""
-        self._session_turns: list[dict] = []
         self._turn_count: int = 0
-        self._last_sync_time: float = 0.0
         self._sync_thread: threading.Thread | None = None
 
     @property
@@ -86,16 +81,8 @@ class HindsightAgentProvider(MemoryProvider):
         return CONFIG_PATH.exists()
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
-        # Flush any buffered turns from the previous session before resetting
-        if self._session_turns and self._config:
-            logger.info("[hindsight_agent] flushing %d buffered turns from previous session before reinit",
-                        len(self._session_turns))
-            self.on_session_end()
-
         self._session_id = session_id
-        self._session_turns = []
         self._turn_count = 0
-        self._last_sync_time = time.monotonic()
 
         # Resolve agent ID from Hermes context
         agent_identity = kwargs.get("agent_identity", "")
@@ -149,42 +136,38 @@ class HindsightAgentProvider(MemoryProvider):
         pass
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
-        """Accumulate turns and retain the full session on every turn.
+        """Retain each turn immediately using append mode.
 
-        The gateway may create a new provider instance per session without
-        calling on_session_end, so we retain the full accumulated session
-        on every turn (with document_id for upsert) to avoid data loss.
+        Uses document_id + update_mode=append so each turn adds to the
+        existing session document. Hindsight only processes the new content.
         """
         if not self._config:
             logger.debug("[hindsight_agent] sync_turn: skipped (no config)")
             return
 
-        self._session_turns.append({"role": "user", "content": user_content})
-        self._session_turns.append({"role": "assistant", "content": assistant_content})
         self._turn_count += 1
-        logger.info("[hindsight_agent] sync_turn: %d messages (turn %d), retaining",
-                    len(self._session_turns), self._turn_count)
-        self._do_retain()
+        turn = [{"role": "user", "content": user_content}, {"role": "assistant", "content": assistant_content}]
+        logger.info("[hindsight_agent] sync_turn: turn %d, retaining (append)", self._turn_count)
+        self._do_retain_turn(turn)
 
     def on_session_end(self, messages: list | None = None, **kwargs: Any) -> None:
-        """Retain the full session to Hindsight."""
-        logger.info("[hindsight_agent] on_session_end: %d buffered turns, config=%s",
-                     len(self._session_turns), bool(self._config))
-        self._do_retain()
+        """No-op — each turn is retained immediately via sync_turn."""
+        logger.info("[hindsight_agent] on_session_end: %d turns retained for session",
+                     self._turn_count)
 
-    def _do_retain(self) -> None:
-        """Retain buffered turns to Hindsight (async HTTP POST in background thread)."""
-        if not self._config or not self._session_turns:
+    def _do_retain_turn(self, turn: list[dict]) -> None:
+        """Retain a single turn to Hindsight using append mode (background thread)."""
+        if not self._config:
             return
 
         bank_id = self._config["bank_id"]
         api_url = self._config["api_url"].rstrip("/")
         api_token = self._config.get("api_token")
 
-        content = json.dumps(self._session_turns)
+        content = json.dumps(turn)
         document_id = f"{self._agent_id}:{self._session_id}" if self._session_id else None
 
-        item: dict = {"content": content}
+        item: dict = {"content": content, "update_mode": "append"}
         if document_id:
             item["document_id"] = document_id
 
@@ -193,8 +176,7 @@ class HindsightAgentProvider(MemoryProvider):
         if api_token:
             headers["Authorization"] = f"Bearer {api_token}"
 
-        turn_count = len(self._session_turns)
-        self._last_sync_time = time.monotonic()
+        turn_num = self._turn_count
 
         def _retain() -> None:
             try:
@@ -205,17 +187,10 @@ class HindsightAgentProvider(MemoryProvider):
                     timeout=30.0,
                 )
                 if resp.is_success:
-                    logger.info(
-                        "[hindsight_agent] retained %d messages for %s",
-                        turn_count,
-                        self._agent_id,
-                    )
+                    logger.info("[hindsight_agent] retained turn %d for %s", turn_num, self._agent_id)
                 else:
-                    logger.warning(
-                        "[hindsight_agent] retain failed (%d): %s",
-                        resp.status_code,
-                        resp.text[:200],
-                    )
+                    logger.warning("[hindsight_agent] retain failed (%d): %s",
+                                   resp.status_code, resp.text[:200])
             except Exception as e:
                 logger.warning("[hindsight_agent] retain error: %s", e)
 
