@@ -80,6 +80,12 @@ class HindsightAgentProvider(MemoryProvider):
         return CONFIG_PATH.exists()
 
     def initialize(self, session_id: str, **kwargs: Any) -> None:
+        # Flush any buffered turns from the previous session before resetting
+        if self._session_turns and self._config:
+            logger.info("[hindsight_agent] flushing %d buffered turns from previous session before reinit",
+                        len(self._session_turns))
+            self.on_session_end()
+
         self._session_id = session_id
         self._session_turns = []
 
