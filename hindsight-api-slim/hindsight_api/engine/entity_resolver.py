@@ -6,6 +6,7 @@ to disambiguate entities across memory units.
 """
 
 import asyncio
+import json
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -396,32 +397,31 @@ class EntityResolver:
         """
         Oracle strategy: fetch similar candidates using UTL_MATCH.JARO_WINKLER_SIMILARITY.
 
-        Replaces pg_trgm for Oracle backends. Uses a threshold of 70 (out of 100)
-        which roughly corresponds to pg_trgm's 0.15 similarity threshold.
+        Replaces pg_trgm for Oracle backends. Uses JSON_TABLE to expand the
+        entity text list into rows (Oracle equivalent of PG's unnest), then
+        joins with a Jaro-Winkler threshold of 70/100 (≈ pg_trgm 0.15).
         Falls back to the "full" strategy if UTL_MATCH is unavailable.
-
-        SQL is written in PG-style ($1, $2 params) — the Oracle query rewriter
-        handles conversion automatically.
         """
         entity_texts = list(set(e["text"] for e in entities_data))
         entities_table = fq_table("entities")
 
         try:
-            # Batch all entity texts into a single query using unnest (rewritten by
-            # the Oracle query layer).  UTL_MATCH.JARO_WINKLER_SIMILARITY returns
-            # 0-100; threshold 70 is roughly equivalent to pg_trgm similarity 0.15.
+            # Batch all entity texts into a single query using JSON_TABLE to
+            # expand the list into rows. UTL_MATCH.JARO_WINKLER_SIMILARITY
+            # returns 0-100; threshold 70 ≈ pg_trgm similarity 0.15.
+            entity_texts_json = json.dumps(entity_texts)
             rows = await conn.fetch(
                 f"""
                 SELECT e.id, e.canonical_name, e.metadata, e.last_seen, e.mention_count,
                        q.query_text
-                FROM unnest($2::text[]) AS q(query_text)
+                FROM JSON_TABLE($2, '$[*]' COLUMNS (query_text VARCHAR2(4000) PATH '$')) q
                 JOIN {entities_table} e ON (
                     e.bank_id = $1
                     AND UTL_MATCH.JARO_WINKLER_SIMILARITY(LOWER(e.canonical_name), LOWER(q.query_text)) > 70
                 )
                 """,
                 bank_id,
-                entity_texts,
+                entity_texts_json,
             )
         except Exception:
             # UTL_MATCH may not be available (ORA-06550, ORA-00904, etc.)

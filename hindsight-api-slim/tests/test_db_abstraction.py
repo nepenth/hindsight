@@ -4,6 +4,9 @@ Unit tests that verify the abstraction interfaces work correctly
 without requiring a live database connection.
 """
 
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from hindsight_api.engine.db import DatabaseBackend, DatabaseConnection, ResultRow, create_database_backend
@@ -435,3 +438,163 @@ class TestConfig:
         from hindsight_api.config import DEFAULT_DATABASE_BACKEND
 
         assert DEFAULT_DATABASE_BACKEND == "postgresql"
+
+
+# ---------------------------------------------------------------------------
+# OracleOps unit tests (mock DatabaseConnection, no live DB)
+# ---------------------------------------------------------------------------
+
+
+class TestOracleOpsInsertFactsBatch:
+    """Verify insert_facts_batch uses executemany with client-side UUIDs
+    and correctly maps all input columns to the SQL statement."""
+
+    @pytest.fixture()
+    def ops(self):
+        from hindsight_api.engine.db.ops_oracle import OracleOps
+
+        return OracleOps()
+
+    @pytest.fixture()
+    def mock_conn(self):
+        conn = AsyncMock(spec=DatabaseConnection)
+        conn.executemany = AsyncMock()
+        return conn
+
+    def _make_batch(self, n: int = 2) -> dict:
+        """Build a realistic batch of N facts with distinct values per column."""
+        from datetime import datetime, timezone
+
+        dates = [datetime(2024, 1, i + 1, tzinfo=timezone.utc) for i in range(n)]
+        fact_type_cycle = ["world", "experience"]
+        return dict(
+            bank_id="bank-1",
+            fact_texts=[f"fact-{i}" for i in range(n)],
+            embeddings=[f"[0.{i}]" for i in range(n)],
+            event_dates=dates,
+            occurred_starts=[None] * n,
+            occurred_ends=[None] * n,
+            mentioned_ats=[None] * n,
+            contexts=[f"ctx-{i}" for i in range(n)],
+            fact_types=[fact_type_cycle[i % 2] for i in range(n)],
+            metadata_jsons=['{"key": "val"}'] * n,
+            chunk_ids=[f"chunk-{i}" for i in range(n)],
+            document_ids=[f"doc-{i}" for i in range(n)],
+            tags_list=[f'["tag-{i}"]' for i in range(n)],
+            observation_scopes_list=[None] * n,
+            text_signals_list=[None] * n,
+        )
+
+    @pytest.mark.asyncio
+    async def test_single_executemany_not_row_by_row(self, ops, mock_conn):
+        """Must use one executemany call (batch), never fetchval (row-by-row)."""
+        batch = self._make_batch(3)
+        result = await ops.insert_facts_batch(conn=mock_conn, **batch)
+
+        mock_conn.executemany.assert_called_once()
+        mock_conn.fetchval.assert_not_called()
+        assert len(result) == 3
+
+    @pytest.mark.asyncio
+    async def test_returned_ids_are_valid_unique_uuids(self, ops, mock_conn):
+        """Each returned ID must be a valid UUID and all must be distinct."""
+        import uuid as _uuid
+
+        batch = self._make_batch(5)
+        result = await ops.insert_facts_batch(conn=mock_conn, **batch)
+
+        parsed = [_uuid.UUID(r) for r in result]  # Raises ValueError if invalid
+        assert len(set(parsed)) == 5, "UUIDs must be unique"
+
+    @pytest.mark.asyncio
+    async def test_returned_ids_match_rows_sent_to_db(self, ops, mock_conn):
+        """The UUIDs returned to the caller must be the same ones sent to the DB."""
+        batch = self._make_batch(2)
+        result = await ops.insert_facts_batch(conn=mock_conn, **batch)
+
+        _, rows_data = mock_conn.executemany.call_args.args
+        ids_in_rows = [row[0] for row in rows_data]
+        assert result == ids_in_rows
+
+    @pytest.mark.asyncio
+    async def test_column_values_correctly_mapped(self, ops, mock_conn):
+        """Every input column must land in the correct position in the row tuple.
+
+        This is the critical correctness test — a column ordering bug here would
+        silently insert data into the wrong columns.
+        """
+        from datetime import datetime, timezone
+
+        dt = datetime(2024, 6, 15, tzinfo=timezone.utc)
+        result = await ops.insert_facts_batch(
+            conn=mock_conn,
+            bank_id="bank-42",
+            fact_texts=["The sky is blue"],
+            embeddings=["[0.1, 0.2, 0.3]"],
+            event_dates=[dt],
+            occurred_starts=[dt],
+            occurred_ends=[dt],
+            mentioned_ats=[dt],
+            contexts=["weather"],
+            fact_types=["world"],
+            metadata_jsons=['{"source": "obs"}'],
+            chunk_ids=["chunk-99"],
+            document_ids=["doc-55"],
+            tags_list=['["nature", "sky"]'],
+            observation_scopes_list=["global"],
+            text_signals_list=["positive"],
+        )
+
+        query, rows_data = mock_conn.executemany.call_args.args
+        assert len(rows_data) == 1
+        row = rows_data[0]
+
+        # Verify column order matches: id, bank_id, text, embedding, event_date,
+        # occurred_start, occurred_end, mentioned_at, context, fact_type, metadata,
+        # chunk_id, document_id, tags, observation_scopes, text_signals
+        assert row[0] == result[0], "row[0] should be the generated UUID"
+        assert row[1] == "bank-42", "row[1] should be bank_id"
+        assert row[2] == "The sky is blue", "row[2] should be text"
+        assert row[3] == "[0.1, 0.2, 0.3]", "row[3] should be embedding"
+        assert row[4] == dt, "row[4] should be event_date"
+        assert row[5] == dt, "row[5] should be occurred_start"
+        assert row[6] == dt, "row[6] should be occurred_end"
+        assert row[7] == dt, "row[7] should be mentioned_at"
+        assert row[8] == "weather", "row[8] should be context"
+        assert row[9] == "world", "row[9] should be fact_type"
+        assert row[10] == '{"source": "obs"}', "row[10] should be metadata JSON string"
+        assert row[11] == "chunk-99", "row[11] should be chunk_id"
+        assert row[12] == "doc-55", "row[12] should be document_id"
+        assert row[13] == ["nature", "sky"], "row[13] should be decoded tags list"
+        assert row[14] == "global", "row[14] should be observation_scopes"
+        assert row[15] == "positive", "row[15] should be text_signals"
+
+    @pytest.mark.asyncio
+    async def test_sql_column_count_matches_values(self, ops, mock_conn):
+        """The INSERT column list and VALUES placeholders must both have 16 entries."""
+        batch = self._make_batch(1)
+        await ops.insert_facts_batch(conn=mock_conn, **batch)
+
+        query, _ = mock_conn.executemany.call_args.args
+        # Extract the column list between "(" and ")" after INSERT INTO ... (
+        # and count the $N placeholders in VALUES
+        assert query.count("$") == 16, "VALUES clause must have 16 placeholders"
+
+    @pytest.mark.asyncio
+    async def test_tags_json_decoded_to_list(self, ops, mock_conn):
+        """Tags JSON strings must be decoded to Python lists, not passed as strings."""
+        await ops.insert_facts_batch(
+            conn=mock_conn, **{**self._make_batch(1), "tags_list": ['["tag1", "tag2"]']}
+        )
+        _, rows_data = mock_conn.executemany.call_args.args
+        assert rows_data[0][13] == ["tag1", "tag2"]
+        assert isinstance(rows_data[0][13], list)
+
+    @pytest.mark.asyncio
+    async def test_empty_tags_becomes_empty_list(self, ops, mock_conn):
+        """Empty/falsy tags string must become [], not crash or pass empty string."""
+        await ops.insert_facts_batch(
+            conn=mock_conn, **{**self._make_batch(1), "tags_list": [""]}
+        )
+        _, rows_data = mock_conn.executemany.call_args.args
+        assert rows_data[0][13] == []

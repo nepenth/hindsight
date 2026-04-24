@@ -6,6 +6,7 @@ columns can't appear in GROUP BY).
 """
 
 import json
+import uuid as uuid_mod
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -67,19 +68,14 @@ class OracleOps(DataAccessOps):
         text_search_extension: str = "native",
     ) -> list[str]:
         table = self._get_mu_table()
-        # Tags and observation_scopes are stored as-is; tags are decoded from
-        # the JSON string back to a Python list so the driver can bind them.
-        unit_ids: list[str] = []
+        # Generate UUIDs client-side so we can use executemany (single network
+        # round-trip) instead of N individual INSERT+RETURNING calls.
+        unit_ids = [str(uuid_mod.uuid4()) for _ in range(len(fact_texts))]
+        rows_data = []
         for i in range(len(fact_texts)):
             tags_value = json.loads(tags_list[i]) if tags_list[i] else []
-            row_id = await conn.fetchval(
-                f"""
-                INSERT INTO {table} (bank_id, text, embedding, event_date, occurred_start,
-                    occurred_end, mentioned_at, context, fact_type, metadata, chunk_id, document_id,
-                    tags, observation_scopes, text_signals)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                RETURNING id
-                """,
+            rows_data.append((
+                unit_ids[i],
                 bank_id,
                 fact_texts[i],
                 embeddings[i],
@@ -95,8 +91,16 @@ class OracleOps(DataAccessOps):
                 tags_value,
                 observation_scopes_list[i],
                 text_signals_list[i],
-            )
-            unit_ids.append(str(row_id))
+            ))
+        await conn.executemany(
+            f"""
+            INSERT INTO {table} (id, bank_id, text, embedding, event_date, occurred_start,
+                occurred_end, mentioned_at, context, fact_type, metadata, chunk_id, document_id,
+                tags, observation_scopes, text_signals)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            """,
+            rows_data,
+        )
         return unit_ids
 
     async def bulk_insert_links(
