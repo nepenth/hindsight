@@ -117,7 +117,13 @@ def setup(
 
     click.echo()
     click.echo(f"Agent '{agent_id}' is ready.")
-    click.echo(f"  Restart your {harness} gateway to pick up the new agent.")
+    if harness == "openclaw":
+        click.echo("  Restart your openclaw gateway to pick up the new agent.")
+    elif harness == "hermes":
+        if agent_id == "default":
+            click.echo("  Start chatting: hermes")
+        else:
+            click.echo(f"  Start chatting: hermes --profile {agent_id}")
 
 
 CONTENT_EXTENSIONS = {".md", ".txt", ".html", ".json", ".csv", ".xml"}
