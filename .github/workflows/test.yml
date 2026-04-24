@@ -129,7 +129,6 @@ jobs:
             - 'hindsight-integrations/paperclip/**'
           integrations-opencode:
             - 'hindsight-integrations/opencode/**'
-<<<<<<< HEAD
           integrations-cloudflare-oauth-proxy:
             - 'hindsight-integrations/cloudflare-oauth-proxy/**'
           integrations-lockfiles:
@@ -138,10 +137,8 @@ jobs:
             - 'scripts/check-integration-lockfiles.sh'
           integrations-openai-agents:
             - 'hindsight-integrations/openai-agents/**'
-=======
           integrations-roo-code:
             - 'hindsight-integrations/roo-code/**'
->>>>>>> d10e0744 (feat(roo-code): add Roo Code integration with MCP + rules)
           dev:
             - 'hindsight-dev/**'
           ci:
