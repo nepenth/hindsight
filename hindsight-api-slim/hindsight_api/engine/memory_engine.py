@@ -18,7 +18,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import asyncpg
 import httpx
@@ -5469,6 +5469,28 @@ class MemoryEngine(MemoryEngineInterface):
         return result
 
     # ==================== bank profile Methods ====================
+
+    # Type-checker overloads: when create_if_missing is True (the default),
+    # this method always returns a profile dict — the type checker can rely
+    # on non-None for every existing caller. Only when create_if_missing is
+    # explicitly False does the return become Optional.
+    @overload
+    async def get_bank_profile(
+        self,
+        bank_id: str,
+        *,
+        request_context: "RequestContext",
+        create_if_missing: Literal[True] = True,
+    ) -> dict[str, Any]: ...
+
+    @overload
+    async def get_bank_profile(
+        self,
+        bank_id: str,
+        *,
+        request_context: "RequestContext",
+        create_if_missing: Literal[False],
+    ) -> dict[str, Any] | None: ...
 
     async def get_bank_profile(
         self,
