@@ -577,3 +577,343 @@ class PostgreSQLOps(DataAccessOps):
 
     def get_entity_resolution_strategy(self) -> str:
         return "trigram"
+
+    # -- Webhook operations ------------------------------------------------
+
+    async def create_webhook(
+        self,
+        conn,
+        table,
+        webhook_id,
+        bank_id,
+        url,
+        secret,
+        event_types,
+        enabled,
+        http_config_json,
+    ):
+        return await conn.fetchrow(
+            f"""
+            INSERT INTO {table}
+            (id, bank_id, url, secret, event_types, enabled, http_config, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW())
+            RETURNING id, bank_id, url, secret, event_types, enabled,
+                      http_config::text, created_at::text, updated_at::text
+            """,
+            webhook_id,
+            bank_id,
+            url,
+            secret,
+            event_types,
+            enabled,
+            http_config_json,
+        )
+
+    async def list_webhooks_for_bank(self, conn, table, bank_id):
+        return await conn.fetch(
+            f"""
+            SELECT id, bank_id, url, secret, event_types, enabled,
+                   http_config::text, created_at::text, updated_at::text
+            FROM {table}
+            WHERE bank_id = $1
+            ORDER BY created_at
+            """,
+            bank_id,
+        )
+
+    async def get_webhooks_for_dispatch(self, conn, webhook_table, bank_id):
+        return await conn.fetch(
+            f"""
+            SELECT id, bank_id, url, secret, event_types, enabled, http_config::text
+            FROM {webhook_table}
+            WHERE (bank_id = $1 OR bank_id IS NULL) AND enabled = true
+            """,
+            bank_id,
+        )
+
+    async def update_webhook(self, conn, table, webhook_id, bank_id, set_clauses, params):
+        set_clauses_with_ts = set_clauses + ["updated_at = NOW()"]
+        return await conn.fetchrow(
+            f"""
+            UPDATE {table}
+            SET {", ".join(set_clauses_with_ts)}
+            WHERE id = $1 AND bank_id = $2
+            RETURNING id, bank_id, url, secret, event_types, enabled,
+                      http_config::text, created_at::text, updated_at::text
+            """,
+            *params,
+        )
+
+    async def delete_webhook(self, conn, table, webhook_id, bank_id):
+        result = await conn.execute(
+            f"DELETE FROM {table} WHERE id = $1 AND bank_id = $2",
+            webhook_id,
+            bank_id,
+        )
+        return int(result.split()[-1]) > 0 if result else False
+
+    async def list_webhook_deliveries(self, conn, ops_table, webhook_id, bank_id, limit, cursor):
+        fetch_limit = limit + 1
+        if cursor:
+            return await conn.fetch(
+                f"""
+                SELECT operation_id, status, retry_count, next_retry_at::text,
+                       error_message, task_payload, result_metadata::text, created_at::text, updated_at::text
+                FROM {ops_table}
+                WHERE operation_type = 'webhook_delivery'
+                  AND bank_id = $1
+                  AND task_payload->>'webhook_id' = $2
+                  AND created_at < $3::timestamptz
+                ORDER BY created_at DESC
+                LIMIT $4
+                """,
+                bank_id,
+                webhook_id,
+                cursor,
+                fetch_limit,
+            )
+        return await conn.fetch(
+            f"""
+            SELECT operation_id, status, retry_count, next_retry_at::text,
+                   error_message, task_payload, result_metadata::text, created_at::text, updated_at::text
+            FROM {ops_table}
+            WHERE operation_type = 'webhook_delivery'
+              AND bank_id = $1
+              AND task_payload->>'webhook_id' = $2
+            ORDER BY created_at DESC
+            LIMIT $3
+            """,
+            bank_id,
+            webhook_id,
+            fetch_limit,
+        )
+
+    async def insert_webhook_delivery_task(self, conn, ops_table, operation_id, bank_id, payload_json, timestamp):
+        await conn.execute(
+            f"""
+            INSERT INTO {ops_table}
+              (operation_id, bank_id, operation_type, status, task_payload, result_metadata, created_at, updated_at)
+            VALUES ($1, $2, 'webhook_delivery', 'pending', $3::jsonb, '{{}}'::jsonb, $4, $4)
+            """,
+            operation_id,
+            bank_id,
+            payload_json,
+            timestamp,
+        )
+
+    # -- Task claiming operations ------------------------------------------
+
+    async def claim_tasks(self, conn, table, worker_id, reserved_limits, shared_limit):
+        all_rows = []
+        claimed_ids = []
+
+        # --- Phase 1: claim from reserved pools ---
+        for op_type, limit in reserved_limits.items():
+            if limit <= 0:
+                continue
+
+            if op_type == "consolidation":
+                busy_banks = await conn.fetch(
+                    f"""
+                    SELECT DISTINCT bank_id FROM {table}
+                    WHERE operation_type = 'consolidation' AND status = 'processing'
+                    """,
+                )
+                busy_bank_ids = [r["bank_id"] for r in busy_banks]
+
+                if busy_bank_ids:
+                    rows = await conn.fetch(
+                        f"""
+                        SELECT operation_id, operation_type, task_payload, retry_count
+                        FROM {table}
+                        WHERE status = 'pending'
+                          AND task_payload IS NOT NULL
+                          AND operation_type = 'consolidation'
+                          AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                          AND bank_id != ALL($1::text[])
+                        ORDER BY created_at
+                        LIMIT $2
+                        FOR UPDATE SKIP LOCKED
+                        """,
+                        busy_bank_ids,
+                        limit,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        f"""
+                        SELECT operation_id, operation_type, task_payload, retry_count
+                        FROM {table}
+                        WHERE status = 'pending'
+                          AND task_payload IS NOT NULL
+                          AND operation_type = 'consolidation'
+                          AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                        ORDER BY created_at
+                        LIMIT $1
+                        FOR UPDATE SKIP LOCKED
+                        """,
+                        limit,
+                    )
+            else:
+                rows = await conn.fetch(
+                    f"""
+                    SELECT operation_id, operation_type, task_payload, retry_count
+                    FROM {table}
+                    WHERE status = 'pending'
+                      AND task_payload IS NOT NULL
+                      AND operation_type = $1
+                      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                    ORDER BY created_at
+                    LIMIT $2
+                    FOR UPDATE SKIP LOCKED
+                    """,
+                    op_type,
+                    limit,
+                )
+
+            for row in rows:
+                claimed_ids.append(row["operation_id"])
+                all_rows.append(row)
+
+        # --- Phase 2: claim from shared pool ---
+        remaining_shared = shared_limit
+        if remaining_shared > 0:
+            # 2a. Non-consolidation tasks
+            if claimed_ids:
+                rows = await conn.fetch(
+                    f"""
+                    SELECT operation_id, operation_type, task_payload, retry_count
+                    FROM {table}
+                    WHERE status = 'pending'
+                      AND task_payload IS NOT NULL
+                      AND operation_type != 'consolidation'
+                      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                      AND operation_id != ALL($1::uuid[])
+                    ORDER BY created_at
+                    LIMIT $2
+                    FOR UPDATE SKIP LOCKED
+                    """,
+                    claimed_ids,
+                    remaining_shared,
+                )
+            else:
+                rows = await conn.fetch(
+                    f"""
+                    SELECT operation_id, operation_type, task_payload, retry_count
+                    FROM {table}
+                    WHERE status = 'pending'
+                      AND task_payload IS NOT NULL
+                      AND operation_type != 'consolidation'
+                      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                    ORDER BY created_at
+                    LIMIT $1
+                    FOR UPDATE SKIP LOCKED
+                    """,
+                    remaining_shared,
+                )
+
+            for row in rows:
+                claimed_ids.append(row["operation_id"])
+                all_rows.append(row)
+            remaining_shared -= len(rows)
+
+            # 2b. Consolidation tasks (with bank-serialization)
+            if remaining_shared > 0:
+                busy_banks_2 = await conn.fetch(
+                    f"""
+                    SELECT DISTINCT bank_id FROM {table}
+                    WHERE operation_type = 'consolidation' AND status = 'processing'
+                    """,
+                )
+                busy_bank_ids_2 = [r["bank_id"] for r in busy_banks_2]
+
+                if claimed_ids:
+                    if busy_bank_ids_2:
+                        rows = await conn.fetch(
+                            f"""
+                            SELECT operation_id, operation_type, task_payload, retry_count
+                            FROM {table}
+                            WHERE status = 'pending'
+                              AND task_payload IS NOT NULL
+                              AND operation_type = 'consolidation'
+                              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                              AND operation_id != ALL($1::uuid[])
+                              AND bank_id != ALL($2::text[])
+                            ORDER BY created_at
+                            LIMIT $3
+                            FOR UPDATE SKIP LOCKED
+                            """,
+                            claimed_ids,
+                            busy_bank_ids_2,
+                            remaining_shared,
+                        )
+                    else:
+                        rows = await conn.fetch(
+                            f"""
+                            SELECT operation_id, operation_type, task_payload, retry_count
+                            FROM {table}
+                            WHERE status = 'pending'
+                              AND task_payload IS NOT NULL
+                              AND operation_type = 'consolidation'
+                              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                              AND operation_id != ALL($1::uuid[])
+                            ORDER BY created_at
+                            LIMIT $2
+                            FOR UPDATE SKIP LOCKED
+                            """,
+                            claimed_ids,
+                            remaining_shared,
+                        )
+                else:
+                    if busy_bank_ids_2:
+                        rows = await conn.fetch(
+                            f"""
+                            SELECT operation_id, operation_type, task_payload, retry_count
+                            FROM {table}
+                            WHERE status = 'pending'
+                              AND task_payload IS NOT NULL
+                              AND operation_type = 'consolidation'
+                              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                              AND bank_id != ALL($1::text[])
+                            ORDER BY created_at
+                            LIMIT $2
+                            FOR UPDATE SKIP LOCKED
+                            """,
+                            busy_bank_ids_2,
+                            remaining_shared,
+                        )
+                    else:
+                        rows = await conn.fetch(
+                            f"""
+                            SELECT operation_id, operation_type, task_payload, retry_count
+                            FROM {table}
+                            WHERE status = 'pending'
+                              AND task_payload IS NOT NULL
+                              AND operation_type = 'consolidation'
+                              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                            ORDER BY created_at
+                            LIMIT $1
+                            FOR UPDATE SKIP LOCKED
+                            """,
+                            remaining_shared,
+                        )
+
+                for row in rows:
+                    claimed_ids.append(row["operation_id"])
+                    all_rows.append(row)
+
+        if not all_rows:
+            return []
+
+        # Mark all claimed rows as processing
+        operation_ids = [row["operation_id"] for row in all_rows]
+        await conn.execute(
+            f"""
+            UPDATE {table}
+            SET status = 'processing', worker_id = $1, claimed_at = now(), updated_at = now()
+            WHERE operation_id = ANY($2)
+            """,
+            worker_id,
+            operation_ids,
+        )
+
+        return all_rows

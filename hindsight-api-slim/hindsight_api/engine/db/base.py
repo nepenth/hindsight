@@ -251,6 +251,15 @@ class DatabaseBackend(ABC):
         """
         return True
 
+    def normalize_schema(self, schema: str | None) -> str | None:
+        """Normalize a schema name for this backend.
+
+        Returns the schema as-is by default. Oracle overrides this to
+        convert ``"public"`` (a PG-specific default) to ``None`` (use the
+        connecting user's default schema).
+        """
+        return schema
+
     def run_migrations(self, dsn: str, *, schema: str | None = None) -> None:
         """Run database migrations for this backend.
 

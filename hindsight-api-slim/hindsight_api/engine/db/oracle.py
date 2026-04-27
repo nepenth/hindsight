@@ -1061,6 +1061,12 @@ class OracleBackend(DatabaseBackend):
     def supports_worker_poller(self) -> bool:
         return True
 
+    def normalize_schema(self, schema: str | None) -> str | None:
+        """Oracle uses users as schemas; ``"public"`` is PG-specific."""
+        if schema == "public":
+            return None
+        return schema
+
     def run_migrations(self, dsn: str, *, schema: str | None = None) -> None:
         """Run Oracle DDL migrations."""
         from ...migrations_oracle import run_oracle_migrations

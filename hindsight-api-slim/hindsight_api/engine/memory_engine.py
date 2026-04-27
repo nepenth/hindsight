@@ -1827,10 +1827,7 @@ class MemoryEngine(MemoryEngineInterface):
                 for tenant in tenants:
                     schema = tenant.schema
                     if schema:
-                        # Oracle uses users as schemas; "public" is PG-specific
-                        # and doesn't exist in Oracle — use None (connecting user's default).
-                        if self._backend.backend_type == "oracle" and schema == "public":
-                            schema = None
+                        schema = self._backend.normalize_schema(schema)
                         self._backend.run_migrations(self.db_url, schema=schema)
                 logger.info("Schema migrations completed")
 
@@ -1917,7 +1914,7 @@ class MemoryEngine(MemoryEngineInterface):
         # Initialize config resolver for hierarchical configuration
         from ..config_resolver import ConfigResolver
 
-        self._config_resolver = ConfigResolver(pool=self._backend, tenant_extension=self._tenant_extension)
+        self._config_resolver = ConfigResolver(backend=self._backend, tenant_extension=self._tenant_extension)
         logger.debug("Config resolver initialized for hierarchical configuration")
 
         # Initialize file storage
@@ -1965,7 +1962,7 @@ class MemoryEngine(MemoryEngineInterface):
                 )
             ]
         self._webhook_manager = WebhookManager(
-            pool=self._backend,
+            backend=self._backend,
             global_webhooks=webhook_global,
             tenant_extension=self._tenant_extension,
         )

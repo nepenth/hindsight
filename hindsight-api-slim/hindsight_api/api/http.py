@@ -5395,14 +5395,9 @@ def _register_routes(app: FastAPI):
 
             webhook_id = uuid.uuid4()
             async with acquire_with_retry(backend) as conn:
-                row = await conn.fetchrow(
-                    f"""
-                    INSERT INTO {fq_table("webhooks")}
-                    (id, bank_id, url, secret, event_types, enabled, http_config, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW())
-                    RETURNING id, bank_id, url, secret, event_types, enabled,
-                              http_config::text, created_at::text, updated_at::text
-                    """,
+                row = await backend.ops.create_webhook(
+                    conn,
+                    fq_table("webhooks"),
                     webhook_id,
                     bank_id,
                     request.url,
@@ -5464,14 +5459,9 @@ def _register_routes(app: FastAPI):
             from hindsight_api.engine.memory_engine import fq_table
 
             async with acquire_with_retry(backend) as conn:
-                rows = await conn.fetch(
-                    f"""
-                    SELECT id, bank_id, url, secret, event_types, enabled,
-                           http_config::text, created_at::text, updated_at::text
-                    FROM {fq_table("webhooks")}
-                    WHERE bank_id = $1
-                    ORDER BY created_at
-                    """,
+                rows = await backend.ops.list_webhooks_for_bank(
+                    conn,
+                    fq_table("webhooks"),
                     bank_id,
                 )
 
@@ -5531,13 +5521,13 @@ def _register_routes(app: FastAPI):
             from hindsight_api.engine.memory_engine import fq_table
 
             async with acquire_with_retry(backend) as conn:
-                result = await conn.execute(
-                    f"DELETE FROM {fq_table('webhooks')} WHERE id = $1 AND bank_id = $2",
+                deleted = await backend.ops.delete_webhook(
+                    conn,
+                    fq_table("webhooks"),
                     uuid.UUID(webhook_id),
                     bank_id,
                 )
-            deleted = int(result.split()[-1]) if result else 0
-            if deleted == 0:
+            if not deleted:
                 raise HTTPException(status_code=404, detail="Webhook not found")
             return DeleteResponse(success=True)
         except (AuthenticationError, HTTPException):
@@ -5593,17 +5583,14 @@ def _register_routes(app: FastAPI):
             if not set_clauses:
                 raise HTTPException(status_code=422, detail="No fields provided to update")
 
-            set_clauses.append("updated_at = NOW()")
             async with acquire_with_retry(backend) as conn:
-                row = await conn.fetchrow(
-                    f"""
-                    UPDATE {fq_table("webhooks")}
-                    SET {", ".join(set_clauses)}
-                    WHERE id = $1 AND bank_id = $2
-                    RETURNING id, bank_id, url, secret, event_types, enabled,
-                              http_config::text, created_at::text, updated_at::text
-                    """,
-                    *params,
+                row = await backend.ops.update_webhook(
+                    conn,
+                    fq_table("webhooks"),
+                    uuid.UUID(webhook_id),
+                    bank_id,
+                    set_clauses,
+                    params,
                 )
             if not row:
                 raise HTTPException(status_code=404, detail="Webhook not found")
@@ -5672,42 +5659,14 @@ def _register_routes(app: FastAPI):
                 if not webhook_row:
                     raise HTTPException(status_code=404, detail="Webhook not found")
 
-                # Fetch limit+1 to detect if there's a next page
-                fetch_limit = limit + 1
-                if cursor:
-                    rows = await conn.fetch(
-                        f"""
-                        SELECT operation_id, status, retry_count, next_retry_at::text,
-                               error_message, task_payload, result_metadata::text, created_at::text, updated_at::text
-                        FROM {fq_table("async_operations")}
-                        WHERE operation_type = 'webhook_delivery'
-                          AND bank_id = $1
-                          AND task_payload->>'webhook_id' = $2
-                          AND created_at < $3::timestamptz
-                        ORDER BY created_at DESC
-                        LIMIT $4
-                        """,
-                        bank_id,
-                        webhook_id,
-                        cursor,
-                        fetch_limit,
-                    )
-                else:
-                    rows = await conn.fetch(
-                        f"""
-                        SELECT operation_id, status, retry_count, next_retry_at::text,
-                               error_message, task_payload, result_metadata::text, created_at::text, updated_at::text
-                        FROM {fq_table("async_operations")}
-                        WHERE operation_type = 'webhook_delivery'
-                          AND bank_id = $1
-                          AND task_payload->>'webhook_id' = $2
-                        ORDER BY created_at DESC
-                        LIMIT $3
-                        """,
-                        bank_id,
-                        webhook_id,
-                        fetch_limit,
-                    )
+                rows = await backend.ops.list_webhook_deliveries(
+                    conn,
+                    fq_table("async_operations"),
+                    webhook_id,
+                    bank_id,
+                    limit,
+                    cursor,
+                )
 
             has_more = len(rows) > limit
             page = rows[:limit]

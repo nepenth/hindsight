@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ..engine.schema import fq_table_explicit as fq_table
 from .exceptions import DeferOperation, RetryTaskAt
 from .stage import StageHolder, bind_holder
 
@@ -54,13 +55,6 @@ class ActiveTaskInfo:
     # dumped a stack trace; used to suppress repeated dumps.
     last_stack_dump_threshold: int = 0
     task_type: str = ""
-
-
-def fq_table(table: str, schema: str | None = None) -> str:
-    """Get fully-qualified table name with optional schema prefix."""
-    from ..engine.schema import fq_table_explicit
-
-    return fq_table_explicit(table, schema)
 
 
 @dataclass
@@ -404,238 +398,23 @@ class WorkerPoller:
     ) -> list[ClaimedTask]:
         """Inner implementation for claiming tasks from a specific schema.
 
-        Claims happen in two phases:
-        1. Reserved pools: one query per operation type that has reserved slots.
-           Consolidation queries always include bank-serialization (no two consolidation
-           tasks for the same bank simultaneously).
-        2. Shared pool: remaining capacity is filled by any operation type. Two queries
-           are used (non-consolidation + consolidation with bank serialization) to
-           preserve consolidation's bank-serialization constraint.
-
-        Within the same transaction, rows locked by earlier queries are excluded from
-        later queries via ``operation_id != ALL($excluded)`` since ``FOR UPDATE SKIP
-        LOCKED`` only skips rows locked by *other* transactions.
+        Delegates the SQL claiming logic to backend.ops.claim_tasks() which
+        handles backend-specific differences (e.g. Oracle's ORA-02014 workaround).
         """
         table = fq_table("async_operations", schema)
 
         async with self._backend.acquire() as conn:
             async with conn.transaction():
-                all_rows: list[Any] = []
-                claimed_ids: list[Any] = []
-
-                # --- Phase 1: claim from reserved pools ---
-                for op_type, limit in reserved_limits.items():
-                    if limit <= 0:
-                        continue
-
-                    if op_type == "consolidation":
-                        # Two-step claim: Oracle doesn't allow FOR UPDATE with
-                        # NOT EXISTS subqueries (ORA-02014). First find banks
-                        # with active consolidation, then claim excluding those.
-                        busy_banks = await conn.fetch(
-                            f"""
-                            SELECT DISTINCT bank_id FROM {table}
-                            WHERE operation_type = 'consolidation' AND status = 'processing'
-                            """,
-                        )
-                        busy_bank_ids = [r["bank_id"] for r in busy_banks]
-
-                        if busy_bank_ids:
-                            rows = await conn.fetch(
-                                f"""
-                                SELECT operation_id, operation_type, task_payload, retry_count
-                                FROM {table}
-                                WHERE status = 'pending'
-                                  AND task_payload IS NOT NULL
-                                  AND operation_type = 'consolidation'
-                                  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                                  AND bank_id != ALL($1::text[])
-                                ORDER BY created_at
-                                LIMIT $2
-                                FOR UPDATE SKIP LOCKED
-                                """,
-                                busy_bank_ids,
-                                limit,
-                            )
-                        else:
-                            rows = await conn.fetch(
-                                f"""
-                                SELECT operation_id, operation_type, task_payload, retry_count
-                                FROM {table}
-                                WHERE status = 'pending'
-                                  AND task_payload IS NOT NULL
-                                  AND operation_type = 'consolidation'
-                                  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                                ORDER BY created_at
-                                LIMIT $1
-                                FOR UPDATE SKIP LOCKED
-                                """,
-                                limit,
-                            )
-                    else:
-                        rows = await conn.fetch(
-                            f"""
-                            SELECT operation_id, operation_type, task_payload, retry_count
-                            FROM {table}
-                            WHERE status = 'pending'
-                              AND task_payload IS NOT NULL
-                              AND operation_type = $1
-                              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                            ORDER BY created_at
-                            LIMIT $2
-                            FOR UPDATE SKIP LOCKED
-                            """,
-                            op_type,
-                            limit,
-                        )
-
-                    for row in rows:
-                        claimed_ids.append(row["operation_id"])
-                        all_rows.append(row)
-
-                # --- Phase 2: claim from shared pool ---
-                remaining_shared = shared_limit
-                if remaining_shared > 0:
-                    # 2a. Non-consolidation tasks (any type except consolidation)
-                    if claimed_ids:
-                        rows = await conn.fetch(
-                            f"""
-                            SELECT operation_id, operation_type, task_payload, retry_count
-                            FROM {table}
-                            WHERE status = 'pending'
-                              AND task_payload IS NOT NULL
-                              AND operation_type != 'consolidation'
-                              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                              AND operation_id != ALL($1::uuid[])
-                            ORDER BY created_at
-                            LIMIT $2
-                            FOR UPDATE SKIP LOCKED
-                            """,
-                            claimed_ids,
-                            remaining_shared,
-                        )
-                    else:
-                        rows = await conn.fetch(
-                            f"""
-                            SELECT operation_id, operation_type, task_payload, retry_count
-                            FROM {table}
-                            WHERE status = 'pending'
-                              AND task_payload IS NOT NULL
-                              AND operation_type != 'consolidation'
-                              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                            ORDER BY created_at
-                            LIMIT $1
-                            FOR UPDATE SKIP LOCKED
-                            """,
-                            remaining_shared,
-                        )
-
-                    for row in rows:
-                        claimed_ids.append(row["operation_id"])
-                        all_rows.append(row)
-                    remaining_shared -= len(rows)
-
-                    # 2b. Consolidation tasks (with bank-serialization constraint)
-                    # Two-step claim: Oracle doesn't allow FOR UPDATE with
-                    # NOT EXISTS subqueries (ORA-02014). Reuse busy_banks
-                    # from Phase 1 if available, otherwise query fresh.
-                    if remaining_shared > 0:
-                        busy_banks_2 = await conn.fetch(
-                            f"""
-                            SELECT DISTINCT bank_id FROM {table}
-                            WHERE operation_type = 'consolidation' AND status = 'processing'
-                            """,
-                        )
-                        busy_bank_ids_2 = [r["bank_id"] for r in busy_banks_2]
-
-                        if claimed_ids:
-                            if busy_bank_ids_2:
-                                rows = await conn.fetch(
-                                    f"""
-                                    SELECT operation_id, operation_type, task_payload, retry_count
-                                    FROM {table}
-                                    WHERE status = 'pending'
-                                      AND task_payload IS NOT NULL
-                                      AND operation_type = 'consolidation'
-                                      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                                      AND operation_id != ALL($1::uuid[])
-                                      AND bank_id != ALL($2::text[])
-                                    ORDER BY created_at
-                                    LIMIT $3
-                                    FOR UPDATE SKIP LOCKED
-                                    """,
-                                    claimed_ids,
-                                    busy_bank_ids_2,
-                                    remaining_shared,
-                                )
-                            else:
-                                rows = await conn.fetch(
-                                    f"""
-                                    SELECT operation_id, operation_type, task_payload, retry_count
-                                    FROM {table}
-                                    WHERE status = 'pending'
-                                      AND task_payload IS NOT NULL
-                                      AND operation_type = 'consolidation'
-                                      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                                      AND operation_id != ALL($1::uuid[])
-                                    ORDER BY created_at
-                                    LIMIT $2
-                                    FOR UPDATE SKIP LOCKED
-                                    """,
-                                    claimed_ids,
-                                    remaining_shared,
-                                )
-                        else:
-                            if busy_bank_ids_2:
-                                rows = await conn.fetch(
-                                    f"""
-                                    SELECT operation_id, operation_type, task_payload, retry_count
-                                    FROM {table}
-                                    WHERE status = 'pending'
-                                      AND task_payload IS NOT NULL
-                                      AND operation_type = 'consolidation'
-                                      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                                      AND bank_id != ALL($1::text[])
-                                    ORDER BY created_at
-                                    LIMIT $2
-                                    FOR UPDATE SKIP LOCKED
-                                    """,
-                                    busy_bank_ids_2,
-                                    remaining_shared,
-                                )
-                            else:
-                                rows = await conn.fetch(
-                                    f"""
-                                    SELECT operation_id, operation_type, task_payload, retry_count
-                                    FROM {table}
-                                    WHERE status = 'pending'
-                                      AND task_payload IS NOT NULL
-                                      AND operation_type = 'consolidation'
-                                      AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-                                    ORDER BY created_at
-                                    LIMIT $1
-                                    FOR UPDATE SKIP LOCKED
-                                    """,
-                                    remaining_shared,
-                                )
-
-                        for row in rows:
-                            claimed_ids.append(row["operation_id"])
-                            all_rows.append(row)
+                all_rows = await self._backend.ops.claim_tasks(
+                    conn,
+                    table,
+                    self._worker_id,
+                    reserved_limits,
+                    shared_limit,
+                )
 
                 if not all_rows:
                     return []
-
-                operation_ids = [row["operation_id"] for row in all_rows]
-                await conn.execute(
-                    f"""
-                    UPDATE {table}
-                    SET status = 'processing', worker_id = $1, claimed_at = now(), updated_at = now()
-                    WHERE operation_id = ANY($2)
-                    """,
-                    self._worker_id,
-                    operation_ids,
-                )
 
                 result = []
                 for row in all_rows:

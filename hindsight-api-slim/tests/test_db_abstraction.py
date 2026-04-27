@@ -598,3 +598,26 @@ class TestOracleOpsInsertFactsBatch:
         )
         _, rows_data = mock_conn.executemany.call_args.args
         assert rows_data[0][13] == []
+
+
+# ---------------------------------------------------------------------------
+# normalize_schema tests
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeSchema:
+    """Verify Backend.normalize_schema() returns correct schema for each backend."""
+
+    def test_postgresql_passes_through(self):
+        backend = PostgreSQLBackend()
+        assert backend.normalize_schema("public") == "public"
+        assert backend.normalize_schema("tenant_abc") == "tenant_abc"
+        assert backend.normalize_schema(None) is None
+
+    def test_oracle_maps_public_to_none(self):
+        from hindsight_api.engine.db.oracle import OracleBackend
+
+        backend = OracleBackend()
+        assert backend.normalize_schema("public") is None
+        assert backend.normalize_schema("tenant_abc") == "tenant_abc"
+        assert backend.normalize_schema(None) is None

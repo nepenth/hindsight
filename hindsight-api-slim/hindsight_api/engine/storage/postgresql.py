@@ -5,16 +5,10 @@ from collections.abc import Callable
 from typing import Any
 
 from ..db_utils import acquire_with_retry
+from ..schema import fq_table_explicit as fq_table
 from .base import FileStorage
 
 logger = logging.getLogger(__name__)
-
-
-def fq_table(table: str, schema: str | None = None) -> str:
-    """Get fully-qualified table name with optional schema prefix."""
-    from ..schema import fq_table_explicit
-
-    return fq_table_explicit(table, schema)
 
 
 class PostgreSQLFileStorage(FileStorage):

@@ -310,6 +310,116 @@ class DataAccessOps(ABC):
         """
         ...
 
+    # -- Webhook operations ------------------------------------------------
+
+    @abstractmethod
+    async def create_webhook(
+        self,
+        conn: DatabaseConnection,
+        table: str,
+        webhook_id: Any,
+        bank_id: str,
+        url: str,
+        secret: str | None,
+        event_types: list[str],
+        enabled: bool,
+        http_config_json: str,
+    ) -> ResultRow | None:
+        """Insert a webhook row and return the created row."""
+        ...
+
+    @abstractmethod
+    async def list_webhooks_for_bank(
+        self,
+        conn: DatabaseConnection,
+        table: str,
+        bank_id: str,
+    ) -> list[ResultRow]:
+        """List all webhooks for a bank, ordered by created_at."""
+        ...
+
+    @abstractmethod
+    async def get_webhooks_for_dispatch(
+        self,
+        conn: DatabaseConnection,
+        webhook_table: str,
+        bank_id: str,
+    ) -> list[ResultRow]:
+        """Get enabled webhooks matching a bank (bank-specific + global NULL rows)."""
+        ...
+
+    @abstractmethod
+    async def update_webhook(
+        self,
+        conn: DatabaseConnection,
+        table: str,
+        webhook_id: Any,
+        bank_id: str,
+        set_clauses: list[str],
+        params: list[Any],
+    ) -> ResultRow | None:
+        """Update a webhook and return the updated row, or None if not found."""
+        ...
+
+    @abstractmethod
+    async def delete_webhook(
+        self,
+        conn: DatabaseConnection,
+        table: str,
+        webhook_id: Any,
+        bank_id: str,
+    ) -> bool:
+        """Delete a webhook. Returns True if a row was deleted."""
+        ...
+
+    @abstractmethod
+    async def list_webhook_deliveries(
+        self,
+        conn: DatabaseConnection,
+        ops_table: str,
+        webhook_id: str,
+        bank_id: str,
+        limit: int,
+        cursor: str | None,
+    ) -> list[ResultRow]:
+        """List webhook delivery operations for a specific webhook, newest first."""
+        ...
+
+    @abstractmethod
+    async def insert_webhook_delivery_task(
+        self,
+        conn: DatabaseConnection,
+        ops_table: str,
+        operation_id: Any,
+        bank_id: str,
+        payload_json: str,
+        timestamp: Any,
+    ) -> None:
+        """Insert a webhook delivery task into async_operations."""
+        ...
+
+    # -- Task claiming operations ------------------------------------------
+
+    @abstractmethod
+    async def claim_tasks(
+        self,
+        conn: DatabaseConnection,
+        table: str,
+        worker_id: str,
+        reserved_limits: dict[str, int],
+        shared_limit: int,
+    ) -> list[ResultRow]:
+        """Claim pending tasks from the async_operations table.
+
+        PG implementation can use NOT EXISTS + FOR UPDATE SKIP LOCKED in one query.
+        Oracle implementation uses two-step claims (query busy banks first, then
+        claim excluding them) to avoid ORA-02014.
+
+        Returns claimed rows with operation_id, operation_type, task_payload, retry_count.
+        The caller is responsible for building ClaimedTask objects.
+        """
+        ...
+
     # -- Shared helpers (concrete) -----------------------------------------
 
     def _get_mu_table(self) -> str:
