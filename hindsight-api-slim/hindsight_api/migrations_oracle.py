@@ -397,6 +397,15 @@ _DDL_INDEXES = [
     _idx("idx_ec_entity2", "CREATE INDEX idx_ec_entity2 ON entity_cooccurrences(entity_id_2)"),
     _idx("idx_ec_count", "CREATE INDEX idx_ec_count ON entity_cooccurrences(cooccurrence_count DESC)"),
     # --- memory_links ---
+    # Unique constraint matching PG's idx_memory_links_unique — required for ON CONFLICT DO NOTHING
+    # duplicate suppression. Oracle function-based unique index uses NVL (Oracle equivalent of COALESCE)
+    # with the nil UUID as raw bytes to handle nullable entity_id.
+    _idx(
+        "idx_memory_links_unique",
+        "CREATE UNIQUE INDEX idx_memory_links_unique ON memory_links("
+        "from_unit_id, to_unit_id, link_type, "
+        "NVL(entity_id, HEXTORAW('00000000000000000000000000000000')))",
+    ),
     _idx("idx_ml_from_unit", "CREATE INDEX idx_ml_from_unit ON memory_links(from_unit_id)"),
     _idx("idx_ml_to_unit", "CREATE INDEX idx_ml_to_unit ON memory_links(to_unit_id)"),
     _idx("idx_ml_entity", "CREATE INDEX idx_ml_entity ON memory_links(entity_id)"),
@@ -551,6 +560,28 @@ def run_oracle_migrations(dsn: str, *, schema: str | None = None) -> None:
                 logger.debug("memory_units already partitioned")
             else:
                 logger.debug("Partitioning memory_units skipped: %s", e)
+
+        # Deduplicate memory_links before creating unique index.
+        # Earlier versions lacked a unique constraint, so duplicate rows may exist.
+        try:
+            cursor.execute("""
+                DELETE FROM memory_links WHERE ROWID IN (
+                    SELECT rid FROM (
+                        SELECT ROWID AS rid,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY from_unit_id, to_unit_id, link_type,
+                                                NVL(entity_id, HEXTORAW('00000000000000000000000000000000'))
+                                   ORDER BY created_at
+                               ) AS rn
+                        FROM memory_links
+                    ) WHERE rn > 1
+                )
+            """)
+            if cursor.rowcount > 0:
+                logger.info("Deduplicated %d memory_links rows before unique index creation", cursor.rowcount)
+            conn.commit()
+        except oracledb.DatabaseError as e:
+            logger.debug("memory_links dedup skipped (table may not exist yet): %s", e)
 
         # Create B-tree indexes
         for idx_ddl in _DDL_INDEXES:

@@ -674,22 +674,30 @@ class TestSearchRetrieval:
     async def test_search_with_limit(self, oracle_memory: MemoryEngine, request_context: RequestContext):
         bank_id = _bank_id("limit")
         try:
-            for i in range(5):
+            topics = [
+                "Python is a popular programming language used for web development.",
+                "JavaScript runs natively in web browsers and Node.js.",
+                "PostgreSQL is a powerful open-source relational database.",
+                "Docker containers simplify application deployment.",
+                "Kubernetes orchestrates containerized workloads at scale.",
+            ]
+            for i, content in enumerate(topics):
                 await oracle_memory.retain_async(
                     bank_id=bank_id,
-                    content=f"Searchable fact number {i}.",
-                    context="test",
+                    content=content,
+                    context="technology",
                     event_date=datetime(2024, 1, i + 1, tzinfo=timezone.utc),
                     request_context=request_context,
                 )
             result = await oracle_memory.recall_async(
                 bank_id=bank_id,
-                query="searchable fact",
+                query="programming languages and databases",
                 budget=Budget.LOW,
                 max_tokens=200,
                 request_context=request_context,
             )
-            # With LOW budget + low tokens, results should be limited
+            # With LOW budget + low tokens, results should be bounded.
+            # LLM fact extraction is non-deterministic so we allow 0 results.
             assert len(result.results) <= 10
         finally:
             await _safe_cleanup(oracle_memory, bank_id, request_context)
@@ -889,12 +897,18 @@ class TestAdvancedFeatures:
                     event_date=datetime(2024, 1, i + 1, tzinfo=timezone.utc),
                     request_context=request_context,
                 )
-            # Just verify no errors — consolidation is async
+            # Verify facts were stored (consolidation is async and may run inline
+            # via SyncTaskBackend, but the key assertion is that all 5 retains persisted)
             memories = await oracle_memory.list_memory_units(
                 bank_id=bank_id, request_context=request_context
             )
             items = memories.get("items", memories) if isinstance(memories, dict) else memories
-            assert len(items) >= 5
+            assert len(items) >= 5, f"Expected at least 5 stored memories, got {len(items)}"
+            # Verify facts contain expected content
+            texts = [item.get("text", "") for item in items]
+            assert any("dark mode" in t for t in texts), (
+                f"Expected 'dark mode' in stored facts, got: {texts[:3]}"
+            )
         finally:
             await _safe_cleanup(oracle_memory, bank_id, request_context)
 
@@ -1032,7 +1046,11 @@ class TestOracleSpecific:
                 max_tokens=500,
                 request_context=request_context,
             )
-            assert len(result.results) > 0
+            assert len(result.results) > 0, "Vector search returned no results"
+            result_text = " ".join(r.text for r in result.results).lower()
+            assert "vector" in result_text or "embedding" in result_text, (
+                f"Expected vector-related content in results, got: {result_text[:200]}"
+            )
         finally:
             await _safe_cleanup(oracle_memory, bank_id, request_context)
 
@@ -1055,7 +1073,11 @@ class TestOracleSpecific:
                 max_tokens=500,
                 request_context=request_context,
             )
-            assert len(result.results) > 0
+            assert len(result.results) > 0, "Text search returned no results"
+            result_text = " ".join(r.text for r in result.results).lower()
+            assert "oracle text" in result_text or "full-text" in result_text or "linguistic" in result_text, (
+                f"Expected text-search-related content in results, got: {result_text[:200]}"
+            )
         finally:
             await _safe_cleanup(oracle_memory, bank_id, request_context)
 
@@ -1226,15 +1248,18 @@ class TestEdgeCases:
                 for i in range(3)
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            # At least some should succeed (Oracle may serialize, but shouldn't deadlock)
-            successes = [r for r in results if not isinstance(r, Exception)]
-            assert len(successes) >= 1
+            # All should succeed — Oracle may serialize, but shouldn't deadlock or fail
+            failures = [r for r in results if isinstance(r, Exception)]
+            assert len(failures) == 0, (
+                f"Expected all 3 concurrent retains to succeed, but {len(failures)} failed: "
+                f"{[str(e)[:100] for e in failures]}"
+            )
 
             memories = await oracle_memory.list_memory_units(
                 bank_id=bank_id, request_context=request_context
             )
             items = memories.get("items", memories) if isinstance(memories, dict) else memories
-            assert len(items) >= 1
+            assert len(items) >= 3, f"Expected at least 3 memories from 3 retains, got {len(items)}"
         finally:
             await _safe_cleanup(oracle_memory, bank_id, request_context)
 

@@ -268,7 +268,15 @@ def oracle_db_url(_oracle_admin_dsn):
         conn.close()
 
     # Return URL-format DSN for the test user
-    return f"oracle://{test_user}:{test_pass}@{bare_dsn}"
+    url = f"oracle://{test_user}:{test_pass}@{bare_dsn}"
+
+    # Run idempotent migrations once at session scope (mirrors PG's pg0_db_url).
+    # This avoids re-running DDL checks on every function-scoped test.
+    from hindsight_api.migrations_oracle import run_oracle_migrations
+
+    run_oracle_migrations(url)
+
+    return url
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -277,13 +285,9 @@ async def oracle_memory(oracle_db_url, embeddings, cross_encoder, query_analyzer
     Provide a MemoryEngine backed by Oracle 23ai for each test.
 
     Mirrors the PG `memory` fixture but uses the Oracle backend.
-    Runs Oracle migrations before yielding the engine.
+    Migrations are run once at session scope in the `oracle_db_url` fixture.
     """
     from hindsight_api.config import clear_config_cache
-    from hindsight_api.migrations_oracle import run_oracle_migrations
-
-    # Run idempotent migrations
-    run_oracle_migrations(oracle_db_url)
 
     # Temporarily set the database backend env var so the global config
     # (used by fq_table / _is_oracle) returns "oracle".

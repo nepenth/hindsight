@@ -79,7 +79,7 @@ class TestOracleHTTP:
             # Recall
             resp = await api_client.post(
                 f"/v1/default/banks/{bank_id}/memories/recall",
-                json={"query": "Who is Alice?", "thinking_budget": 50},
+                json={"query": "Who is Alice?", "budget": "low"},
             )
             assert resp.status_code == 200
             results = resp.json()
@@ -104,7 +104,7 @@ class TestOracleHTTP:
             )
             resp = await api_client.post(
                 f"/v1/default/banks/{bank_id}/reflect",
-                json={"query": "What database is used?", "thinking_budget": 50},
+                json={"query": "What database is used?", "budget": "low"},
             )
             assert resp.status_code == 200
             body = resp.json()
@@ -331,7 +331,12 @@ class TestOracleHTTP:
             # Should contain the tags we inserted (or at least the endpoint works)
             all_tags = tags_data if isinstance(tags_data, list) else tags_data.get("tags", tags_data.get("items", []))
             tag_names = [t if isinstance(t, str) else t.get("tag", t.get("name", "")) for t in all_tags]
-            assert "http-tag" in tag_names or "oracle-tag" in tag_names or len(all_tags) >= 0
+            # Tags depend on LLM fact extraction tagging the content correctly.
+            # Non-deterministic — verify endpoint works; if tags present, check values.
+            if len(all_tags) > 0:
+                assert "http-tag" in tag_names or "oracle-tag" in tag_names, (
+                    f"Expected 'http-tag' or 'oracle-tag' in tags, got: {tag_names}"
+                )
         finally:
             await _safe_http_cleanup(api_client, bank_id)
 
@@ -378,7 +383,7 @@ class TestOracleEndToEnd:
             # --- 2. Recall — semantic search should find relevant facts ---
             resp = await api_client.post(
                 f"/v1/default/banks/{bank_id}/memories/recall",
-                json={"query": "Who works on the backend?", "thinking_budget": 50},
+                json={"query": "Who works on the backend?", "budget": "low"},
             )
             assert resp.status_code == 200, f"Recall failed: {resp.text}"
             recall_body = resp.json()
@@ -395,7 +400,7 @@ class TestOracleEndToEnd:
                 f"/v1/default/banks/{bank_id}/reflect",
                 json={
                     "query": "Summarize the team's technical expertise.",
-                    "thinking_budget": 50,
+                    "budget": "low",
                 },
             )
             assert resp.status_code == 200, f"Reflect failed: {resp.text}"
