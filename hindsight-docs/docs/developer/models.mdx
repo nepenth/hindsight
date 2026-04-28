@@ -86,6 +86,7 @@ Each provider has a recommended default model that's used when `HINDSIGHT_API_LL
 | `gemini` | `gemini-2.5-flash` |
 | `groq` | `openai/gpt-oss-120b` |
 | `minimax` | `MiniMax-M2.7` |
+| `deepseek` | `deepseek-v4-flash` |
 | `ollama` | `gemma3:12b` |
 | `llamacpp` | `gemma-4-e2b-it` (auto-downloaded GGUF) |
 | `lmstudio` | `local-model` |
@@ -176,6 +177,11 @@ export HINDSIGHT_API_LLM_MODEL=your-local-model
 export HINDSIGHT_API_LLM_PROVIDER=minimax
 export HINDSIGHT_API_LLM_API_KEY=your-minimax-api-key
 export HINDSIGHT_API_LLM_MODEL=MiniMax-M2.7
+
+# DeepSeek (https://api.deepseek.com)
+export HINDSIGHT_API_LLM_PROVIDER=deepseek
+export HINDSIGHT_API_LLM_API_KEY=sk-xxxxxxxxxxxx
+export HINDSIGHT_API_LLM_MODEL=deepseek-v4-flash  # or deepseek-v4-pro / deepseek-chat / deepseek-reasoner
 
 # Vertex AI (Google Cloud)
 export HINDSIGHT_API_LLM_PROVIDER=vertexai
