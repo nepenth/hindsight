@@ -58,3 +58,13 @@ TASK.md
 # CHANGELOG.md
 
 blog-post*
+
+# Local environment and secrets
+.env.*
+!.env.example
+*.db
+*.sqlite*
+*.log
+*.key
+*.pem
+*.crt
